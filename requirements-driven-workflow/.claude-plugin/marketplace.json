@@ -1,0 +1,33 @@
+{
+  "name": "requirements-driven-development",
+  "source": "./",
+  "description": "Streamlined requirements-driven development workflow with 90% quality gates for practical feature implementation",
+  "version": "1.0.0",
+  "author": {
+    "name": "Claude Code Dev Workflows",
+    "url": "https://github.com/cexll/myclaude"
+  },
+  "homepage": "https://github.com/cexll/myclaude",
+  "repository": "https://github.com/cexll/myclaude",
+  "license": "MIT",
+  "keywords": [
+    "requirements",
+    "workflow",
+    "automation",
+    "quality-gates",
+    "feature-development",
+    "agile",
+    "specifications"
+  ],
+  "category": "workflows",
+  "strict": false,
+  "commands": [
+    "./commands/requirements-pilot.md"
+  ],
+  "agents": [
+    "./agents/requirements-generate.md",
+    "./agents/requirements-code.md",
+    "./agents/requirements-testing.md",
+    "./agents/requirements-review.md"
+  ]
+}

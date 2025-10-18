@@ -1,0 +1,44 @@
+{
+  "name": "development-essentials",
+  "source": "./",
+  "description": "Essential development commands for coding, debugging, testing, optimization, and documentation",
+  "version": "1.0.0",
+  "author": {
+    "name": "Claude Code Dev Workflows",
+    "url": "https://github.com/cexll/myclaude"
+  },
+  "homepage": "https://github.com/cexll/myclaude",
+  "repository": "https://github.com/cexll/myclaude",
+  "license": "MIT",
+  "keywords": [
+    "code",
+    "debug",
+    "test",
+    "optimize",
+    "review",
+    "bugfix",
+    "refactor",
+    "documentation"
+  ],
+  "category": "essentials",
+  "strict": false,
+  "commands": [
+    "./commands/code.md",
+    "./commands/debug.md",
+    "./commands/test.md",
+    "./commands/optimize.md",
+    "./commands/review.md",
+    "./commands/bugfix.md",
+    "./commands/refactor.md",
+    "./commands/docs.md",
+    "./commands/ask.md",
+    "./commands/think.md"
+  ],
+  "agents": [
+    "./agents/code.md",
+    "./agents/bugfix.md",
+    "./agents/bugfix-verify.md",
+    "./agents/optimize.md",
+    "./agents/debug.md"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "name": "advanced-ai-agents",
+  "source": "./",
+  "description": "Advanced AI agent for complex problem solving and deep analysis with GPT-5 integration",
+  "version": "1.0.0",
+  "author": {
+    "name": "Claude Code Dev Workflows",
+    "url": "https://github.com/cexll/myclaude"
+  },
+  "homepage": "https://github.com/cexll/myclaude",
+  "repository": "https://github.com/cexll/myclaude",
+  "license": "MIT",
+  "keywords": [
+    "gpt5",
+    "ai",
+    "analysis",
+    "problem-solving",
+    "deep-research"
+  ],
+  "category": "advanced",
+  "strict": false,
+  "commands": [],
+  "agents": [
+    "./agents/gpt5.md"
+  ]
+}

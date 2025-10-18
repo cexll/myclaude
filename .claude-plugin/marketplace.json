@@ -12,7 +12,7 @@
   "plugins": [
     {
       "name": "requirements-driven-development",
-      "source": "./",
+      "source": "./requirements-driven-workflow/",
       "description": "Streamlined requirements-driven development workflow with 90% quality gates for practical feature implementation",
       "version": "1.0.0",
       "author": {
@@ -45,7 +45,7 @@
     },
     {
       "name": "bmad-agile-workflow",
-      "source": "./",
+      "source": "./bmad-agile-workflow/",
       "description": "Full BMAD agile workflow with role-based agents (PO, Architect, SM, Dev, QA) and interactive approval gates",
       "version": "1.0.0",
       "author": {
@@ -82,7 +82,7 @@
     },
     {
       "name": "development-essentials",
-      "source": "./",
+      "source": "./development-essentials/",
       "description": "Essential development commands for coding, debugging, testing, optimization, and documentation",
       "version": "1.0.0",
       "author": {
@@ -127,7 +127,7 @@
     },
     {
       "name": "advanced-ai-agents",
-      "source": "./",
+      "source": "./advanced-ai-agents/",
       "description": "Advanced AI agent for complex problem solving and deep analysis with GPT-5 integration",
       "version": "1.0.0",
       "author": {
