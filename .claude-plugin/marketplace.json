@@ -11,6 +11,38 @@
   },
   "plugins": [
     {
+      "name": "alin-dev-workflow",
+      "source": "./alin-dev-workflow/",
+      "description": "Alin customized requirements-driven workflow with manual validation guide and .alin/specs outputs",
+      "version": "1.0.0",
+      "author": {
+        "name": "Alin Dev",
+        "url": "https://github.com/cexll/myclaude"
+      },
+      "homepage": "https://github.com/cexll/myclaude",
+      "repository": "https://github.com/cexll/myclaude",
+      "license": "MIT",
+      "keywords": [
+        "alin",
+        "workflow",
+        "manual-validation",
+        "specs",
+        "automation"
+      ],
+      "category": "workflows",
+      "strict": false,
+      "commands": [
+        "./commands/alin-dev.md"
+      ],
+      "agents": [
+        "./agents/alin-generate.md",
+        "./agents/alin-code.md",
+        "./agents/alin-review.md",
+        "./agents/alin-testing.md",
+        "./agents/alin-manual-validate.md"
+      ]
+    },
+    {
       "name": "requirements-driven-development",
       "source": "./requirements-driven-workflow/",
       "description": "Streamlined requirements-driven development workflow with 90% quality gates for practical feature implementation",
