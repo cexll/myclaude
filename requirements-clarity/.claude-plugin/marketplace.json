@@ -1,0 +1,26 @@
+{
+  "name": "requirements-clarity",
+  "source": "./",
+  "description": "Transforms vague requirements into actionable PRDs through systematic clarification with 100-point scoring system",
+  "version": "1.0.0",
+  "author": {
+    "name": "Claude Code Dev Workflows",
+    "url": "https://github.com/cexll/myclaude"
+  },
+  "homepage": "https://github.com/cexll/myclaude",
+  "repository": "https://github.com/cexll/myclaude",
+  "license": "MIT",
+  "keywords": [
+    "requirements",
+    "clarification",
+    "prd",
+    "specifications",
+    "quality-gates",
+    "requirements-engineering"
+  ],
+  "category": "essentials",
+  "strict": false,
+  "skills": [
+    "./skills/SKILL.md"
+  ]
+}

@@ -46,6 +46,7 @@ make install
 | **[requirements-driven-workflow](docs/REQUIREMENTS-WORKFLOW.md)** | 精简的需求到代码工作流 | `/requirements-pilot` |
 | **[development-essentials](docs/DEVELOPMENT-COMMANDS.md)** | 核心开发斜杠命令 | `/code` `/debug` `/test` `/optimize` |
 | **[advanced-ai-agents](docs/ADVANCED-AGENTS.md)** | GPT-5 深度推理集成 | 智能体: `gpt5` |
+| **[requirements-clarity](docs/REQUIREMENTS-CLARITY.md)** | 自动需求澄清，100分制质量评分 | 自动激活技能 |
 
 ## 💡 使用场景
 
@@ -62,6 +63,11 @@ make install
 - 直接实现、调试、测试、优化
 - 无工作流开销
 
+**需求澄清** - 自动化需求工程
+- 自动检测模糊需求并启动澄清流程
+- 100分制质量评分系统
+- 生成完整的产品需求文档
+
 ## 🎯 核心特性
 
 - **🤖 角色化智能体**: 每个开发阶段的专业 AI 智能体
@@ -70,6 +76,7 @@ make install
 - **📁 持久化产物**: 所有规格保存至 `.claude/specs/`
 - **🔌 插件系统**: 原生 Claude Code 插件支持
 - **🔄 灵活工作流**: 选择完整敏捷或轻量开发
+- **🎯 需求澄清**: 自动化需求澄清与质量评分
 
 ## 📚 文档
 

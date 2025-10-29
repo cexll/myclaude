@@ -46,6 +46,7 @@ make install
 | **[requirements-driven-workflow](docs/REQUIREMENTS-WORKFLOW.md)** | Streamlined requirements-to-code workflow | `/requirements-pilot` |
 | **[development-essentials](docs/DEVELOPMENT-COMMANDS.md)** | Core development slash commands | `/code` `/debug` `/test` `/optimize` |
 | **[advanced-ai-agents](docs/ADVANCED-AGENTS.md)** | GPT-5 deep reasoning integration | Agent: `gpt5` |
+| **[requirements-clarity](docs/REQUIREMENTS-CLARITY.md)** | Automated requirements clarification with 100-point scoring | Auto-activated skill |
 
 ## 💡 Use Cases
 
@@ -62,6 +63,11 @@ make install
 - Direct implementation, debugging, testing, optimization
 - No workflow overhead
 
+**Requirements Clarity** - Automated requirements engineering
+- Auto-detects vague requirements and initiates clarification
+- 100-point quality scoring system
+- Generates complete PRD documents
+
 ## 🎯 Key Features
 
 - **🤖 Role-Based Agents**: Specialized AI agents for each development phase
@@ -70,6 +76,7 @@ make install
 - **📁 Persistent Artifacts**: All specs saved to `.claude/specs/`
 - **🔌 Plugin System**: Native Claude Code plugin support
 - **🔄 Flexible Workflows**: Choose full agile or lightweight development
+- **🎯 Requirements Clarity**: Automated requirements clarification with quality scoring
 
 ## 📚 Documentation
 
