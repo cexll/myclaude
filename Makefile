@@ -1,7 +1,7 @@
 # Claude Code Multi-Agent Workflow System Makefile
 # Quick deployment for BMAD and Requirements workflows
 
-.PHONY: help install deploy-bmad deploy-requirements deploy-essentials deploy-advanced deploy-alin deploy-all deploy-commands deploy-agents clean test
+.PHONY: help install deploy-bmad deploy-requirements deploy-essentials deploy-advanced deploy-all deploy-commands deploy-agents clean test
 
 # Default target
 help:
@@ -15,7 +15,6 @@ help:
 	@echo "  deploy-requirements  - Deploy Requirements workflow (requirements-pilot)"
 	@echo "  deploy-essentials    - Deploy Development Essentials workflow"
 	@echo "  deploy-advanced      - Deploy Advanced AI Agents"
-	@echo "  deploy-alin          - Deploy alin-dev workflow (/alin-dev)"
 	@echo "  deploy-commands      - Deploy all slash commands"
 	@echo "  deploy-agents        - Deploy all agent configurations"
 	@echo "  deploy-all           - Deploy everything (commands + agents)"
@@ -34,7 +33,6 @@ REQUIREMENTS_DIR = requirements-driven-workflow
 ESSENTIALS_DIR = development-essentials
 ADVANCED_DIR = advanced-ai-agents
 OUTPUT_STYLES_DIR = output-styles
-ALIN_DIR = alin-dev-workflow
 
 # Install all configurations
 install: deploy-all
@@ -79,15 +77,6 @@ deploy-advanced:
 	@cp $(ADVANCED_DIR)/agents/*.md $(CLAUDE_CONFIG_DIR)/agents/
 	@echo "✅ Advanced AI Agents deployed successfully!"
 
-# Deploy alin-dev workflow
-deploy-alin:
-	@echo "🚀 Deploying alin-dev workflow..."
-	@mkdir -p $(CLAUDE_CONFIG_DIR)/commands
-	@mkdir -p $(CLAUDE_CONFIG_DIR)/agents
-	@cp $(ALIN_DIR)/commands/alin-dev.md $(CLAUDE_CONFIG_DIR)/commands/
-	@cp $(ALIN_DIR)/agents/*.md $(CLAUDE_CONFIG_DIR)/agents/
-	@echo "✅ alin-dev workflow deployed successfully!"
-	@echo "   Usage: /alin-dev \"your feature description\""
 
 # Deploy all commands
 deploy-commands:
@@ -96,12 +85,10 @@ deploy-commands:
 	@cp $(BMAD_DIR)/commands/*.md $(CLAUDE_CONFIG_DIR)/commands/
 	@cp $(REQUIREMENTS_DIR)/commands/*.md $(CLAUDE_CONFIG_DIR)/commands/
 	@cp $(ESSENTIALS_DIR)/commands/*.md $(CLAUDE_CONFIG_DIR)/commands/
-	@cp $(ALIN_DIR)/commands/*.md $(CLAUDE_CONFIG_DIR)/commands/
 	@echo "✅ All commands deployed!"
 	@echo "   Available commands:"
 	@echo "   - /bmad-pilot (Full agile workflow)"
 	@echo "   - /requirements-pilot (Requirements-driven)"
-	@echo "   - /alin-dev (Pragmatic, validation-first)"
 	@echo "   - /ask, /code, /debug, /test, /review"
 	@echo "   - /optimize, /bugfix, /refactor, /docs, /think"
 
@@ -113,7 +100,6 @@ deploy-agents:
 	@cp $(REQUIREMENTS_DIR)/agents/*.md $(CLAUDE_CONFIG_DIR)/agents/
 	@cp $(ESSENTIALS_DIR)/agents/*.md $(CLAUDE_CONFIG_DIR)/agents/
 	@cp $(ADVANCED_DIR)/agents/*.md $(CLAUDE_CONFIG_DIR)/agents/
-	@cp $(ALIN_DIR)/agents/*.md $(CLAUDE_CONFIG_DIR)/agents/
 	@echo "✅ All agents deployed!"
 
 # Deploy everything
@@ -125,7 +111,6 @@ deploy-all: deploy-commands deploy-agents
 	@echo "Quick Start:"
 	@echo "  BMAD:         /bmad-pilot \"build user authentication\""
 	@echo "  Requirements: /requirements-pilot \"implement JWT auth\""
-	@echo "  Alin:         /alin-dev \"implement JWT auth with manual validation\""
 	@echo "  Manual:       /ask → /code → /test → /review"
 
 # Test BMAD workflow
@@ -151,7 +136,6 @@ bmad: deploy-bmad
 requirements: deploy-requirements
 essentials: deploy-essentials
 advanced: deploy-advanced
-alin: deploy-alin
 all: deploy-all
 
 # Version info
