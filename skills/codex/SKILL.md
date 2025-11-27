@@ -17,24 +17,39 @@ Execute Codex CLI commands and parse structured JSON responses. Supports file re
 
 ## Usage
 
-**Mandatory**: Run every automated invocation through the Bash tool in the foreground with the command below, keeping the `timeout` parameter fixed at `7200000` milliseconds (do not change it or use any other entry point).
+**Mandatory**: Run every automated invocation through the Bash tool in the foreground with **HEREDOC syntax** to avoid shell quoting issues, keeping the `timeout` parameter fixed at `7200000` milliseconds (do not change it or use any other entry point).
+
 ```bash
-uv run ~/.claude/skills/codex/scripts/codex.py "<task>" [working_dir]
+uv run ~/.claude/skills/codex/scripts/codex.py - [working_dir] <<'EOF'
+<task content here>
+EOF
 ```
 
-**Foreground only (no background/BashOutput)**: Never set `background: true`, never accept Claude's “Running in the background” mode, and avoid `BashOutput` streaming loops. Keep a single foreground Bash call per Codex task; if work might be long, split it into smaller foreground runs instead of offloading to background execution.
+**Why HEREDOC?** Tasks often contain code blocks, nested quotes, shell metacharacters (`$`, `` ` ``, `\`), and multiline text. HEREDOC (Here Document) syntax passes these safely without shell interpretation, eliminating quote-escaping nightmares.
 
-**Optional methods** (direct execution or via Python):
+**Foreground only (no background/BashOutput)**: Never set `background: true`, never accept Claude's "Running in the background" mode, and avoid `BashOutput` streaming loops. Keep a single foreground Bash call per Codex task; if work might be long, split it into smaller foreground runs instead of offloading to background execution.
+
+**Simple tasks** (backward compatibility):
+For simple single-line tasks without special characters, you can still use direct quoting:
 ```bash
-~/.claude/skills/codex/scripts/codex.py "<task>" [working_dir]
-# or
-python3 ~/.claude/skills/codex/scripts/codex.py "<task>" [working_dir]
+uv run ~/.claude/skills/codex/scripts/codex.py "simple task here" [working_dir]
 ```
 
-Resume a session:
+**Resume a session with HEREDOC:**
 ```bash
-uv run ~/.claude/skills/codex/scripts/codex.py resume <session_id> "<task>" [working_dir]
+uv run ~/.claude/skills/codex/scripts/codex.py resume <session_id> - [working_dir] <<'EOF'
+<task content>
+EOF
 ```
+
+**Cross-platform notes:**
+- **Bash/Zsh**: Use `<<'EOF'` (single quotes prevent variable expansion)
+- **PowerShell 5.1+**: Use `@'` and `'@` (here-string syntax)
+  ```powershell
+  uv run ~/.claude/skills/codex/scripts/codex.py - @'
+  task content
+  '@
+  ```
 
 ## Environment Variables
 - **CODEX_TIMEOUT**: Override timeout in milliseconds (default: 7200000 = 2 hours)
@@ -72,63 +87,82 @@ Return only the final agent message and session ID—do not paste raw `BashOutpu
 
 ### Invocation Pattern
 
-All automated executions may only invoke `uv run ~/.claude/skills/codex/scripts/codex.py "<task>" ...` through the Bash tool in the foreground, and the `timeout` must remain fixed at `7200000` (non-negotiable):
+All automated executions must use HEREDOC syntax through the Bash tool in the foreground, with `timeout` fixed at `7200000` (non-negotiable):
+
 ```
 Bash tool parameters:
-- command: uv run ~/.claude/skills/codex/scripts/codex.py "<task>" [working_dir]
+- command: uv run ~/.claude/skills/codex/scripts/codex.py - [working_dir] <<'EOF'
+  <task content>
+  EOF
 - timeout: 7200000
 - description: <brief description of the task>
 ```
+
 Run every call in the foreground—never append `&` to background it—so logs and errors stay visible for timely interruption or diagnosis.
 
-Alternatives:
-```
-# Direct execution (simplest)
-- command: ~/.claude/skills/codex/scripts/codex.py "<task>" [working_dir]
-
-# Using python3
-- command: python3 ~/.claude/skills/codex/scripts/codex.py "<task>" [working_dir]
-```
+**Important:** Use HEREDOC (`<<'EOF'`) for all but the simplest tasks. This prevents shell interpretation of quotes, variables, and special characters.
 
 ### Examples
 
 **Basic code analysis:**
 ```bash
-# Recommended: via uv run (auto-manages Python environment)
-uv run ~/.claude/skills/codex/scripts/codex.py "explain @src/main.ts"
+# Recommended: via uv run with HEREDOC (handles any special characters)
+uv run ~/.claude/skills/codex/scripts/codex.py - <<'EOF'
+explain @src/main.ts
+EOF
 # timeout: 7200000
 
-# Alternative: direct execution
-~/.claude/skills/codex/scripts/codex.py "explain @src/main.ts"
+# Alternative: simple direct quoting (if task is simple)
+uv run ~/.claude/skills/codex/scripts/codex.py "explain @src/main.ts"
 ```
 
-**Refactoring with custom model (via environment variable):**
+**Refactoring with multiline instructions:**
 ```bash
-# Set model via environment variable
-uv run ~/.claude/skills/codex/scripts/codex.py "refactor @src/utils for performance"
+uv run ~/.claude/skills/codex/scripts/codex.py - <<'EOF'
+refactor @src/utils for performance:
+- Extract duplicate code into helpers
+- Use memoization for expensive calculations
+- Add inline comments for non-obvious logic
+EOF
 # timeout: 7200000
 ```
 
 **Multi-file analysis:**
 ```bash
-uv run ~/.claude/skills/codex/scripts/codex.py "analyze @. and find security issues" "/path/to/project"
+uv run ~/.claude/skills/codex/scripts/codex.py - "/path/to/project" <<'EOF'
+analyze @. and find security issues:
+1. Check for SQL injection vulnerabilities
+2. Identify XSS risks in templates
+3. Review authentication/authorization logic
+4. Flag hardcoded credentials or secrets
+EOF
 # timeout: 7200000
 ```
 
 **Resume previous session:**
 ```bash
 # First session
-uv run ~/.claude/skills/codex/scripts/codex.py "add comments to @utils.js"
+uv run ~/.claude/skills/codex/scripts/codex.py - <<'EOF'
+add comments to @utils.js explaining the caching logic
+EOF
 # Output includes: SESSION_ID: 019a7247-ac9d-71f3-89e2-a823dbd8fd14
 
-# Continue the conversation
-uv run ~/.claude/skills/codex/scripts/codex.py resume 019a7247-ac9d-71f3-89e2-a823dbd8fd14 "now add type hints"
+# Continue the conversation with more context
+uv run ~/.claude/skills/codex/scripts/codex.py resume 019a7247-ac9d-71f3-89e2-a823dbd8fd14 - <<'EOF'
+now add TypeScript type hints and handle edge cases where cache is null
+EOF
 # timeout: 7200000
 ```
 
-**Using python3 directly (alternative):**
+**Task with code snippets and special characters:**
 ```bash
-python3 ~/.claude/skills/codex/scripts/codex.py "your task here"
+uv run ~/.claude/skills/codex/scripts/codex.py - <<'EOF'
+Fix the bug in @app.js where the regex /\d+/ doesn't match "123"
+The current code is:
+  const re = /\d+/;
+  if (re.test(input)) { ... }
+Add proper escaping and handle $variables correctly.
+EOF
 ```
 
 ### Large Task Protocol
@@ -139,8 +173,8 @@ python3 ~/.claude/skills/codex/scripts/codex.py "your task here"
 
 | ID | Description | Scope | Dependencies | Tests | Command |
 | --- | --- | --- | --- | --- | --- |
-| T1 | Review @spec.md to extract requirements | docs/, @spec.md | None | None | uv run ~/.claude/skills/codex/scripts/codex.py "analyze requirements @spec.md" |
-| T2 | Implement the module and add test cases | src/module | T1 | npm test -- --runInBand | uv run ~/.claude/skills/codex/scripts/codex.py "implement and test @src/module" |
+| T1 | Review @spec.md to extract requirements | docs/, @spec.md | None | None | `uv run ~/.claude/skills/codex/scripts/codex.py - <<'EOF'`<br/>`analyze requirements @spec.md`<br/>`EOF` |
+| T2 | Implement the module and add test cases | src/module | T1 | npm test -- --runInBand | `uv run ~/.claude/skills/codex/scripts/codex.py - <<'EOF'`<br/>`implement and test @src/module`<br/>`EOF` |
 
 ## Notes
 

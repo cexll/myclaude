@@ -9,7 +9,9 @@ Codex CLI wrapper with cross-platform support and session management.
 
 Usage:
     New session:  uv run codex.py "task" [workdir]
+    Stdin mode:   uv run codex.py - [workdir]
     Resume:       uv run codex.py resume <session_id> "task" [workdir]
+    Resume stdin: uv run codex.py resume <session_id> - [workdir]
     Alternative:  python3 codex.py "task"
     Direct exec:  ./codex.py "task"
 
@@ -80,18 +82,22 @@ def parse_args():
         if len(sys.argv) < 4:
             log_error('Resume mode requires: resume <session_id> <task>')
             sys.exit(1)
+        task_arg = sys.argv[3]
         return {
             'mode': 'resume',
             'session_id': sys.argv[2],
-            'task': sys.argv[3],
-            'workdir': sys.argv[4] if len(sys.argv) > 4 else DEFAULT_WORKDIR
+            'task': task_arg,
+            'explicit_stdin': task_arg == '-',
+            'workdir': sys.argv[4] if len(sys.argv) > 4 else DEFAULT_WORKDIR,
         }
-    else:
-        return {
-            'mode': 'new',
-            'task': sys.argv[1],
-            'workdir': sys.argv[2] if len(sys.argv) > 2 else DEFAULT_WORKDIR
-        }
+
+    task_arg = sys.argv[1]
+    return {
+        'mode': 'new',
+        'task': task_arg,
+        'explicit_stdin': task_arg == '-',
+        'workdir': sys.argv[2] if len(sys.argv) > 2 else DEFAULT_WORKDIR,
+    }
 
 
 def read_piped_task() -> Optional[str]:
@@ -102,9 +108,16 @@ def read_piped_task() -> Optional[str]:
     """
     stdin = sys.stdin
     if stdin is None or stdin.isatty():
+        log_info("Stdin is tty or None, skipping pipe read")
         return None
+    log_info("Reading from stdin pipe...")
     data = stdin.read()
-    return data if data else None
+    if not data:
+        log_info("Stdin pipe returned empty data")
+        return None
+
+    log_info(f"Read {len(data)} bytes from stdin pipe")
+    return data
 
 
 def should_stream_via_stdin(task_text: str, piped: bool) -> bool:
@@ -137,6 +150,7 @@ def build_codex_args(params: dict, target_arg: str) -> list:
     if params['mode'] == 'resume':
         return [
             'codex', 'e',
+            '-m', DEFAULT_MODEL,
             '--skip-git-repo-check',
             '--json',
             'resume',
@@ -168,6 +182,7 @@ def run_codex_process(codex_args, task_text: str, use_stdin: bool, timeout_sec: 
 
     try:
         # 启动 codex 子进程（文本模式管道）
+        log_info(f"Starting codex with args: {' '.join(codex_args[:5])}...")
         process = subprocess.Popen(
             codex_args,
             stdin=subprocess.PIPE if use_stdin else None,
@@ -176,16 +191,22 @@ def run_codex_process(codex_args, task_text: str, use_stdin: bool, timeout_sec: 
             text=True,
             bufsize=1,
         )
+        log_info(f"Process started with PID: {process.pid}")
 
         # 如果使用 stdin 模式，写入任务到 stdin 并关闭
         if use_stdin and process.stdin is not None:
+            log_info(f"Writing {len(task_text)} chars to stdin...")
             process.stdin.write(task_text)
+            process.stdin.flush()  # 强制刷新缓冲区，避免大任务死锁
             process.stdin.close()
+            log_info("Stdin closed")
 
         # 逐行解析 JSON 输出
         if process.stdout is None:
             log_error('Codex stdout pipe not available')
             sys.exit(1)
+
+        log_info("Reading stdout...")
 
         for line in process.stdout:
             line = line.strip()
@@ -247,19 +268,34 @@ def run_codex_process(codex_args, task_text: str, use_stdin: bool, timeout_sec: 
 
 
 def main():
+    log_info("Script started")
     params = parse_args()
+    log_info(f"Parsed args: mode={params['mode']}, task_len={len(params['task'])}")
     timeout_sec = resolve_timeout()
+    log_info(f"Timeout: {timeout_sec}s")
 
-    piped_task = read_piped_task()
-    piped = piped_task is not None
-    task_text = piped_task if piped else params['task']
+    explicit_stdin = params.get('explicit_stdin', False)
 
-    use_stdin = should_stream_via_stdin(task_text, piped)
+    if explicit_stdin:
+        log_info("Explicit stdin mode: reading task from stdin")
+        task_text = sys.stdin.read()
+        if not task_text:
+            log_error("Explicit stdin mode requires task input from stdin")
+            sys.exit(1)
+        piped = not sys.stdin.isatty()
+    else:
+        piped_task = read_piped_task()
+        piped = piped_task is not None
+        task_text = piped_task if piped else params['task']
+
+    use_stdin = explicit_stdin or should_stream_via_stdin(task_text, piped)
 
     if use_stdin:
         reasons = []
         if piped:
             reasons.append('piped input')
+        if explicit_stdin:
+            reasons.append('explicit "-"')
         if '\n' in task_text:
             reasons.append('newline')
         if '\\' in task_text:

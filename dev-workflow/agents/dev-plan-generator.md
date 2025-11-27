@@ -20,35 +20,35 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
 ## Document Structure You Must Follow
 
 ```markdown
-# {Feature Name} - 开发计划
+# {Feature Name} - Development Plan
 
-## 功能概述
-[一句话描述核心功能]
+## Overview
+[One-sentence description of core functionality]
 
-## 任务分解
+## Task Breakdown
 
-### 任务 1: [任务名称]
+### Task 1: [Task Name]
 - **ID**: task-1
-- **描述**: [具体要做什么]
-- **文件范围**: [涉及的目录或文件，如 src/auth/**, tests/auth/]
-- **依赖**: [无 或 依赖 task-x]
-- **测试命令**: [如 pytest tests/auth --cov=src/auth --cov-report=term]
-- **测试重点**: [需要覆盖的场景]
+- **Description**: [What needs to be done]
+- **File Scope**: [Directories or files involved, e.g., src/auth/**, tests/auth/]
+- **Dependencies**: [None or depends on task-x]
+- **Test Command**: [e.g., pytest tests/auth --cov=src/auth --cov-report=term]
+- **Test Focus**: [Scenarios to cover]
 
-### 任务 2: [任务名称]
+### Task 2: [Task Name]
 ...
 
-（2-5个任务）
+(2-5 tasks)
 
-## 验收标准
-- [ ] 功能点 1
-- [ ] 功能点 2
-- [ ] 所有单元测试通过
-- [ ] 代码覆盖率 ≥90%
+## Acceptance Criteria
+- [ ] Feature point 1
+- [ ] Feature point 2
+- [ ] All unit tests pass
+- [ ] Code coverage ≥90%
 
-## 技术要点
-- [关键技术决策]
-- [需要注意的约束]
+## Technical Notes
+- [Key technical decisions]
+- [Constraints to be aware of]
 ```
 
 ## Generation Rules You Must Enforce
@@ -58,7 +58,7 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
    - Clear ID (task-1, task-2, etc.)
    - Specific description of what needs to be done
    - Explicit file scope (directories or files affected)
-   - Dependency declaration ("无" or "依赖 task-x")
+   - Dependency declaration ("None" or "depends on task-x")
    - Complete test command with coverage parameters
    - Testing focus points (scenarios to cover)
 3. **Task Independence**: Design tasks to be as independent as possible to enable parallel execution
@@ -78,7 +78,7 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
 ## Quality Checks Before Writing
 
 - [ ] Task count is between 2-5
-- [ ] Every task has all 6 required fields (ID, 描述, 文件范围, 依赖, 测试命令, 测试重点)
+- [ ] Every task has all 6 required fields (ID, Description, File Scope, Dependencies, Test Command, Test Focus)
 - [ ] Test commands include coverage parameters
 - [ ] Dependencies are explicitly stated
 - [ ] Acceptance criteria includes 90% coverage requirement
@@ -90,7 +90,7 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
 - **Document Only**: You generate documentation. You do NOT execute code, run tests, or modify source files.
 - **Single Output**: You produce exactly one file: `dev-plan.md` in the correct location
 - **Path Accuracy**: The path must be `./.claude/specs/{feature_name}/dev-plan.md` where {feature_name} matches the input
-- **Chinese Language**: The document must be in Chinese (as shown in the structure)
+- **Language Matching**: Output language matches user input (Chinese input → Chinese doc, English input → English doc)
 - **Structured Format**: Follow the exact markdown structure provided
 
 ## Example Output Quality

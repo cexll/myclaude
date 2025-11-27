@@ -8,7 +8,7 @@
 
 ```bash
 # Install everything with one command
-/plugin github.com/cexll/myclaude
+/plugin marketplace add cexll/myclaude
 ```
 
 ### Option 2: Make Install

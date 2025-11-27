@@ -258,6 +258,36 @@
       "skills": [
         "./SKILL.md"
       ]
+    },
+    {
+      "name": "dev-workflow",
+      "source": "./dev-workflow/",
+      "description": "Minimal lightweight development workflow with requirements clarification, parallel codex execution, and mandatory 90% test coverage",
+      "version": "1.0.0",
+      "author": {
+        "name": "Claude Code Dev Workflows",
+        "url": "https://github.com/cexll/myclaude"
+      },
+      "homepage": "https://github.com/cexll/myclaude",
+      "repository": "https://github.com/cexll/myclaude",
+      "license": "MIT",
+      "keywords": [
+        "dev",
+        "workflow",
+        "codex",
+        "testing",
+        "coverage",
+        "concurrent",
+        "lightweight"
+      ],
+      "category": "workflows",
+      "strict": false,
+      "commands": [
+        "./commands/dev.md"
+      ],
+      "agents": [
+        "./agents/dev-plan-generator.md"
+      ]
     }
   ]
 }

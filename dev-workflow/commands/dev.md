@@ -20,61 +20,57 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   - Focus questions on functional boundaries, inputs/outputs, constraints, testing
   - Iterate 2-3 rounds until clear; rely on judgment; keep questions concise
 
-- **Step 2: Codex Analysis**
-  - Run:
-    ```bash
-    uv run ~/.claude/skills/codex/scripts/codex.py "分析以下需求并提取开发要点：
+- **Step 2: Codex Deep Analysis (Plan Mode Style)**
 
-    需求描述：
-    [用户需求 + 澄清后的细节]
+  Use Codex Skill to perform deep analysis. Codex should operate in "plan mode" style:
 
-    请输出：
-    1. 核心功能（一句话）
-    2. 关键技术点
-    3. 可并发的任务分解（2-5个）：
-       - 任务ID
-       - 任务描述
-       - 涉及文件/目录
-       - 是否依赖其他任务
-       - 测试重点
-    " "gpt-5.1-codex"
-    ```
-  - Extract core functionality, technical key points, and 2-5 parallelizable tasks with full metadata
+  **When Deep Analysis is Needed** (any condition triggers):
+  - Multiple valid approaches exist (e.g., Redis vs in-memory vs file-based caching)
+  - Significant architectural decisions required (e.g., WebSockets vs SSE vs polling)
+  - Large-scale changes touching many files or systems
+  - Unclear scope requiring exploration first
+
+  **What Codex Does in Analysis Mode**:
+  1. **Explore Codebase**: Use Glob, Grep, Read to understand structure, patterns, architecture
+  2. **Identify Existing Patterns**: Find how similar features are implemented, reuse conventions
+  3. **Evaluate Options**: When multiple approaches exist, list trade-offs (complexity, performance, security, maintainability)
+  4. **Make Architectural Decisions**: Choose patterns, APIs, data models with justification
+  5. **Design Task Breakdown**: Produce 2-5 parallelizable tasks with file scope and dependencies
+
+  **Analysis Output Structure**:
+  ```
+  ## Context & Constraints
+  [Tech stack, existing patterns, constraints discovered]
+
+  ## Codebase Exploration
+  [Key files, modules, patterns found via Glob/Grep/Read]
+
+  ## Implementation Options (if multiple approaches)
+  | Option | Pros | Cons | Recommendation |
+
+  ## Technical Decisions
+  [API design, data models, architecture choices made]
+
+  ## Task Breakdown
+  [2-5 tasks with: ID, description, file scope, dependencies, test command]
+  ```
+
+  **Skip Deep Analysis When**:
+  - Simple, straightforward implementation with obvious approach
+  - Small changes confined to 1-2 files
+  - Clear requirements with single implementation path
 
 - **Step 3: Generate Development Documentation**
-  - Use Task tool to invoke develop-doc-generator:
-    ```
-    基于以下分析结果生成开发文档：
-
-    [Codex 分析输出]
-
-    输出文件：./.claude/specs/{feature_name}/dev-plan.md
-
-    包含：
-    1. 功能概述
-    2. 任务列表（2-5个并发任务）
-       - 每个任务：ID、描述、文件范围、依赖、测试命令
-    3. 验收标准
-    4. 覆盖率要求：≥90%
-    ```
+  - invoke agent dev-plan-generator
 
 - **Step 4: Parallel Development Execution**
-  - For each task in `dev-plan.md` run:
-    ```bash
-    uv run ~/.claude/skills/codex/scripts/codex.py "实现任务：[任务ID]
-
-    参考文档：@.claude/specs/{feature_name}/dev-plan.md
-
-    你的职责：
-    1. 实现功能代码
-    2. 编写单元测试
-    3. 运行测试 + 覆盖率
-    4. 报告覆盖率结果
-
-    文件范围：[任务的文件范围]
-    测试命令：[任务指定的测试命令]
-    覆盖率目标：≥90%
-    " "gpt-5.1-codex"
+  - For each task in `dev-plan.md`, invoke Codex with this brief:
+    ```
+    Task: [task-id]
+    Reference: @.claude/specs/{feature_name}/dev-plan.md
+    Scope: [task file scope]
+    Test: [test command]
+    Deliverables: code + unit tests + coverage ≥90% + coverage summary
     ```
   - Execute independent tasks concurrently; serialize conflicting ones; track coverage reports
 

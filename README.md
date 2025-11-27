@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-3.2-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-4.4-green)](https://github.com/cexll/myclaude)
 [![Plugin Ready](https://img.shields.io/badge/Plugin-Ready-purple)](https://docs.claude.com/en/docs/claude-code/plugins)
 
 > Enterprise-grade agile development automation with AI-powered multi-agent orchestration
@@ -15,7 +15,7 @@
 
 **Plugin System (Recommended)**
 ```bash
-/plugin github.com/cexll/myclaude
+/plugin marketplace add cexll/myclaude
 ```
 
 **Traditional Installation**
@@ -44,6 +44,7 @@ make install
 |--------|-------------|--------------|
 | **[bmad-agile-workflow](docs/BMAD-WORKFLOW.md)** | Complete BMAD methodology with 6 specialized agents | `/bmad-pilot` |
 | **[requirements-driven-workflow](docs/REQUIREMENTS-WORKFLOW.md)** | Streamlined requirements-to-code workflow | `/requirements-pilot` |
+| **[dev-workflow](dev-workflow/README.md)** | Extreme lightweight end-to-end development workflow | `/dev` |
 | **[development-essentials](docs/DEVELOPMENT-COMMANDS.md)** | Core development slash commands | `/code` `/debug` `/test` `/optimize` |
 | **[advanced-ai-agents](docs/ADVANCED-AGENTS.md)** | GPT-5 deep reasoning integration | Agent: `gpt5` |
 | **[requirements-clarity](docs/REQUIREMENTS-CLARITY.md)** | Automated requirements clarification with 100-point scoring | Auto-activated skill |
@@ -101,8 +102,8 @@ make deploy-all          # Everything
 ```
 
 **Method 3: Manual Setup**
-- Copy `/commands/*.md` to `~/.config/claude/commands/`
-- Copy `/agents/*.md` to `~/.config/claude/agents/`
+- Copy `./commands/*.md` to `~/.config/claude/commands/`
+- Copy `./agents/*.md` to `~/.config/claude/agents/`
 
 Run `make help` for all options.
 

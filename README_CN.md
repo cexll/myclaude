@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-3.2-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-4.4-green)](https://github.com/cexll/myclaude)
 [![Plugin Ready](https://img.shields.io/badge/Plugin-Ready-purple)](https://docs.claude.com/en/docs/claude-code/plugins)
 
 > 企业级敏捷开发自动化与 AI 驱动的多智能体编排
@@ -15,7 +15,7 @@
 
 **插件系统（推荐）**
 ```bash
-/plugin github.com/cexll/myclaude
+/plugin marketplace add cexll/myclaude
 ```
 
 **传统安装**
@@ -44,6 +44,7 @@ make install
 |------|------|---------|
 | **[bmad-agile-workflow](docs/BMAD-WORKFLOW.md)** | 完整 BMAD 方法论，包含6个专业智能体 | `/bmad-pilot` |
 | **[requirements-driven-workflow](docs/REQUIREMENTS-WORKFLOW.md)** | 精简的需求到代码工作流 | `/requirements-pilot` |
+| **[dev-workflow](dev-workflow/README.md)** | 极简端到端开发工作流 | `/dev` |
 | **[development-essentials](docs/DEVELOPMENT-COMMANDS.md)** | 核心开发斜杠命令 | `/code` `/debug` `/test` `/optimize` |
 | **[advanced-ai-agents](docs/ADVANCED-AGENTS.md)** | GPT-5 深度推理集成 | 智能体: `gpt5` |
 | **[requirements-clarity](docs/REQUIREMENTS-CLARITY.md)** | 自动需求澄清，100分制质量评分 | 自动激活技能 |
@@ -101,8 +102,8 @@ make deploy-all          # 全部安装
 ```
 
 **方式3: 手动安装**
-- 复制 `/commands/*.md` 到 `~/.config/claude/commands/`
-- 复制 `/agents/*.md` 到 `~/.config/claude/agents/`
+- 复制 `./commands/*.md` 到 `~/.config/claude/commands/`
+- 复制 `./agents/*.md` 到 `~/.config/claude/agents/`
 
 运行 `make help` 查看所有选项。
 
