@@ -62,6 +62,15 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
 
 - **Step 3: Generate Development Documentation**
   - invoke agent dev-plan-generator
+  - Output a brief summary of dev-plan.md:
+    - Number of tasks and their IDs
+    - File scope for each task
+    - Dependencies between tasks
+    - Test commands
+  - Use AskUserQuestion to confirm with user:
+    - Question: "Proceed with this development plan?"
+    - Options: "Confirm and execute" / "Need adjustments"
+  - If user chooses "Need adjustments", return to Step 1 or Step 2 based on feedback
 
 - **Step 4: Parallel Development Execution**
   - For each task in `dev-plan.md`, invoke Codex with this brief:

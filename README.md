@@ -45,6 +45,7 @@ make install
 | **[bmad-agile-workflow](docs/BMAD-WORKFLOW.md)** | Complete BMAD methodology with 6 specialized agents | `/bmad-pilot` |
 | **[requirements-driven-workflow](docs/REQUIREMENTS-WORKFLOW.md)** | Streamlined requirements-to-code workflow | `/requirements-pilot` |
 | **[dev-workflow](dev-workflow/README.md)** | Extreme lightweight end-to-end development workflow | `/dev` |
+| **[codex-wrapper](codex-wrapper/)** | Go binary wrapper for Codex CLI integration | `codex-wrapper` |
 | **[development-essentials](docs/DEVELOPMENT-COMMANDS.md)** | Core development slash commands | `/code` `/debug` `/test` `/optimize` |
 | **[advanced-ai-agents](docs/ADVANCED-AGENTS.md)** | GPT-5 deep reasoning integration | Agent: `gpt5` |
 | **[requirements-clarity](docs/REQUIREMENTS-CLARITY.md)** | Automated requirements clarification with 100-point scoring | Auto-activated skill |
@@ -88,6 +89,11 @@ make install
 - **[Quick Start Guide](docs/QUICK-START.md)** - Get started in 5 minutes
 
 ## 🛠️ Installation Methods
+
+**Codex Wrapper** (Go binary for Codex CLI)
+```bash
+curl -fsSL https://raw.githubusercontent.com/cexll/myclaude/refs/heads/master/install.sh | bash
+```
 
 **Method 1: Plugin Install** (One command)
 ```bash
