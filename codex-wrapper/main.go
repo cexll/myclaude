@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -925,21 +926,30 @@ func (b *tailBuffer) String() string {
 
 func forwardSignals(ctx context.Context, cmd *exec.Cmd, logErrorFn func(string)) {
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	signals := []os.Signal{syscall.SIGINT}
+	if runtime.GOOS != "windows" {
+		signals = append(signals, syscall.SIGTERM)
+	}
+	signal.Notify(sigCh, signals...)
 
 	go func() {
 		defer signal.Stop(sigCh)
 		select {
 		case sig := <-sigCh:
 			logErrorFn(fmt.Sprintf("Received signal: %v", sig))
-			if cmd.Process != nil {
-				cmd.Process.Signal(syscall.SIGTERM)
-				time.AfterFunc(time.Duration(forceKillDelay)*time.Second, func() {
-					if cmd.Process != nil {
-						cmd.Process.Kill()
-					}
-				})
+			if cmd.Process == nil {
+				return
 			}
+			if runtime.GOOS == "windows" {
+				_ = cmd.Process.Kill()
+				return
+			}
+			_ = cmd.Process.Signal(syscall.SIGTERM)
+			time.AfterFunc(time.Duration(forceKillDelay)*time.Second, func() {
+				if cmd.Process != nil {
+					_ = cmd.Process.Kill()
+				}
+			})
 		case <-ctx.Done():
 		}
 	}()
@@ -959,6 +969,11 @@ func cancelReason(ctx context.Context) string {
 
 func terminateProcess(cmd *exec.Cmd) *time.Timer {
 	if cmd == nil || cmd.Process == nil {
+		return nil
+	}
+
+	if runtime.GOOS == "windows" {
+		_ = cmd.Process.Kill()
 		return nil
 	}
 
