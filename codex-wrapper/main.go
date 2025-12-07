@@ -41,11 +41,16 @@ var (
 	buildCodexArgsFn = buildCodexArgs
 	commandContext   = exec.CommandContext
 	jsonMarshal      = json.Marshal
-	forceKillDelay   = 5 // seconds - made variable for testability
 	cleanupLogsFn    = cleanupOldLogs
 	signalNotifyFn   = signal.Notify
 	signalStopFn     = signal.Stop
 )
+
+var forceKillDelay atomic.Int32
+
+func init() {
+	forceKillDelay.Store(5) // seconds - default value
+}
 
 // Config holds CLI configuration
 type Config struct {
@@ -998,7 +1003,7 @@ func forwardSignals(ctx context.Context, cmd *exec.Cmd, logErrorFn func(string))
 				return
 			}
 			_ = cmd.Process.Signal(syscall.SIGTERM)
-			time.AfterFunc(time.Duration(forceKillDelay)*time.Second, func() {
+			time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
 				if cmd.Process != nil {
 					_ = cmd.Process.Kill()
 				}
@@ -1032,7 +1037,7 @@ func terminateProcess(cmd *exec.Cmd) *time.Timer {
 
 	_ = cmd.Process.Signal(syscall.SIGTERM)
 
-	return time.AfterFunc(time.Duration(forceKillDelay)*time.Second, func() {
+	return time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}

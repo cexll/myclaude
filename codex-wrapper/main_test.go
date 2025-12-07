@@ -33,7 +33,7 @@ func resetTestHooks() {
 	buildCodexArgsFn = buildCodexArgs
 	commandContext = exec.CommandContext
 	jsonMarshal = json.Marshal
-	forceKillDelay = 5
+	forceKillDelay.Store(5)
 	closeLogger()
 }
 
@@ -1530,7 +1530,7 @@ func TestRun_LoggerRemovedOnSignal(t *testing.T) {
 	defer signal.Reset(syscall.SIGINT, syscall.SIGTERM)
 
 	// Set shorter delays for faster test
-	forceKillDelay = 1
+	forceKillDelay.Store(1)
 
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)
@@ -1762,11 +1762,11 @@ func TestRunForwardSignals(t *testing.T) {
 		cmd.Wait()
 	}()
 
-	forceKillDelay = 0
-	defer func() { forceKillDelay = 5 }()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	forceKillDelay.Store(0)
+	defer forceKillDelay.Store(5)
 
 	ready := make(chan struct{})
 	var captured chan<- os.Signal
