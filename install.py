@@ -285,6 +285,8 @@ def op_run_command(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
         env[key] = value.replace("${install_dir}", str(ctx["install_dir"]))
 
     command = op.get("command", "")
+    if sys.platform == "win32" and command.strip() == "bash install.sh":
+        command = "cmd /c install.bat"
     result = subprocess.run(
         command,
         shell=True,
