@@ -3,9 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +34,22 @@ type logEntry struct {
 	level string
 	msg   string
 }
+
+// CleanupStats captures the outcome of a cleanupOldLogs run.
+type CleanupStats struct {
+	Scanned      int
+	Deleted      int
+	Kept         int
+	Errors       int
+	DeletedFiles []string
+	KeptFiles    []string
+}
+
+var (
+	processRunningCheck = isProcessRunning
+	removeLogFileFn     = os.Remove
+	globLogFiles        = filepath.Glob
+)
 
 // NewLogger creates the async logger and starts the worker goroutine.
 // The log file is created under os.TempDir() using the required naming scheme.
@@ -240,4 +259,83 @@ func (l *Logger) run() {
 			close(flushDone)
 		}
 	}
+}
+
+// cleanupOldLogs scans os.TempDir() for codex-wrapper-*.log files and removes those
+// whose owning process is no longer running (i.e., orphaned logs).
+func cleanupOldLogs() (CleanupStats, error) {
+	var stats CleanupStats
+	tempDir := os.TempDir()
+	pattern := filepath.Join(tempDir, "codex-wrapper-*.log")
+
+	matches, err := globLogFiles(pattern)
+	if err != nil {
+		logWarn(fmt.Sprintf("cleanupOldLogs: failed to list logs: %v", err))
+		return stats, fmt.Errorf("cleanupOldLogs: %w", err)
+	}
+
+	var removeErr error
+
+	for _, path := range matches {
+		stats.Scanned++
+		filename := filepath.Base(path)
+		pid, ok := parsePIDFromLog(path)
+		if !ok {
+			stats.Kept++
+			stats.KeptFiles = append(stats.KeptFiles, filename)
+			continue
+		}
+		if processRunningCheck(pid) {
+			stats.Kept++
+			stats.KeptFiles = append(stats.KeptFiles, filename)
+			continue
+		}
+		if err := removeLogFileFn(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				stats.Deleted++
+				stats.DeletedFiles = append(stats.DeletedFiles, filename)
+				continue
+			}
+			stats.Errors++
+			logWarn(fmt.Sprintf("cleanupOldLogs: failed to remove %s: %v", filename, err))
+			removeErr = errors.Join(removeErr, fmt.Errorf("failed to remove %s: %w", filename, err))
+			continue
+		}
+		stats.Deleted++
+		stats.DeletedFiles = append(stats.DeletedFiles, filename)
+	}
+
+	if removeErr != nil {
+		return stats, fmt.Errorf("cleanupOldLogs: %w", removeErr)
+	}
+
+	return stats, nil
+}
+
+func parsePIDFromLog(path string) (int, bool) {
+	name := filepath.Base(path)
+	if !strings.HasPrefix(name, "codex-wrapper-") || !strings.HasSuffix(name, ".log") {
+		return 0, false
+	}
+
+	core := strings.TrimSuffix(strings.TrimPrefix(name, "codex-wrapper-"), ".log")
+	if core == "" {
+		return 0, false
+	}
+
+	pidPart := core
+	if idx := strings.IndexRune(core, '-'); idx != -1 {
+		pidPart = core[:idx]
+	}
+
+	if pidPart == "" {
+		return 0, false
+	}
+
+	pid, err := strconv.Atoi(pidPart)
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+
+	return pid, true
 }
