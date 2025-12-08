@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	version            = "4.8.2"
+	version            = "5.1.2"
 	defaultWorkdir     = "."
 	defaultTimeout     = 7200 // seconds
 	codexLogLineLimit  = 1000
