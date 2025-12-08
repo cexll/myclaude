@@ -618,7 +618,7 @@ func TestFakeCmdInfra(t *testing.T) {
 					Data:  `{"type":"item.completed","item":{"type":"agent_message","text":"fake-msg"}}` + "\n",
 				},
 			},
-			WaitDelay: time.Millisecond,
+				WaitDelay: 5 * time.Millisecond,
 		})
 
 		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
