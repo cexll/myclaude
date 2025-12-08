@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -516,6 +518,89 @@ func TestRunCleanupOldLogsKeepsCurrentProcessLog(t *testing.T) {
 	}
 }
 
+func TestIsPIDReusedScenarios(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name      string
+		statErr   error
+		modTime   time.Time
+		startTime time.Time
+		want      bool
+	}{
+		{"stat error", errors.New("stat failed"), time.Time{}, time.Time{}, false},
+		{"old file unknown start", nil, now.Add(-8 * 24 * time.Hour), time.Time{}, true},
+		{"recent file unknown start", nil, now.Add(-2 * time.Hour), time.Time{}, false},
+		{"pid reused", nil, now.Add(-2 * time.Hour), now.Add(-30 * time.Minute), true},
+		{"pid active", nil, now.Add(-30 * time.Minute), now.Add(-2 * time.Hour), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stubFileStat(t, func(string) (os.FileInfo, error) {
+				if tt.statErr != nil {
+					return nil, tt.statErr
+				}
+				return fakeFileInfo{modTime: tt.modTime}, nil
+			})
+			stubProcessStartTime(t, func(int) time.Time {
+				return tt.startTime
+			})
+			if got := isPIDReused("log", 1234); got != tt.want {
+				t.Fatalf("isPIDReused() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsUnsafeFileSecurityChecks(t *testing.T) {
+	tempDir := t.TempDir()
+	absTempDir, err := filepath.Abs(tempDir)
+	if err != nil {
+		t.Fatalf("filepath.Abs() error = %v", err)
+	}
+
+	t.Run("symlink", func(t *testing.T) {
+		stubFileStat(t, func(string) (os.FileInfo, error) {
+			return fakeFileInfo{mode: os.ModeSymlink}, nil
+		})
+		stubEvalSymlinks(t, func(path string) (string, error) {
+			return filepath.Join(absTempDir, filepath.Base(path)), nil
+		})
+		unsafe, reason := isUnsafeFile(filepath.Join(absTempDir, "codex-wrapper-1.log"), tempDir)
+		if !unsafe || reason != "refusing to delete symlink" {
+			t.Fatalf("expected symlink to be rejected, got unsafe=%v reason=%q", unsafe, reason)
+		}
+	})
+
+	t.Run("path traversal", func(t *testing.T) {
+		stubFileStat(t, func(string) (os.FileInfo, error) {
+			return fakeFileInfo{}, nil
+		})
+		outside := filepath.Join(filepath.Dir(absTempDir), "etc", "passwd")
+		stubEvalSymlinks(t, func(string) (string, error) {
+			return outside, nil
+		})
+		unsafe, reason := isUnsafeFile(filepath.Join("..", "..", "etc", "passwd"), tempDir)
+		if !unsafe || reason != "file is outside tempDir" {
+			t.Fatalf("expected traversal path to be rejected, got unsafe=%v reason=%q", unsafe, reason)
+		}
+	})
+
+	t.Run("outside temp dir", func(t *testing.T) {
+		stubFileStat(t, func(string) (os.FileInfo, error) {
+			return fakeFileInfo{}, nil
+		})
+		otherDir := t.TempDir()
+		stubEvalSymlinks(t, func(string) (string, error) {
+			return filepath.Join(otherDir, "codex-wrapper-9.log"), nil
+		})
+		unsafe, reason := isUnsafeFile(filepath.Join(otherDir, "codex-wrapper-9.log"), tempDir)
+		if !unsafe || reason != "file is outside tempDir" {
+			t.Fatalf("expected outside file to be rejected, got unsafe=%v reason=%q", unsafe, reason)
+		}
+	})
+}
+
 func TestRunLoggerPathAndRemove(t *testing.T) {
 	tempDir := t.TempDir()
 	path := filepath.Join(tempDir, "sample.log")
@@ -569,6 +654,7 @@ func TestRunLoggerInternalLog(t *testing.T) {
 }
 
 func TestRunParsePIDFromLog(t *testing.T) {
+	hugePID := strconv.FormatInt(math.MaxInt64, 10) + "0"
 	tests := []struct {
 		name string
 		pid  int
@@ -578,6 +664,9 @@ func TestRunParsePIDFromLog(t *testing.T) {
 		{"codex-wrapper-999-extra.log", 999, true},
 		{"codex-wrapper-.log", 0, false},
 		{"invalid-name.log", 0, false},
+		{"codex-wrapper--5.log", 0, false},
+		{"codex-wrapper-0.log", 0, false},
+		{fmt.Sprintf("codex-wrapper-%s.log", hugePID), 0, false},
 	}
 
 	for _, tt := range tests {
@@ -649,3 +738,33 @@ func stubGlobLogFiles(t *testing.T, fn func(string) ([]string, error)) {
 		globLogFiles = original
 	})
 }
+
+func stubFileStat(t *testing.T, fn func(string) (os.FileInfo, error)) {
+	t.Helper()
+	original := fileStatFn
+	fileStatFn = fn
+	t.Cleanup(func() {
+		fileStatFn = original
+	})
+}
+
+func stubEvalSymlinks(t *testing.T, fn func(string) (string, error)) {
+	t.Helper()
+	original := evalSymlinksFn
+	evalSymlinksFn = fn
+	t.Cleanup(func() {
+		evalSymlinksFn = original
+	})
+}
+
+type fakeFileInfo struct {
+	modTime time.Time
+	mode    os.FileMode
+}
+
+func (f fakeFileInfo) Name() string       { return "fake" }
+func (f fakeFileInfo) Size() int64        { return 0 }
+func (f fakeFileInfo) Mode() os.FileMode  { return f.mode }
+func (f fakeFileInfo) ModTime() time.Time { return f.modTime }
+func (f fakeFileInfo) IsDir() bool        { return false }
+func (f fakeFileInfo) Sys() interface{}   { return nil }
