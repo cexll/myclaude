@@ -1,1 +1,5 @@
 coverage.out
+coverage*.out
+cover.out
+cover_*.out
+coverage.html

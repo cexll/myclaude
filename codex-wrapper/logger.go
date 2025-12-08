@@ -28,6 +28,7 @@ type Logger struct {
 	closeOnce sync.Once
 	workerWG  sync.WaitGroup
 	pendingWG sync.WaitGroup
+	flushMu   sync.Mutex
 }
 
 type logEntry struct {
@@ -46,12 +47,12 @@ type CleanupStats struct {
 }
 
 var (
-	processRunningCheck     = isProcessRunning
-	processStartTimeFn      = getProcessStartTime
-	removeLogFileFn         = os.Remove
-	globLogFiles            = filepath.Glob
-	fileStatFn              = os.Lstat  // Use Lstat to detect symlinks
-	evalSymlinksFn          = filepath.EvalSymlinks
+	processRunningCheck = isProcessRunning
+	processStartTimeFn  = getProcessStartTime
+	removeLogFileFn     = os.Remove
+	globLogFiles        = filepath.Glob
+	fileStatFn          = os.Lstat // Use Lstat to detect symlinks
+	evalSymlinksFn      = filepath.EvalSymlinks
 )
 
 // NewLogger creates the async logger and starts the worker goroutine.
@@ -176,6 +177,9 @@ func (l *Logger) Flush() {
 		return
 	}
 
+	l.flushMu.Lock()
+	defer l.flushMu.Unlock()
+
 	// Wait for pending entries with timeout
 	done := make(chan struct{})
 	go func() {
@@ -221,7 +225,9 @@ func (l *Logger) log(level, msg string) {
 	}
 
 	entry := logEntry{level: level, msg: msg}
+	l.flushMu.Lock()
 	l.pendingWG.Add(1)
+	l.flushMu.Unlock()
 
 	select {
 	case l.ch <- entry:
