@@ -46,9 +46,12 @@ type CleanupStats struct {
 }
 
 var (
-	processRunningCheck = isProcessRunning
-	removeLogFileFn     = os.Remove
-	globLogFiles        = filepath.Glob
+	processRunningCheck     = isProcessRunning
+	processStartTimeFn      = getProcessStartTime
+	removeLogFileFn         = os.Remove
+	globLogFiles            = filepath.Glob
+	fileStatFn              = os.Lstat  // Use Lstat to detect symlinks
+	evalSymlinksFn          = filepath.EvalSymlinks
 )
 
 // NewLogger creates the async logger and starts the worker goroutine.
@@ -263,6 +266,9 @@ func (l *Logger) run() {
 
 // cleanupOldLogs scans os.TempDir() for codex-wrapper-*.log files and removes those
 // whose owning process is no longer running (i.e., orphaned logs).
+// It includes safety checks for:
+// - PID reuse: Compares file modification time with process start time
+// - Symlink attacks: Ensures files are within TempDir and not symlinks
 func cleanupOldLogs() (CleanupStats, error) {
 	var stats CleanupStats
 	tempDir := os.TempDir()
@@ -279,30 +285,66 @@ func cleanupOldLogs() (CleanupStats, error) {
 	for _, path := range matches {
 		stats.Scanned++
 		filename := filepath.Base(path)
+
+		// Security check: Verify file is not a symlink and is within tempDir
+		if shouldSkipFile, reason := isUnsafeFile(path, tempDir); shouldSkipFile {
+			stats.Kept++
+			stats.KeptFiles = append(stats.KeptFiles, filename)
+			if reason != "" {
+				logWarn(fmt.Sprintf("cleanupOldLogs: skipping %s: %s", filename, reason))
+			}
+			continue
+		}
+
 		pid, ok := parsePIDFromLog(path)
 		if !ok {
 			stats.Kept++
 			stats.KeptFiles = append(stats.KeptFiles, filename)
 			continue
 		}
-		if processRunningCheck(pid) {
-			stats.Kept++
-			stats.KeptFiles = append(stats.KeptFiles, filename)
-			continue
-		}
-		if err := removeLogFileFn(path); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				stats.Deleted++
-				stats.DeletedFiles = append(stats.DeletedFiles, filename)
+
+		// Check if process is running
+		if !processRunningCheck(pid) {
+			// Process not running, safe to delete
+			if err := removeLogFileFn(path); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					// File already deleted by another process, don't count as success
+					stats.Kept++
+					stats.KeptFiles = append(stats.KeptFiles, filename+" (already deleted)")
+					continue
+				}
+				stats.Errors++
+				logWarn(fmt.Sprintf("cleanupOldLogs: failed to remove %s: %v", filename, err))
+				removeErr = errors.Join(removeErr, fmt.Errorf("failed to remove %s: %w", filename, err))
 				continue
 			}
-			stats.Errors++
-			logWarn(fmt.Sprintf("cleanupOldLogs: failed to remove %s: %v", filename, err))
-			removeErr = errors.Join(removeErr, fmt.Errorf("failed to remove %s: %w", filename, err))
+			stats.Deleted++
+			stats.DeletedFiles = append(stats.DeletedFiles, filename)
 			continue
 		}
-		stats.Deleted++
-		stats.DeletedFiles = append(stats.DeletedFiles, filename)
+
+		// Process is running, check for PID reuse
+		if isPIDReused(path, pid) {
+			// PID was reused, the log file is orphaned
+			if err := removeLogFileFn(path); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					stats.Kept++
+					stats.KeptFiles = append(stats.KeptFiles, filename+" (already deleted)")
+					continue
+				}
+				stats.Errors++
+				logWarn(fmt.Sprintf("cleanupOldLogs: failed to remove %s (PID reused): %v", filename, err))
+				removeErr = errors.Join(removeErr, fmt.Errorf("failed to remove %s: %w", filename, err))
+				continue
+			}
+			stats.Deleted++
+			stats.DeletedFiles = append(stats.DeletedFiles, filename)
+			continue
+		}
+
+		// Process is running and owns this log file
+		stats.Kept++
+		stats.KeptFiles = append(stats.KeptFiles, filename)
 	}
 
 	if removeErr != nil {
@@ -310,6 +352,72 @@ func cleanupOldLogs() (CleanupStats, error) {
 	}
 
 	return stats, nil
+}
+
+// isUnsafeFile checks if a file is unsafe to delete (symlink or outside tempDir).
+// Returns (true, reason) if the file should be skipped.
+func isUnsafeFile(path string, tempDir string) (bool, string) {
+	// Check if file is a symlink
+	info, err := fileStatFn(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return true, "" // File disappeared, skip silently
+		}
+		return true, fmt.Sprintf("stat failed: %v", err)
+	}
+
+	// Check if it's a symlink
+	if info.Mode()&os.ModeSymlink != 0 {
+		return true, "refusing to delete symlink"
+	}
+
+	// Resolve any path traversal and verify it's within tempDir
+	resolvedPath, err := evalSymlinksFn(path)
+	if err != nil {
+		return true, fmt.Sprintf("path resolution failed: %v", err)
+	}
+
+	// Get absolute path of tempDir
+	absTempDir, err := filepath.Abs(tempDir)
+	if err != nil {
+		return true, fmt.Sprintf("tempDir resolution failed: %v", err)
+	}
+
+	// Ensure resolved path is within tempDir
+	relPath, err := filepath.Rel(absTempDir, resolvedPath)
+	if err != nil || strings.HasPrefix(relPath, "..") {
+		return true, "file is outside tempDir"
+	}
+
+	return false, ""
+}
+
+// isPIDReused checks if a PID has been reused by comparing file modification time
+// with process start time. Returns true if the log file was created by a different
+// process that previously had the same PID.
+func isPIDReused(logPath string, pid int) bool {
+	// Get file modification time (when log was last written)
+	info, err := fileStatFn(logPath)
+	if err != nil {
+		// If we can't stat the file, be conservative and keep it
+		return false
+	}
+	fileModTime := info.ModTime()
+
+	// Get process start time
+	procStartTime := processStartTimeFn(pid)
+	if procStartTime.IsZero() {
+		// Can't determine process start time
+		// Check if file is very old (>7 days), likely from a dead process
+		if time.Since(fileModTime) > 7*24*time.Hour {
+			return true // File is old enough to be from a different process
+		}
+		return false // Be conservative for recent files
+	}
+
+	// If the log file was modified before the process started, PID was reused
+	// Add a small buffer (1 second) to account for clock skew and file system timing
+	return fileModTime.Add(1 * time.Second).Before(procStartTime)
 }
 
 func parsePIDFromLog(path string) (int, bool) {

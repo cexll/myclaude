@@ -422,7 +422,8 @@ func run() (exitCode int) {
 	}()
 	defer runCleanupHook()
 
-	runStartupCleanup()
+	// Run cleanup asynchronously to avoid blocking startup
+	go runStartupCleanup()
 
 	// Handle remaining commands
 	if len(os.Args) > 1 {

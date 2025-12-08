@@ -201,8 +201,7 @@ func TestRunTerminateProcessNil(t *testing.T) {
 }
 
 func TestRunCleanupOldLogsRemovesOrphans(t *testing.T) {
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	orphan1 := createTempLog(t, tempDir, "codex-wrapper-111.log")
 	orphan2 := createTempLog(t, tempDir, "codex-wrapper-222-suffix.log")
@@ -213,6 +212,15 @@ func TestRunCleanupOldLogsRemovesOrphans(t *testing.T) {
 	runningPIDs := map[int]bool{333: true, 444: true}
 	stubProcessRunning(t, func(pid int) bool {
 		return runningPIDs[pid]
+	})
+
+	// Stub process start time to be in the past so files won't be considered as PID reused
+	stubProcessStartTime(t, func(pid int) time.Time {
+		if runningPIDs[pid] {
+			// Return a time before file creation
+			return time.Now().Add(-1 * time.Hour)
+		}
+		return time.Time{}
 	})
 
 	stats, err := cleanupOldLogs()
@@ -243,8 +251,7 @@ func TestRunCleanupOldLogsRemovesOrphans(t *testing.T) {
 }
 
 func TestRunCleanupOldLogsHandlesInvalidNamesAndErrors(t *testing.T) {
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	invalid := []string{
 		"codex-wrapper-.log",
@@ -261,6 +268,10 @@ func TestRunCleanupOldLogsHandlesInvalidNamesAndErrors(t *testing.T) {
 	stubProcessRunning(t, func(pid int) bool {
 		checked = append(checked, pid)
 		return false
+	})
+
+	stubProcessStartTime(t, func(pid int) time.Time {
+		return time.Time{} // Return zero time for processes not running
 	})
 
 	removeErr := errors.New("remove failure")
@@ -302,6 +313,9 @@ func TestRunCleanupOldLogsHandlesGlobFailures(t *testing.T) {
 		t.Fatalf("process check should not run when glob fails")
 		return false
 	})
+	stubProcessStartTime(t, func(int) time.Time {
+		return time.Time{}
+	})
 
 	globErr := errors.New("glob failure")
 	stubGlobLogFiles(t, func(pattern string) ([]string, error) {
@@ -321,12 +335,14 @@ func TestRunCleanupOldLogsHandlesGlobFailures(t *testing.T) {
 }
 
 func TestRunCleanupOldLogsEmptyDirectoryStats(t *testing.T) {
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	stubProcessRunning(t, func(int) bool {
 		t.Fatalf("process check should not run for empty directory")
 		return false
+	})
+	stubProcessStartTime(t, func(int) time.Time {
+		return time.Time{}
 	})
 
 	stats, err := cleanupOldLogs()
@@ -339,8 +355,7 @@ func TestRunCleanupOldLogsEmptyDirectoryStats(t *testing.T) {
 }
 
 func TestRunCleanupOldLogsHandlesTempDirPermissionErrors(t *testing.T) {
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	paths := []string{
 		createTempLog(t, tempDir, "codex-wrapper-6100.log"),
@@ -348,6 +363,7 @@ func TestRunCleanupOldLogsHandlesTempDirPermissionErrors(t *testing.T) {
 	}
 
 	stubProcessRunning(t, func(int) bool { return false })
+	stubProcessStartTime(t, func(int) time.Time { return time.Time{} })
 
 	var attempts int
 	stubRemoveLogFile(t, func(path string) error {
@@ -379,13 +395,13 @@ func TestRunCleanupOldLogsHandlesTempDirPermissionErrors(t *testing.T) {
 }
 
 func TestRunCleanupOldLogsHandlesPermissionDeniedFile(t *testing.T) {
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	protected := createTempLog(t, tempDir, "codex-wrapper-6200.log")
 	deletable := createTempLog(t, tempDir, "codex-wrapper-6201.log")
 
 	stubProcessRunning(t, func(int) bool { return false })
+	stubProcessStartTime(t, func(int) time.Time { return time.Time{} })
 
 	stubRemoveLogFile(t, func(path string) error {
 		if path == protected {
@@ -416,19 +432,20 @@ func TestRunCleanupOldLogsHandlesPermissionDeniedFile(t *testing.T) {
 }
 
 func TestRunCleanupOldLogsPerformanceBound(t *testing.T) {
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	const fileCount = 400
 	fakePaths := make([]string, fileCount)
 	for i := 0; i < fileCount; i++ {
-		fakePaths[i] = filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", 10000+i))
+		name := fmt.Sprintf("codex-wrapper-%d.log", 10000+i)
+		fakePaths[i] = createTempLog(t, tempDir, name)
 	}
 
 	stubGlobLogFiles(t, func(pattern string) ([]string, error) {
 		return fakePaths, nil
 	})
 	stubProcessRunning(t, func(int) bool { return false })
+	stubProcessStartTime(t, func(int) time.Time { return time.Time{} })
 
 	var removed int
 	stubRemoveLogFile(t, func(path string) error {
@@ -468,8 +485,7 @@ func TestRunLoggerCoverageSuite(t *testing.T) {
 }
 
 func TestRunCleanupOldLogsKeepsCurrentProcessLog(t *testing.T) {
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	currentPID := os.Getpid()
 	currentLog := createTempLog(t, tempDir, fmt.Sprintf("codex-wrapper-%d.log", currentPID))
@@ -479,6 +495,12 @@ func TestRunCleanupOldLogsKeepsCurrentProcessLog(t *testing.T) {
 			t.Fatalf("unexpected pid check: %d", pid)
 		}
 		return true
+	})
+	stubProcessStartTime(t, func(pid int) time.Time {
+		if pid == currentPID {
+			return time.Now().Add(-1 * time.Hour)
+		}
+		return time.Time{}
 	})
 
 	stats, err := cleanupOldLogs()
@@ -580,11 +602,16 @@ func createTempLog(t *testing.T, dir, name string) string {
 	return path
 }
 
-func setTempDirEnv(t *testing.T, dir string) {
+func setTempDirEnv(t *testing.T, dir string) string {
 	t.Helper()
-	t.Setenv("TMPDIR", dir)
-	t.Setenv("TEMP", dir)
-	t.Setenv("TMP", dir)
+	resolved := dir
+	if eval, err := filepath.EvalSymlinks(dir); err == nil {
+		resolved = eval
+	}
+	t.Setenv("TMPDIR", resolved)
+	t.Setenv("TEMP", resolved)
+	t.Setenv("TMP", resolved)
+	return resolved
 }
 
 func stubProcessRunning(t *testing.T, fn func(int) bool) {
@@ -593,6 +620,15 @@ func stubProcessRunning(t *testing.T, fn func(int) bool) {
 	processRunningCheck = fn
 	t.Cleanup(func() {
 		processRunningCheck = original
+	})
+}
+
+func stubProcessStartTime(t *testing.T, fn func(int) time.Time) {
+	t.Helper()
+	original := processStartTimeFn
+	processStartTimeFn = fn
+	t.Cleanup(func() {
+		processStartTimeFn = original
 	})
 }
 

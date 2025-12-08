@@ -403,8 +403,7 @@ func TestRunConcurrentSpeedupBenchmark(t *testing.T) {
 func TestRunStartupCleanupRemovesOrphansEndToEnd(t *testing.T) {
 	defer resetTestHooks()
 
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	orphanA := createTempLog(t, tempDir, "codex-wrapper-5001.log")
 	orphanB := createTempLog(t, tempDir, "codex-wrapper-5002-extra.log")
@@ -415,6 +414,12 @@ func TestRunStartupCleanupRemovesOrphansEndToEnd(t *testing.T) {
 
 	stubProcessRunning(t, func(pid int) bool {
 		return pid == runningPID || pid == os.Getpid()
+	})
+	stubProcessStartTime(t, func(pid int) time.Time {
+		if pid == runningPID || pid == os.Getpid() {
+			return time.Now().Add(-1 * time.Hour)
+		}
+		return time.Time{}
 	})
 
 	codexCommand = createFakeCodexScript(t, "tid-startup", "ok")
@@ -442,8 +447,7 @@ func TestRunStartupCleanupRemovesOrphansEndToEnd(t *testing.T) {
 func TestRunStartupCleanupConcurrentWrappers(t *testing.T) {
 	defer resetTestHooks()
 
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	const totalLogs = 40
 	for i := 0; i < totalLogs; i++ {
@@ -453,6 +457,7 @@ func TestRunStartupCleanupConcurrentWrappers(t *testing.T) {
 	stubProcessRunning(t, func(pid int) bool {
 		return false
 	})
+	stubProcessStartTime(t, func(int) time.Time { return time.Time{} })
 
 	var wg sync.WaitGroup
 	const instances = 5
@@ -482,8 +487,7 @@ func TestRunStartupCleanupConcurrentWrappers(t *testing.T) {
 func TestRunCleanupFlagEndToEnd_Success(t *testing.T) {
 	defer resetTestHooks()
 
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	staleA := createTempLog(t, tempDir, "codex-wrapper-2100.log")
 	staleB := createTempLog(t, tempDir, "codex-wrapper-2200-extra.log")
@@ -491,6 +495,12 @@ func TestRunCleanupFlagEndToEnd_Success(t *testing.T) {
 
 	stubProcessRunning(t, func(pid int) bool {
 		return pid == 2300 || pid == os.Getpid()
+	})
+	stubProcessStartTime(t, func(pid int) time.Time {
+		if pid == 2300 || pid == os.Getpid() {
+			return time.Now().Add(-1 * time.Hour)
+		}
+		return time.Time{}
 	})
 
 	os.Args = []string{"codex-wrapper", "--cleanup"}
@@ -544,8 +554,7 @@ func TestRunCleanupFlagEndToEnd_Success(t *testing.T) {
 func TestRunCleanupFlagEndToEnd_FailureDoesNotAffectStartup(t *testing.T) {
 	defer resetTestHooks()
 
-	tempDir := t.TempDir()
-	setTempDirEnv(t, tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	calls := 0
 	cleanupLogsFn = func() (CleanupStats, error) {
