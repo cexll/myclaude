@@ -41,8 +41,16 @@ var (
 	buildCodexArgsFn = buildCodexArgs
 	commandContext   = exec.CommandContext
 	jsonMarshal      = json.Marshal
-	forceKillDelay   = 5 // seconds - made variable for testability
+	cleanupLogsFn    = cleanupOldLogs
+	signalNotifyFn   = signal.Notify
+	signalStopFn     = signal.Stop
 )
+
+var forceKillDelay atomic.Int32
+
+func init() {
+	forceKillDelay.Store(5) // seconds - default value
+}
 
 // Config holds CLI configuration
 type Config struct {
@@ -359,11 +367,27 @@ func main() {
 	os.Exit(exitCode)
 }
 
+func runStartupCleanup() {
+	if cleanupLogsFn == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			logWarn(fmt.Sprintf("cleanupOldLogs panic: %v", r))
+		}
+	}()
+	if _, err := cleanupLogsFn(); err != nil {
+		logWarn(fmt.Sprintf("cleanupOldLogs error: %v", err))
+	}
+}
+
 // run is the main logic, returns exit code for testability
 func run() (exitCode int) {
 	// Handle --version and --help first (no logger needed)
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "--cleanup":
+			return runCleanupMode()
 		case "--version", "-v":
 			fmt.Printf("codex-wrapper version %s\n", version)
 			return 0
@@ -397,6 +421,9 @@ func run() (exitCode int) {
 		}
 	}()
 	defer runCleanupHook()
+
+	// Run cleanup asynchronously to avoid blocking startup
+	go runStartupCleanup()
 
 	// Handle remaining commands
 	if len(os.Args) > 1 {
@@ -555,6 +582,38 @@ func run() (exitCode int) {
 		fmt.Printf("\n---\nSESSION_ID: %s\n", result.SessionID)
 	}
 
+	return 0
+}
+
+func runCleanupMode() int {
+	if cleanupLogsFn == nil {
+		fmt.Fprintln(os.Stderr, "Cleanup failed: log cleanup function not configured")
+		return 1
+	}
+
+	stats, err := cleanupLogsFn()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Cleanup failed: %v\n", err)
+		return 1
+	}
+
+	fmt.Println("Cleanup completed")
+	fmt.Printf("Files scanned: %d\n", stats.Scanned)
+	fmt.Printf("Files deleted: %d\n", stats.Deleted)
+	if len(stats.DeletedFiles) > 0 {
+		for _, f := range stats.DeletedFiles {
+			fmt.Printf("  - %s\n", f)
+		}
+	}
+	fmt.Printf("Files kept: %d\n", stats.Kept)
+	if len(stats.KeptFiles) > 0 {
+		for _, f := range stats.KeptFiles {
+			fmt.Printf("  - %s\n", f)
+		}
+	}
+	if stats.Errors > 0 {
+		fmt.Printf("Deletion errors: %d\n", stats.Errors)
+	}
 	return 0
 }
 
@@ -930,10 +989,10 @@ func forwardSignals(ctx context.Context, cmd *exec.Cmd, logErrorFn func(string))
 	if runtime.GOOS != "windows" {
 		signals = append(signals, syscall.SIGTERM)
 	}
-	signal.Notify(sigCh, signals...)
+	signalNotifyFn(sigCh, signals...)
 
 	go func() {
-		defer signal.Stop(sigCh)
+		defer signalStopFn(sigCh)
 		select {
 		case sig := <-sigCh:
 			logErrorFn(fmt.Sprintf("Received signal: %v", sig))
@@ -945,7 +1004,7 @@ func forwardSignals(ctx context.Context, cmd *exec.Cmd, logErrorFn func(string))
 				return
 			}
 			_ = cmd.Process.Signal(syscall.SIGTERM)
-			time.AfterFunc(time.Duration(forceKillDelay)*time.Second, func() {
+			time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
 				if cmd.Process != nil {
 					_ = cmd.Process.Kill()
 				}
@@ -979,7 +1038,7 @@ func terminateProcess(cmd *exec.Cmd) *time.Timer {
 
 	_ = cmd.Process.Signal(syscall.SIGTERM)
 
-	return time.AfterFunc(time.Duration(forceKillDelay)*time.Second, func() {
+	return time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
