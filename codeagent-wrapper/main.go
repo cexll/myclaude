@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -19,6 +21,12 @@ const (
 	stderrCaptureLimit = 4 * 1024
 	defaultBackendName = "codex"
 	wrapperName        = "codeagent-wrapper"
+
+	// stdout close reasons
+	stdoutCloseReasonWait  = "wait-done"
+	stdoutCloseReasonDrain = "drain-timeout"
+	stdoutCloseReasonCtx   = "context-cancel"
+	stdoutDrainTimeout     = 100 * time.Millisecond
 )
 
 // Test hooks for dependency injection
@@ -29,12 +37,67 @@ var (
 	cleanupHook  func()
 	loggerPtr    atomic.Pointer[Logger]
 
-	buildCodexArgsFn = buildCodexArgs
-	selectBackendFn  = selectBackend
-	commandContext   = exec.CommandContext
-	jsonMarshal      = json.Marshal
-	forceKillDelay   = 5 // seconds - made variable for testability
+	buildCodexArgsFn   = buildCodexArgs
+	selectBackendFn    = selectBackend
+	commandContext     = exec.CommandContext
+	jsonMarshal        = json.Marshal
+	cleanupLogsFn      = cleanupOldLogs
+	signalNotifyFn     = signal.Notify
+	signalStopFn       = signal.Stop
+	terminateCommandFn = terminateCommand
 )
+
+var forceKillDelay atomic.Int32
+
+func init() {
+	forceKillDelay.Store(5) // seconds - default value
+}
+
+func runStartupCleanup() {
+	if cleanupLogsFn == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			logWarn(fmt.Sprintf("cleanupOldLogs panic: %v", r))
+		}
+	}()
+	if _, err := cleanupLogsFn(); err != nil {
+		logWarn(fmt.Sprintf("cleanupOldLogs error: %v", err))
+	}
+}
+
+func runCleanupMode() int {
+	if cleanupLogsFn == nil {
+		fmt.Fprintln(os.Stderr, "Cleanup failed: log cleanup function not configured")
+		return 1
+	}
+
+	stats, err := cleanupLogsFn()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Cleanup failed: %v\n", err)
+		return 1
+	}
+
+	fmt.Println("Cleanup completed")
+	fmt.Printf("Files scanned: %d\n", stats.Scanned)
+	fmt.Printf("Files deleted: %d\n", stats.Deleted)
+	if len(stats.DeletedFiles) > 0 {
+		for _, f := range stats.DeletedFiles {
+			fmt.Printf("  - %s\n", f)
+		}
+	}
+	fmt.Printf("Files kept: %d\n", stats.Kept)
+	if len(stats.KeptFiles) > 0 {
+		for _, f := range stats.KeptFiles {
+			fmt.Printf("  - %s\n", f)
+		}
+	}
+	if stats.Errors > 0 {
+		fmt.Printf("Deletion errors: %d\n", stats.Errors)
+	}
+	return 0
+}
 
 func main() {
 	exitCode := run()
@@ -52,6 +115,8 @@ func run() (exitCode int) {
 		case "--help", "-h":
 			printHelp()
 			return 0
+		case "--cleanup":
+			return runCleanupMode()
 		}
 	}
 

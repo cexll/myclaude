@@ -171,7 +171,7 @@ func TestRunLoggerTerminateProcessActive(t *testing.T) {
 		t.Skipf("cannot start sleep command: %v", err)
 	}
 
-	timer := terminateProcess(cmd)
+	timer := terminateProcess(&realCmd{cmd: cmd})
 	if timer == nil {
 		t.Fatalf("terminateProcess returned nil timer for active process")
 	}
@@ -197,7 +197,7 @@ func TestRunTerminateProcessNil(t *testing.T) {
 	if timer := terminateProcess(nil); timer != nil {
 		t.Fatalf("terminateProcess(nil) should return nil timer")
 	}
-	if timer := terminateProcess(&exec.Cmd{}); timer != nil {
+	if timer := terminateProcess(&realCmd{cmd: &exec.Cmd{}}); timer != nil {
 		t.Fatalf("terminateProcess with nil process should return nil timer")
 	}
 }

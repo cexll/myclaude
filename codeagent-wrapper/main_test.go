@@ -2002,7 +2002,7 @@ func TestRunCodexTask_SignalHandling(t *testing.T) {
 func TestForwardSignals_ContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	forwardSignals(ctx, &exec.Cmd{}, func(string) {})
+	forwardSignals(ctx, &realCmd{cmd: &exec.Cmd{}}, func(string) {})
 	cancel()
 	time.Sleep(10 * time.Millisecond)
 }
@@ -3070,13 +3070,13 @@ func TestRunForwardSignals(t *testing.T) {
 		t.Skip("sleep command not available on Windows")
 	}
 
-	cmd := exec.Command("sleep", "5")
-	if err := cmd.Start(); err != nil {
+	execCmd := exec.Command("sleep", "5")
+	if err := execCmd.Start(); err != nil {
 		t.Skipf("unable to start sleep command: %v", err)
 	}
 	defer func() {
-		_ = cmd.Process.Kill()
-		cmd.Wait()
+		_ = execCmd.Process.Kill()
+		execCmd.Wait()
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -3099,6 +3099,7 @@ func TestRunForwardSignals(t *testing.T) {
 
 	var mu sync.Mutex
 	var logs []string
+	cmd := &realCmd{cmd: execCmd}
 	forwardSignals(ctx, cmd, func(msg string) {
 		mu.Lock()
 		defer mu.Unlock()

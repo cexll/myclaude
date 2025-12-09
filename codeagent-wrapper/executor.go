@@ -11,9 +11,104 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
+
+// commandRunner abstracts exec.Cmd for testability
+type commandRunner interface {
+	Start() error
+	Wait() error
+	StdoutPipe() (io.ReadCloser, error)
+	StdinPipe() (io.WriteCloser, error)
+	SetStderr(io.Writer)
+	Process() processHandle
+}
+
+// processHandle abstracts os.Process for testability
+type processHandle interface {
+	Pid() int
+	Kill() error
+	Signal(os.Signal) error
+}
+
+// realCmd implements commandRunner using exec.Cmd
+type realCmd struct {
+	cmd *exec.Cmd
+}
+
+func (r *realCmd) Start() error {
+	if r.cmd == nil {
+		return errors.New("command is nil")
+	}
+	return r.cmd.Start()
+}
+
+func (r *realCmd) Wait() error {
+	if r.cmd == nil {
+		return errors.New("command is nil")
+	}
+	return r.cmd.Wait()
+}
+
+func (r *realCmd) StdoutPipe() (io.ReadCloser, error) {
+	if r.cmd == nil {
+		return nil, errors.New("command is nil")
+	}
+	return r.cmd.StdoutPipe()
+}
+
+func (r *realCmd) StdinPipe() (io.WriteCloser, error) {
+	if r.cmd == nil {
+		return nil, errors.New("command is nil")
+	}
+	return r.cmd.StdinPipe()
+}
+
+func (r *realCmd) SetStderr(w io.Writer) {
+	if r.cmd != nil {
+		r.cmd.Stderr = w
+	}
+}
+
+func (r *realCmd) Process() processHandle {
+	if r == nil || r.cmd == nil || r.cmd.Process == nil {
+		return nil
+	}
+	return &realProcess{proc: r.cmd.Process}
+}
+
+// realProcess implements processHandle using os.Process
+type realProcess struct {
+	proc *os.Process
+}
+
+func (p *realProcess) Pid() int {
+	if p == nil || p.proc == nil {
+		return 0
+	}
+	return p.proc.Pid
+}
+
+func (p *realProcess) Kill() error {
+	if p == nil || p.proc == nil {
+		return nil
+	}
+	return p.proc.Kill()
+}
+
+func (p *realProcess) Signal(sig os.Signal) error {
+	if p == nil || p.proc == nil {
+		return nil
+	}
+	return p.proc.Signal(sig)
+}
+
+// newCommandRunner creates a new commandRunner (test hook injection point)
+var newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+	return &realCmd{cmd: commandContext(ctx, name, args...)}
+}
 
 type parseResult struct {
 	message  string
@@ -196,6 +291,9 @@ func generateFinalOutput(results []TaskResult) string {
 		if res.SessionID != "" {
 			sb.WriteString(fmt.Sprintf("Session: %s\n", res.SessionID))
 		}
+		if res.LogPath != "" {
+			sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+		}
 		if res.Message != "" {
 			sb.WriteString(fmt.Sprintf("\n%s\n", res.Message))
 		}
@@ -335,7 +433,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 		return fmt.Sprintf("%s; stderr: %s", msg, stderrBuf.String())
 	}
 
-	cmd := commandContext(ctx, codexCommand, codexArgs...)
+	cmd := newCommandRunner(ctx, codexCommand, codexArgs...)
 
 	stderrWriters := []io.Writer{stderrBuf}
 	if stderrLogger != nil {
@@ -345,9 +443,9 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 		stderrWriters = append([]io.Writer{os.Stderr}, stderrWriters...)
 	}
 	if len(stderrWriters) == 1 {
-		cmd.Stderr = stderrWriters[0]
+		cmd.SetStderr(stderrWriters[0])
 	} else {
-		cmd.Stderr = io.MultiWriter(stderrWriters...)
+		cmd.SetStderr(io.MultiWriter(stderrWriters...))
 	}
 
 	var stdinPipe io.WriteCloser
@@ -391,7 +489,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 		return result
 	}
 
-	logInfoFn(fmt.Sprintf("Starting %s with PID: %d", codexCommand, cmd.Process.Pid))
+	logInfoFn(fmt.Sprintf("Starting %s with PID: %d", codexCommand, cmd.Process().Pid()))
 	if logger := activeLogger(); logger != nil {
 		logInfoFn(fmt.Sprintf("Log capturing to: %s", logger.Path()))
 	}
@@ -475,11 +573,14 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 	result.ExitCode = 0
 	result.Message = message
 	result.SessionID = threadID
+	if logger := activeLogger(); logger != nil {
+		result.LogPath = logger.Path()
+	}
 
 	return result
 }
 
-func forwardSignals(ctx context.Context, cmd *exec.Cmd, logErrorFn func(string)) {
+func forwardSignals(ctx context.Context, cmd commandRunner, logErrorFn func(string)) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -488,11 +589,11 @@ func forwardSignals(ctx context.Context, cmd *exec.Cmd, logErrorFn func(string))
 		select {
 		case sig := <-sigCh:
 			logErrorFn(fmt.Sprintf("Received signal: %v", sig))
-			if cmd.Process != nil {
-				_ = cmd.Process.Signal(syscall.SIGTERM)
-				time.AfterFunc(time.Duration(forceKillDelay)*time.Second, func() {
-					if cmd.Process != nil {
-						_ = cmd.Process.Kill()
+			if proc := cmd.Process(); proc != nil {
+				_ = proc.Signal(syscall.SIGTERM)
+				time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
+					if p := cmd.Process(); p != nil {
+						_ = p.Kill()
 					}
 				})
 			}
@@ -513,16 +614,60 @@ func cancelReason(ctx context.Context) string {
 	return "Execution cancelled, terminating codex process"
 }
 
-func terminateProcess(cmd *exec.Cmd) *time.Timer {
-	if cmd == nil || cmd.Process == nil {
+type forceKillTimer struct {
+	timer   *time.Timer
+	done    chan struct{}
+	stopped atomic.Bool
+	drained atomic.Bool
+}
+
+func (t *forceKillTimer) Stop() {
+	if t == nil || t.timer == nil {
+		return
+	}
+	if !t.timer.Stop() {
+		<-t.done
+		t.drained.Store(true)
+	}
+	t.stopped.Store(true)
+}
+
+func terminateCommand(cmd commandRunner) *forceKillTimer {
+	if cmd == nil {
+		return nil
+	}
+	proc := cmd.Process()
+	if proc == nil {
 		return nil
 	}
 
-	_ = cmd.Process.Signal(syscall.SIGTERM)
+	_ = proc.Signal(syscall.SIGTERM)
 
-	return time.AfterFunc(time.Duration(forceKillDelay)*time.Second, func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
+	done := make(chan struct{}, 1)
+	timer := time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
+		if p := cmd.Process(); p != nil {
+			_ = p.Kill()
+		}
+		close(done)
+	})
+
+	return &forceKillTimer{timer: timer, done: done}
+}
+
+func terminateProcess(cmd commandRunner) *time.Timer {
+	if cmd == nil {
+		return nil
+	}
+	proc := cmd.Process()
+	if proc == nil {
+		return nil
+	}
+
+	_ = proc.Signal(syscall.SIGTERM)
+
+	return time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
+		if p := cmd.Process(); p != nil {
+			_ = p.Kill()
 		}
 	})
 }

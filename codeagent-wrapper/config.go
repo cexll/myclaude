@@ -41,6 +41,7 @@ type TaskResult struct {
 	Message   string `json:"message"`
 	SessionID string `json:"session_id"`
 	Error     string `json:"error"`
+	LogPath   string `json:"log_path"`
 }
 
 var backendRegistry = map[string]Backend{
