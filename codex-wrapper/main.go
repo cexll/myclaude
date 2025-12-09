@@ -167,6 +167,7 @@ type TaskResult struct {
 	Message   string `json:"message"`
 	SessionID string `json:"session_id"`
 	Error     string `json:"error"`
+	LogPath   string `json:"log_path"`
 }
 
 func parseParallelConfig(data []byte) (*ParallelConfig, error) {
@@ -336,6 +337,27 @@ func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
 	failed := make(map[string]TaskResult, totalTasks)
 	resultsCh := make(chan TaskResult, totalTasks)
 
+	var startPrintMu sync.Mutex
+	bannerPrinted := false
+
+	printTaskStart := func(taskID string) {
+		logger := activeLogger()
+		if logger == nil {
+			return
+		}
+		path := logger.Path()
+		if path == "" {
+			return
+		}
+		startPrintMu.Lock()
+		if !bannerPrinted {
+			fmt.Fprintln(os.Stderr, "=== Starting Parallel Execution ===")
+			bannerPrinted = true
+		}
+		fmt.Fprintf(os.Stderr, "Task %s: Log: %s\n", taskID, path)
+		startPrintMu.Unlock()
+	}
+
 	for _, layer := range layers {
 		var wg sync.WaitGroup
 		executed := 0
@@ -357,6 +379,7 @@ func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
 						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r)}
 					}
 				}()
+				printTaskStart(ts.ID)
 				resultsCh <- runCodexTaskFn(ts, timeout)
 			}(task)
 		}
@@ -421,6 +444,9 @@ func generateFinalOutput(results []TaskResult) string {
 		}
 		if res.SessionID != "" {
 			sb.WriteString(fmt.Sprintf("Session: %s\n", res.SessionID))
+		}
+		if res.LogPath != "" {
+			sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
 		}
 		if res.Message != "" {
 			sb.WriteString(fmt.Sprintf("\n%s\n", res.Message))
@@ -616,7 +642,20 @@ func run() (exitCode int) {
 	fmt.Fprintf(os.Stderr, "[codex-wrapper]\n")
 	fmt.Fprintf(os.Stderr, "  Command: %s %s\n", codexCommand, strings.Join(codexArgs, " "))
 	fmt.Fprintf(os.Stderr, "  PID: %d\n", os.Getpid())
-	fmt.Fprintf(os.Stderr, "  Log: %s\n", logger.Path())
+	logPath := ""
+	if logger != nil {
+		logPath = logger.Path()
+	}
+	fmt.Fprintf(os.Stderr, "  Log: %s\n", logPath)
+	printedLogPath := logPath
+	printLogPath := func(path string) {
+		if path == "" || path == printedLogPath {
+			return
+		}
+		fmt.Fprintf(os.Stderr, "[codex-wrapper]\n")
+		fmt.Fprintf(os.Stderr, "  Log: %s\n", path)
+		printedLogPath = path
+	}
 
 	if useStdin {
 		var reasons []string
@@ -663,6 +702,7 @@ func run() (exitCode int) {
 	}
 
 	result := runCodexTask(taskSpec, false, cfg.Timeout)
+	printLogPath(result.LogPath)
 
 	if result.ExitCode != 0 {
 		return result.ExitCode
@@ -801,8 +841,8 @@ func runCodexProcess(parentCtx context.Context, codexArgs []string, taskText str
 	return res.Message, res.SessionID, res.ExitCode
 }
 
-func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) TaskResult {
-	result := TaskResult{TaskID: taskSpec.ID}
+func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) (result TaskResult) {
+	result.TaskID = taskSpec.ID
 
 	cfg := &Config{
 		Mode:      taskSpec.Mode,
@@ -835,6 +875,15 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 			return msg
 		}
 		return fmt.Sprintf("[Task: %s] %s", taskSpec.ID, msg)
+	}
+
+	captureLogPath := func() {
+		if result.LogPath != "" {
+			return
+		}
+		if logger := activeLogger(); logger != nil {
+			result.LogPath = logger.Path()
+		}
 	}
 
 	var logInfoFn func(string)
@@ -877,6 +926,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 		}
 	}
 	defer func() {
+		captureLogPath()
 		if tempLogger != nil {
 			closeLogger()
 		}
