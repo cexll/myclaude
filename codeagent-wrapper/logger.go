@@ -41,15 +41,15 @@ func NewLogger() (*Logger, error) {
 // NewLoggerWithSuffix creates a logger with an optional suffix in the filename.
 // Useful for tests that need isolated log files within the same process.
 func NewLoggerWithSuffix(suffix string) (*Logger, error) {
-	filename := fmt.Sprintf("codex-wrapper-%d", os.Getpid())
+	filename := fmt.Sprintf("codeagent-wrapper-%d", os.Getpid())
 	if suffix != "" {
 		filename += "-" + suffix
 	}
 	filename += ".log"
 
-	path := filepath.Join(os.TempDir(), filename)
+	path := filepath.Clean(filepath.Join(os.TempDir(), filename))
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (l *Logger) Close() error {
 		}
 
 		// Log file is kept for debugging - NOT removed
-		// Users can manually clean up /tmp/codex-wrapper-*.log files
+		// Users can manually clean up /tmp/codeagent-wrapper-*.log files
 	})
 
 	return closeErr
@@ -218,25 +218,25 @@ func (l *Logger) run() {
 	defer ticker.Stop()
 
 	for {
-		select {
-		case entry, ok := <-l.ch:
-			if !ok {
-				// Channel closed, final flush
-				l.writer.Flush()
-				return
-			}
-			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-			pid := os.Getpid()
-			fmt.Fprintf(l.writer, "[%s] [PID:%d] %s: %s\n", timestamp, pid, entry.level, entry.msg)
+			select {
+			case entry, ok := <-l.ch:
+				if !ok {
+					// Channel closed, final flush
+					_ = l.writer.Flush()
+					return
+				}
+				timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+				pid := os.Getpid()
+				fmt.Fprintf(l.writer, "[%s] [PID:%d] %s: %s\n", timestamp, pid, entry.level, entry.msg)
 			l.pendingWG.Done()
 
 		case <-ticker.C:
-			l.writer.Flush()
+			_ = l.writer.Flush()
 
 		case flushDone := <-l.flushReq:
 			// Explicit flush request - flush writer and sync to disk
-			l.writer.Flush()
-			l.file.Sync()
+			_ = l.writer.Flush()
+			_ = l.file.Sync()
 			close(flushDone)
 		}
 	}

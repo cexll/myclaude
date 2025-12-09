@@ -183,6 +183,8 @@ def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[
                 op_copy_file(op, ctx)
             elif op_type == "merge_dir":
                 op_merge_dir(op, ctx)
+            elif op_type == "merge_json":
+                op_merge_json(op, ctx)
             elif op_type == "run_command":
                 op_run_command(op, ctx)
             else:
@@ -277,6 +279,51 @@ def op_copy_file(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
     if not existed_before:
         _record_created(dst, ctx)
     write_log({"level": "INFO", "message": f"Copied file {src} -> {dst}"}, ctx)
+
+
+def op_merge_json(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+    """Merge JSON from source into target, supporting nested key paths."""
+    src = _source_path(op, ctx)
+    dst = _target_path(op, ctx)
+    merge_key = op.get("merge_key")
+
+    if not src.exists():
+        raise FileNotFoundError(f"Source JSON not found: {src}")
+
+    src_data = _load_json(src)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists():
+        dst_data = _load_json(dst)
+    else:
+        dst_data = {}
+        _record_created(dst, ctx)
+
+    if merge_key:
+        # Merge into specific key
+        keys = merge_key.split(".")
+        target = dst_data
+        for key in keys[:-1]:
+            target = target.setdefault(key, {})
+
+        last_key = keys[-1]
+        if isinstance(src_data, dict) and isinstance(target.get(last_key), dict):
+            # Deep merge for dicts
+            target[last_key] = {**target.get(last_key, {}), **src_data}
+        else:
+            target[last_key] = src_data
+    else:
+        # Merge at root level
+        if isinstance(src_data, dict) and isinstance(dst_data, dict):
+            dst_data = {**dst_data, **src_data}
+        else:
+            dst_data = src_data
+
+    with dst.open("w", encoding="utf-8") as fh:
+        json.dump(dst_data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+    write_log({"level": "INFO", "message": f"Merged JSON {src} -> {dst} (key: {merge_key or 'root'})"}, ctx)
 
 
 def op_run_command(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:

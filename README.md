@@ -122,6 +122,12 @@ Requirements → Architecture → Sprint Plan → Development → Review → QA
 
 **Best For:** Quick tasks, no workflow overhead needed
 
+## Enterprise Workflow Features
+
+- **Multi-backend execution:** `codeagent-wrapper --backend codex|claude|gemini` (default `codex`) so you can match the model to the task without changing workflows.
+- **GitHub workflow commands:** `/gh-create-issue "short need"` creates structured issues; `/gh-implement 123` pulls issue #123, drives development, and prepares the PR.
+- **Skills + hooks activation:** .claude/hooks run automation (tests, reviews), while `.claude/skills/skill-rules.json` auto-suggests the right skills. Keep hooks enabled in `.claude/settings.json` to activate the enterprise workflow helpers.
+
 ---
 
 ## Installation
@@ -204,7 +210,7 @@ The `codex` skill enables Claude Code to delegate code execution to Codex CLI.
 
 ```bash
 # Codex is invoked via the skill
-codex-wrapper - <<'EOF'
+codeagent-wrapper - <<'EOF'
 implement @src/auth.ts with JWT validation
 EOF
 ```
@@ -212,7 +218,7 @@ EOF
 ### Parallel Execution
 
 ```bash
-codex-wrapper --parallel <<'EOF'
+codeagent-wrapper --parallel <<'EOF'
 ---TASK---
 id: backend_api
 workdir: /project/backend
@@ -279,6 +285,20 @@ cat ~/.claude/installed_modules.json
 # Reinstall specific module
 python3 install.py --module dev --force
 ```
+
+---
+
+## Documentation
+
+### Core Guides
+- **[Architecture Overview](docs/architecture.md)** - System architecture and component design
+- **[Codeagent-Wrapper Guide](docs/CODEAGENT-WRAPPER.md)** - Multi-backend execution wrapper
+- **[GitHub Workflow Guide](docs/GITHUB-WORKFLOW.md)** - Issue-to-PR automation
+- **[Hooks Documentation](docs/HOOKS.md)** - Custom hooks and automation
+
+### Additional Resources
+- **[Enterprise Workflow Ideas](docs/enterprise-workflow-ideas.md)** - Advanced patterns and best practices
+- **[Installation Log](install.log)** - Installation history and troubleshooting
 
 ---
 

@@ -201,7 +201,7 @@ python3 install.py --force
 
 ```bash
 # 通过技能调用 Codex
-codex-wrapper - <<'EOF'
+codeagent-wrapper - <<'EOF'
 在 @src/auth.ts 中实现 JWT 验证
 EOF
 ```
@@ -209,7 +209,7 @@ EOF
 ### 并行执行
 
 ```bash
-codex-wrapper --parallel <<'EOF'
+codeagent-wrapper --parallel <<'EOF'
 ---TASK---
 id: backend_api
 workdir: /project/backend

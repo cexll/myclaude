@@ -22,7 +22,7 @@ func TestLoggerCreatesFileWithPID(t *testing.T) {
 	}
 	defer logger.Close()
 
-	expectedPath := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+	expectedPath := filepath.Join(tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", os.Getpid()))
 	if logger.Path() != expectedPath {
 		t.Fatalf("logger path = %s, want %s", logger.Path(), expectedPath)
 	}
