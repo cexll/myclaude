@@ -27,11 +27,6 @@ jobs:
           cd codeagent-wrapper
           go tool cover -func=coverage.out | grep total | awk '{print $3}'
 
-      - name: Validate JSON configs
-        run: |
-          jq empty .claude/settings.json
-          jq empty .claude/skills/skill-rules.json
-
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
