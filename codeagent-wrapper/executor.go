@@ -205,6 +205,27 @@ func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
 	failed := make(map[string]TaskResult, totalTasks)
 	resultsCh := make(chan TaskResult, totalTasks)
 
+	var startPrintMu sync.Mutex
+	bannerPrinted := false
+
+	printTaskStart := func(taskID string) {
+		logger := activeLogger()
+		if logger == nil {
+			return
+		}
+		path := logger.Path()
+		if path == "" {
+			return
+		}
+		startPrintMu.Lock()
+		if !bannerPrinted {
+			fmt.Fprintln(os.Stderr, "=== Starting Parallel Execution ===")
+			bannerPrinted = true
+		}
+		fmt.Fprintf(os.Stderr, "Task %s: Log: %s\n", taskID, path)
+		startPrintMu.Unlock()
+	}
+
 	for _, layer := range layers {
 		var wg sync.WaitGroup
 		executed := 0
@@ -226,6 +247,7 @@ func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
 						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r)}
 					}
 				}()
+				printTaskStart(ts.ID)
 				resultsCh <- runCodexTaskFn(ts, timeout)
 			}(task)
 		}
@@ -334,6 +356,14 @@ func runCodexProcess(parentCtx context.Context, codexArgs []string, taskText str
 
 func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) TaskResult {
 	result := TaskResult{TaskID: taskSpec.ID}
+	setLogPath := func() {
+		if result.LogPath != "" {
+			return
+		}
+		if logger := activeLogger(); logger != nil {
+			result.LogPath = logger.Path()
+		}
+	}
 
 	cfg := &Config{
 		Mode:      taskSpec.Mode,
@@ -413,6 +443,10 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 			_ = closeLogger()
 		}
 	}()
+	defer setLogPath()
+	if logger := activeLogger(); logger != nil {
+		result.LogPath = logger.Path()
+	}
 
 	if !silent {
 		stdoutLogger = newLogWriter("CODEX_STDOUT: ", codexLogLineLimit)
@@ -506,20 +540,28 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
 
+	messageSeen := make(chan struct{}, 1)
 	parseCh := make(chan parseResult, 1)
 	go func() {
-		msg, tid := parseJSONStreamWithLog(stdoutReader, logWarnFn, logInfoFn)
+		msg, tid := parseJSONStreamInternal(stdoutReader, logWarnFn, logInfoFn, func() {
+			select {
+			case messageSeen <- struct{}{}:
+			default:
+			}
+		})
 		parseCh <- parseResult{message: msg, threadID: tid}
 	}()
 
 	var waitErr error
-	var forceKillTimer *time.Timer
+	var forceKillTimer *forceKillTimer
+	var ctxCancelled bool
 
 	select {
 	case waitErr = <-waitCh:
 	case <-ctx.Done():
+		ctxCancelled = true
 		logErrorFn(cancelReason(ctx))
-		forceKillTimer = terminateProcess(cmd)
+		forceKillTimer = terminateCommandFn(cmd)
 		waitErr = <-waitCh
 	}
 
@@ -527,7 +569,25 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 		forceKillTimer.Stop()
 	}
 
-	parsed := <-parseCh
+	var parsed parseResult
+	if ctxCancelled {
+		closeWithReason(stdout, stdoutCloseReasonCtx)
+		parsed = <-parseCh
+	} else {
+		drainTimer := time.NewTimer(stdoutDrainTimeout)
+		defer drainTimer.Stop()
+
+		select {
+		case parsed = <-parseCh:
+			closeWithReason(stdout, stdoutCloseReasonWait)
+		case <-messageSeen:
+			closeWithReason(stdout, stdoutCloseReasonWait)
+			parsed = <-parseCh
+		case <-drainTimer.C:
+			closeWithReason(stdout, stdoutCloseReasonDrain)
+			parsed = <-parseCh
+		}
+	}
 
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		if errors.Is(ctxErr, context.DeadlineExceeded) {
@@ -582,10 +642,14 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 
 func forwardSignals(ctx context.Context, cmd commandRunner, logErrorFn func(string)) {
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	if signalNotifyFn != nil {
+		signalNotifyFn(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	}
 
 	go func() {
-		defer signal.Stop(sigCh)
+		if signalStopFn != nil {
+			defer signalStopFn(sigCh)
+		}
 		select {
 		case sig := <-sigCh:
 			logErrorFn(fmt.Sprintf("Received signal: %v", sig))
@@ -612,6 +676,21 @@ func cancelReason(ctx context.Context) string {
 	}
 
 	return "Execution cancelled, terminating codex process"
+}
+
+type stdoutReasonCloser interface {
+	CloseWithReason(string) error
+}
+
+func closeWithReason(rc io.ReadCloser, reason string) {
+	if rc == nil {
+		return
+	}
+	if c, ok := rc.(stdoutReasonCloser); ok {
+		_ = c.CloseWithReason(reason)
+		return
+	}
+	_ = rc.Close()
 }
 
 type forceKillTimer struct {

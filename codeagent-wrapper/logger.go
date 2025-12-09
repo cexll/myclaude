@@ -64,7 +64,7 @@ func NewLogger() (*Logger, error) {
 // NewLoggerWithSuffix creates a logger with an optional suffix in the filename.
 // Useful for tests that need isolated log files within the same process.
 func NewLoggerWithSuffix(suffix string) (*Logger, error) {
-	filename := fmt.Sprintf("codeagent-wrapper-%d", os.Getpid())
+	filename := fmt.Sprintf("%s-%d", primaryLogPrefix(), os.Getpid())
 	if suffix != "" {
 		filename += "-" + suffix
 	}
@@ -156,7 +156,7 @@ func (l *Logger) Close() error {
 		}
 
 		// Log file is kept for debugging - NOT removed
-		// Users can manually clean up /tmp/codeagent-wrapper-*.log files
+		// Users can manually clean up /tmp/<wrapper>-*.log files
 	})
 
 	return closeErr
@@ -246,16 +246,16 @@ func (l *Logger) run() {
 	defer ticker.Stop()
 
 	for {
-			select {
-			case entry, ok := <-l.ch:
-				if !ok {
-					// Channel closed, final flush
-					_ = l.writer.Flush()
-					return
-				}
-				timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-				pid := os.Getpid()
-				fmt.Fprintf(l.writer, "[%s] [PID:%d] %s: %s\n", timestamp, pid, entry.level, entry.msg)
+		select {
+		case entry, ok := <-l.ch:
+			if !ok {
+				// Channel closed, final flush
+				_ = l.writer.Flush()
+				return
+			}
+			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+			pid := os.Getpid()
+			fmt.Fprintf(l.writer, "[%s] [PID:%d] %s: %s\n", timestamp, pid, entry.level, entry.msg)
 			l.pendingWG.Done()
 
 		case <-ticker.C:
@@ -270,7 +270,7 @@ func (l *Logger) run() {
 	}
 }
 
-// cleanupOldLogs scans os.TempDir() for codex-wrapper-*.log files and removes those
+// cleanupOldLogs scans os.TempDir() for wrapper log files and removes those
 // whose owning process is no longer running (i.e., orphaned logs).
 // It includes safety checks for:
 // - PID reuse: Compares file modification time with process start time
@@ -278,12 +278,28 @@ func (l *Logger) run() {
 func cleanupOldLogs() (CleanupStats, error) {
 	var stats CleanupStats
 	tempDir := os.TempDir()
-	pattern := filepath.Join(tempDir, "codex-wrapper-*.log")
 
-	matches, err := globLogFiles(pattern)
-	if err != nil {
-		logWarn(fmt.Sprintf("cleanupOldLogs: failed to list logs: %v", err))
-		return stats, fmt.Errorf("cleanupOldLogs: %w", err)
+	prefixes := logPrefixes()
+	if len(prefixes) == 0 {
+		prefixes = []string{defaultWrapperName}
+	}
+
+	seen := make(map[string]struct{})
+	var matches []string
+	for _, prefix := range prefixes {
+		pattern := filepath.Join(tempDir, fmt.Sprintf("%s-*.log", prefix))
+		found, err := globLogFiles(pattern)
+		if err != nil {
+			logWarn(fmt.Sprintf("cleanupOldLogs: failed to list logs: %v", err))
+			return stats, fmt.Errorf("cleanupOldLogs: %w", err)
+		}
+		for _, path := range found {
+			if _, ok := seen[path]; ok {
+				continue
+			}
+			seen[path] = struct{}{}
+			matches = append(matches, path)
+		}
 	}
 
 	var removeErr error
@@ -428,28 +444,37 @@ func isPIDReused(logPath string, pid int) bool {
 
 func parsePIDFromLog(path string) (int, bool) {
 	name := filepath.Base(path)
-	if !strings.HasPrefix(name, "codex-wrapper-") || !strings.HasSuffix(name, ".log") {
-		return 0, false
+	prefixes := logPrefixes()
+	if len(prefixes) == 0 {
+		prefixes = []string{defaultWrapperName}
 	}
 
-	core := strings.TrimSuffix(strings.TrimPrefix(name, "codex-wrapper-"), ".log")
-	if core == "" {
-		return 0, false
+	for _, prefix := range prefixes {
+		prefixWithDash := fmt.Sprintf("%s-", prefix)
+		if !strings.HasPrefix(name, prefixWithDash) || !strings.HasSuffix(name, ".log") {
+			continue
+		}
+
+		core := strings.TrimSuffix(strings.TrimPrefix(name, prefixWithDash), ".log")
+		if core == "" {
+			continue
+		}
+
+		pidPart := core
+		if idx := strings.IndexRune(core, '-'); idx != -1 {
+			pidPart = core[:idx]
+		}
+
+		if pidPart == "" {
+			continue
+		}
+
+		pid, err := strconv.Atoi(pidPart)
+		if err != nil || pid <= 0 {
+			continue
+		}
+		return pid, true
 	}
 
-	pidPart := core
-	if idx := strings.IndexRune(core, '-'); idx != -1 {
-		pidPart = core[:idx]
-	}
-
-	if pidPart == "" {
-		return 0, false
-	}
-
-	pid, err := strconv.Atoi(pidPart)
-	if err != nil || pid <= 0 {
-		return 0, false
-	}
-
-	return pid, true
+	return 0, false
 }

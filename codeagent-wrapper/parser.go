@@ -50,6 +50,10 @@ func parseJSONStreamWithWarn(r io.Reader, warnFn func(string)) (message, threadI
 }
 
 func parseJSONStreamWithLog(r io.Reader, warnFn func(string), infoFn func(string)) (message, threadID string) {
+	return parseJSONStreamInternal(r, warnFn, infoFn, nil)
+}
+
+func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(string), onMessage func()) (message, threadID string) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
 
@@ -58,6 +62,12 @@ func parseJSONStreamWithLog(r io.Reader, warnFn func(string), infoFn func(string
 	}
 	if infoFn == nil {
 		infoFn = func(string) {}
+	}
+
+	notifyMessage := func() {
+		if onMessage != nil {
+			onMessage()
+		}
 	}
 
 	totalEvents := 0
@@ -133,6 +143,7 @@ func parseJSONStreamWithLog(r io.Reader, warnFn func(string), infoFn func(string
 				infoFn(fmt.Sprintf("item.completed event item_type=%s message_len=%d", itemType, len(normalized)))
 				if event.Item != nil && event.Item.Type == "agent_message" && normalized != "" {
 					codexMessage = normalized
+					notifyMessage()
 				}
 			}
 
@@ -151,6 +162,7 @@ func parseJSONStreamWithLog(r io.Reader, warnFn func(string), infoFn func(string
 
 			if event.Result != "" {
 				claudeMessage = event.Result
+				notifyMessage()
 			}
 
 		case hasKey(raw, "role") || hasKey(raw, "delta"):
@@ -166,6 +178,7 @@ func parseJSONStreamWithLog(r io.Reader, warnFn func(string), infoFn func(string
 
 			if event.Content != "" {
 				geminiBuffer.WriteString(event.Content)
+				notifyMessage()
 			}
 
 			infoFn(fmt.Sprintf("Parsed Gemini event #%d type=%s role=%s delta=%t status=%s content_len=%d", totalEvents, event.Type, event.Role, event.Delta, event.Status, len(event.Content)))

@@ -7,20 +7,21 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"time"
 )
 
 const (
-	version            = "5.0.0"
-	defaultWorkdir     = "."
-	defaultTimeout     = 7200 // seconds
-	codexLogLineLimit  = 1000
-	stdinSpecialChars  = "\n\\\"'`$"
-	stderrCaptureLimit = 4 * 1024
-	defaultBackendName = "codex"
-	wrapperName        = "codeagent-wrapper"
+	version             = "5.0.0"
+	defaultWorkdir      = "."
+	defaultTimeout      = 7200 // seconds
+	codexLogLineLimit   = 1000
+	stdinSpecialChars   = "\n\\\"'`$"
+	stderrCaptureLimit  = 4 * 1024
+	defaultBackendName  = "codex"
+	defaultCodexCommand = "codex"
 
 	// stdout close reasons
 	stdoutCloseReasonWait  = "wait-done"
@@ -33,7 +34,7 @@ const (
 var (
 	stdinReader  io.Reader = os.Stdin
 	isTerminalFn           = defaultIsTerminal
-	codexCommand           = "codex"
+	codexCommand           = defaultCodexCommand
 	cleanupHook  func()
 	loggerPtr    atomic.Pointer[Logger]
 
@@ -45,6 +46,7 @@ var (
 	signalNotifyFn     = signal.Notify
 	signalStopFn       = signal.Stop
 	terminateCommandFn = terminateCommand
+	defaultBuildArgsFn = buildCodexArgs
 )
 
 var forceKillDelay atomic.Int32
@@ -106,11 +108,12 @@ func main() {
 
 // run is the main logic, returns exit code for testability
 func run() (exitCode int) {
+	name := currentWrapperName()
 	// Handle --version and --help first (no logger needed)
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--version", "-v":
-			fmt.Printf("%s version %s\n", wrapperName, version)
+			fmt.Printf("%s version %s\n", name, version)
 			return 0
 		case "--help", "-h":
 			printHelp()
@@ -145,6 +148,9 @@ func run() (exitCode int) {
 	}()
 	defer runCleanupHook()
 
+	// Clean up stale logs from previous runs.
+	runStartupCleanup()
+
 	// Handle remaining commands
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -152,9 +158,9 @@ func run() (exitCode int) {
 			if len(os.Args) > 2 {
 				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin and does not accept additional arguments.")
 				fmt.Fprintln(os.Stderr, "Usage examples:")
-				fmt.Fprintf(os.Stderr, "  %s --parallel < tasks.txt\n", wrapperName)
-				fmt.Fprintf(os.Stderr, "  echo '...' | %s --parallel\n", wrapperName)
-				fmt.Fprintf(os.Stderr, "  %s --parallel <<'EOF'\n", wrapperName)
+				fmt.Fprintf(os.Stderr, "  %s --parallel < tasks.txt\n", name)
+				fmt.Fprintf(os.Stderr, "  echo '...' | %s --parallel\n", name)
+				fmt.Fprintf(os.Stderr, "  %s --parallel <<'EOF'\n", name)
 				return 1
 			}
 			data, err := io.ReadAll(stdinReader)
@@ -204,10 +210,19 @@ func run() (exitCode int) {
 		logError(err.Error())
 		return 1
 	}
-	// Wire selected backend into runtime hooks for the rest of the execution.
-	codexCommand = backend.Command()
-	buildCodexArgsFn = backend.BuildArgs
 	cfg.Backend = backend.Name()
+
+	cmdInjected := codexCommand != defaultCodexCommand
+	argsInjected := buildCodexArgsFn != nil && reflect.ValueOf(buildCodexArgsFn).Pointer() != reflect.ValueOf(defaultBuildArgsFn).Pointer()
+
+	// Wire selected backend into runtime hooks for the rest of the execution,
+	// but preserve any injected test hooks for the default backend.
+	if backend.Name() != defaultBackendName || !cmdInjected {
+		codexCommand = backend.Command()
+	}
+	if backend.Name() != defaultBackendName || !argsInjected {
+		buildCodexArgsFn = backend.BuildArgs
+	}
 	logInfo(fmt.Sprintf("Selected backend: %s", backend.Name()))
 
 	timeoutSec := resolveTimeout()
@@ -253,7 +268,7 @@ func run() (exitCode int) {
 	codexArgs := buildCodexArgsFn(cfg, targetArg)
 
 	// Print startup information to stderr
-	fmt.Fprintf(os.Stderr, "[%s]\n", wrapperName)
+	fmt.Fprintf(os.Stderr, "[%s]\n", name)
 	fmt.Fprintf(os.Stderr, "  Backend: %s\n", cfg.Backend)
 	fmt.Fprintf(os.Stderr, "  Command: %s %s\n", codexCommand, strings.Join(codexArgs, " "))
 	fmt.Fprintf(os.Stderr, "  PID: %d\n", os.Getpid())
@@ -361,22 +376,23 @@ func runCleanupHook() {
 }
 
 func printHelp() {
-	help := `codeagent-wrapper - Go wrapper for AI CLI backends
+	name := currentWrapperName()
+	help := fmt.Sprintf(`%[1]s - Go wrapper for AI CLI backends
 
 Usage:
-    codeagent-wrapper "task" [workdir]
-    codeagent-wrapper --backend claude "task" [workdir]
-    codeagent-wrapper - [workdir]              Read task from stdin
-    codeagent-wrapper resume <session_id> "task" [workdir]
-    codeagent-wrapper resume <session_id> - [workdir]
-    codeagent-wrapper --parallel               Run tasks in parallel (config from stdin)
-    codeagent-wrapper --version
-    codeagent-wrapper --help
+    %[1]s "task" [workdir]
+    %[1]s --backend claude "task" [workdir]
+    %[1]s - [workdir]              Read task from stdin
+    %[1]s resume <session_id> "task" [workdir]
+    %[1]s resume <session_id> - [workdir]
+    %[1]s --parallel               Run tasks in parallel (config from stdin)
+    %[1]s --version
+    %[1]s --help
 
 Parallel mode examples:
-    codeagent-wrapper --parallel < tasks.txt
-    echo '...' | codeagent-wrapper --parallel
-    codeagent-wrapper --parallel <<'EOF'
+    %[1]s --parallel < tasks.txt
+    echo '...' | %[1]s --parallel
+    %[1]s --parallel <<'EOF'
 
 Environment Variables:
     CODEX_TIMEOUT  Timeout in milliseconds (default: 7200000)
@@ -387,6 +403,6 @@ Exit Codes:
     124  Timeout
     127  backend command not found
     130  Interrupted (Ctrl+C)
-    *    Passthrough from backend process`
+    *    Passthrough from backend process`, name)
 	fmt.Println(help)
 }
