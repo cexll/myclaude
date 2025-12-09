@@ -32,7 +32,7 @@ When falling back to direct execution:
 **Mandatory**: Run every automated invocation through the Bash tool in the foreground with **HEREDOC syntax** to avoid shell quoting issues, keeping the `timeout` parameter fixed at `7200000` milliseconds (do not change it or use any other entry point).
 
 ```bash
-codeagent-wrapper - [working_dir] <<'EOF'
+codex-wrapper - [working_dir] <<'EOF'
 <task content here>
 EOF
 ```
@@ -44,12 +44,12 @@ EOF
 **Simple tasks** (backward compatibility):
 For simple single-line tasks without special characters, you can still use direct quoting:
 ```bash
-codeagent-wrapper "simple task here" [working_dir]
+codex-wrapper "simple task here" [working_dir]
 ```
 
 **Resume a session with HEREDOC:**
 ```bash
-codeagent-wrapper resume <session_id> - [working_dir] <<'EOF'
+codex-wrapper resume <session_id> - [working_dir] <<'EOF'
 <task content>
 EOF
 ```
@@ -58,7 +58,7 @@ EOF
 - **Bash/Zsh**: Use `<<'EOF'` (single quotes prevent variable expansion)
 - **PowerShell 5.1+**: Use `@'` and `'@` (here-string syntax)
   ```powershell
-  codeagent-wrapper - @'
+  codex-wrapper - @'
   task content
   '@
   ```
@@ -104,7 +104,7 @@ All automated executions must use HEREDOC syntax through the Bash tool in the fo
 
 ```
 Bash tool parameters:
-- command: codeagent-wrapper - [working_dir] <<'EOF'
+- command: codex-wrapper - [working_dir] <<'EOF'
   <task content>
   EOF
 - timeout: 7200000
@@ -120,18 +120,18 @@ Run every call in the foreground—never append `&` to background it—so logs a
 **Basic code analysis:**
 ```bash
 # Recommended: with HEREDOC (handles any special characters)
-codeagent-wrapper - <<'EOF'
+codex-wrapper - <<'EOF'
 explain @src/main.ts
 EOF
 # timeout: 7200000
 
 # Alternative: simple direct quoting (if task is simple)
-codeagent-wrapper "explain @src/main.ts"
+codex-wrapper "explain @src/main.ts"
 ```
 
 **Refactoring with multiline instructions:**
 ```bash
-codeagent-wrapper - <<'EOF'
+codex-wrapper - <<'EOF'
 refactor @src/utils for performance:
 - Extract duplicate code into helpers
 - Use memoization for expensive calculations
@@ -142,7 +142,7 @@ EOF
 
 **Multi-file analysis:**
 ```bash
-codeagent-wrapper - "/path/to/project" <<'EOF'
+codex-wrapper - "/path/to/project" <<'EOF'
 analyze @. and find security issues:
 1. Check for SQL injection vulnerabilities
 2. Identify XSS risks in templates
@@ -155,13 +155,13 @@ EOF
 **Resume previous session:**
 ```bash
 # First session
-codeagent-wrapper - <<'EOF'
+codex-wrapper - <<'EOF'
 add comments to @utils.js explaining the caching logic
 EOF
 # Output includes: SESSION_ID: 019a7247-ac9d-71f3-89e2-a823dbd8fd14
 
 # Continue the conversation with more context
-codeagent-wrapper resume 019a7247-ac9d-71f3-89e2-a823dbd8fd14 - <<'EOF'
+codex-wrapper resume 019a7247-ac9d-71f3-89e2-a823dbd8fd14 - <<'EOF'
 now add TypeScript type hints and handle edge cases where cache is null
 EOF
 # timeout: 7200000
@@ -169,7 +169,7 @@ EOF
 
 **Task with code snippets and special characters:**
 ```bash
-codeagent-wrapper - <<'EOF'
+codex-wrapper - <<'EOF'
 Fix the bug in @app.js where the regex /\d+/ doesn't match "123"
 The current code is:
   const re = /\d+/;
@@ -190,10 +190,10 @@ EOF
 **Correct:**
 ```bash
 # Option 1: file redirection
-codeagent-wrapper --parallel < tasks.txt
+codex-wrapper --parallel < tasks.txt
 
 # Option 2: heredoc (recommended for multiple tasks)
-codeagent-wrapper --parallel <<'EOF'
+codex-wrapper --parallel <<'EOF'
 ---TASK---
 id: task1
 workdir: /path/to/dir
@@ -202,28 +202,28 @@ task content
 EOF
 
 # Option 3: pipe
-echo "---TASK---..." | codeagent-wrapper --parallel
+echo "---TASK---..." | codex-wrapper --parallel
 ```
 
 **Incorrect (will trigger shell parsing errors):**
 ```bash
 # Bad: no extra args allowed after --parallel
-codeagent-wrapper --parallel - /path/to/dir <<'EOF'
+codex-wrapper --parallel - /path/to/dir <<'EOF'
 ...
 EOF
 
 # Bad: --parallel does not take a task argument
-codeagent-wrapper --parallel "task description"
+codex-wrapper --parallel "task description"
 
 # Bad: workdir must live inside the task config
-codeagent-wrapper --parallel /path/to/dir < tasks.txt
+codex-wrapper --parallel /path/to/dir < tasks.txt
 ```
 
 For multiple independent or dependent tasks, use `--parallel` mode with delimiter format:
 
 **Typical Workflow (analyze → implement → test, chained in a single parallel call)**:
 ```bash
-codeagent-wrapper --parallel <<'EOF'
+codex-wrapper --parallel <<'EOF'
 ---TASK---
 id: analyze_1732876800
 workdir: /home/user/project
@@ -243,10 +243,10 @@ dependencies: implement_1732876801
 add and run regression tests covering the new endpoints and UI flows
 EOF
 ```
-A single `codeagent-wrapper --parallel` call schedules all three stages concurrently, using `dependencies` to enforce sequential ordering without multiple invocations.
+A single `codex-wrapper --parallel` call schedules all three stages concurrently, using `dependencies` to enforce sequential ordering without multiple invocations.
 
 ```bash
-codeagent-wrapper --parallel <<'EOF'
+codex-wrapper --parallel <<'EOF'
 ---TASK---
 id: backend_1732876800
 workdir: /home/user/project/backend
@@ -283,14 +283,14 @@ EOF
 
 **Dependencies Best Practices**
 
-- Avoid multiple invocations: Place "analyze then implement" in a single `codeagent-wrapper --parallel` call, chaining them via `dependencies`, rather than running analysis first and then launching implementation separately.
+- Avoid multiple invocations: Place "analyze then implement" in a single `codex-wrapper --parallel` call, chaining them via `dependencies`, rather than running analysis first and then launching implementation separately.
 - Naming convention: Use `<action>_<timestamp>` format (e.g., `analyze_1732876800`, `implement_1732876801`), where action names map to features/stages and timestamps ensure uniqueness and sortability.
 - Dependency chain design: Keep chains short; only add dependencies for tasks that truly require ordering, let others run in parallel, avoiding over-serialization that reduces throughput.
 
 **Resume Failed Tasks**:
 ```bash
 # Use session_id from previous output to resume
-codeagent-wrapper --parallel <<'EOF'
+codex-wrapper --parallel <<'EOF'
 ---TASK---
 id: T2
 session_id: 019xxx-previous-session-id

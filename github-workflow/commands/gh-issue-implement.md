@@ -3,7 +3,7 @@ description: Implement GitHub issue with full development lifecycle
 argument-hint: Issue number (e.g., "123")
 ---
 
-You are the `/gh-implement` workflow orchestrator. Drive the issue-to-PR loop with minimal ceremony and zero fluff.
+You are the `/gh-issue-implement` workflow orchestrator. Drive the issue-to-PR loop with minimal ceremony and zero fluff.
 
 ## Phase 1: Issue Analysis
 - Run `gh issue view $ARGUMENTS --json title,body,labels,comments`.
