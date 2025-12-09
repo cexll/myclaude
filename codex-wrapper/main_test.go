@@ -618,7 +618,7 @@ func TestFakeCmdInfra(t *testing.T) {
 					Data:  `{"type":"item.completed","item":{"type":"agent_message","text":"fake-msg"}}` + "\n",
 				},
 			},
-				WaitDelay: 5 * time.Millisecond,
+			WaitDelay: 5 * time.Millisecond,
 		})
 
 		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
@@ -1415,6 +1415,83 @@ func TestRunCodexTask_WithEcho(t *testing.T) {
 	}
 }
 
+func TestRunCodexTask_LogPathWithActiveLogger(t *testing.T) {
+	defer resetTestHooks()
+
+	logger, err := NewLoggerWithSuffix("active-logpath")
+	if err != nil {
+		t.Fatalf("failed to create logger: %v", err)
+	}
+	setLogger(logger)
+
+	codexCommand = "echo"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+
+	jsonOutput := `{"type":"thread.started","thread_id":"fake-thread"}
+{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`
+
+	result := runCodexTask(TaskSpec{Task: jsonOutput}, false, 5)
+	if result.LogPath != logger.Path() {
+		t.Fatalf("LogPath = %q, want %q", result.LogPath, logger.Path())
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("exit = %d, want 0 (%s)", result.ExitCode, result.Error)
+	}
+}
+
+func TestRunCodexTask_LogPathWithTempLogger(t *testing.T) {
+	defer resetTestHooks()
+
+	codexCommand = "echo"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+
+	jsonOutput := `{"type":"thread.started","thread_id":"temp-thread"}
+{"type":"item.completed","item":{"type":"agent_message","text":"temp"}}`
+
+	result := runCodexTask(TaskSpec{Task: jsonOutput}, true, 5)
+	t.Cleanup(func() {
+		if result.LogPath != "" {
+			os.Remove(result.LogPath)
+		}
+	})
+	if result.LogPath == "" {
+		t.Fatalf("LogPath should not be empty for temp logger")
+	}
+	if _, err := os.Stat(result.LogPath); err != nil {
+		t.Fatalf("log file %q should exist (err=%v)", result.LogPath, err)
+	}
+	if activeLogger() != nil {
+		t.Fatalf("active logger should be cleared after silent run")
+	}
+}
+
+func TestRunCodexTask_LogPathOnStartError(t *testing.T) {
+	defer resetTestHooks()
+
+	logger, err := NewLoggerWithSuffix("start-error")
+	if err != nil {
+		t.Fatalf("failed to create logger: %v", err)
+	}
+	setLogger(logger)
+
+	tmpFile, err := os.CreateTemp("", "start-error")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	codexCommand = tmpFile.Name()
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
+
+	result := runCodexTask(TaskSpec{Task: "ignored"}, false, 5)
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit")
+	}
+	if result.LogPath != logger.Path() {
+		t.Fatalf("LogPath = %q, want %q", result.LogPath, logger.Path())
+	}
+}
+
 func TestRunCodexTask_NoMessage(t *testing.T) {
 	defer resetTestHooks()
 	codexCommand = "echo"
@@ -1567,6 +1644,34 @@ func TestRunGenerateFinalOutput(t *testing.T) {
 	}
 	if !strings.Contains(out, "Task: a") || !strings.Contains(out, "Task: b") {
 		t.Fatalf("task entries missing")
+	}
+	if strings.Contains(out, "Log:") {
+		t.Fatalf("unexpected log line when LogPath empty, got %q", out)
+	}
+}
+
+func TestRunGenerateFinalOutput_LogPath(t *testing.T) {
+	results := []TaskResult{
+		{
+			TaskID:    "a",
+			ExitCode:  0,
+			Message:   "ok",
+			SessionID: "sid",
+			LogPath:   "/tmp/log-a",
+		},
+		{
+			TaskID:   "b",
+			ExitCode: 7,
+			Error:    "bad",
+			LogPath:  "/tmp/log-b",
+		},
+	}
+	out := generateFinalOutput(results)
+	if !strings.Contains(out, "Session: sid\nLog: /tmp/log-a") {
+		t.Fatalf("output missing log line after session: %q", out)
+	}
+	if !strings.Contains(out, "Log: /tmp/log-b") {
+		t.Fatalf("output missing log line for failed task: %q", out)
 	}
 }
 
@@ -2321,6 +2426,27 @@ func TestRunStartupCleanupNil(t *testing.T) {
 	runStartupCleanup()
 }
 
+func TestRunStartupCleanupErrorLogged(t *testing.T) {
+	defer resetTestHooks()
+
+	logger, err := NewLoggerWithSuffix("startup-error")
+	if err != nil {
+		t.Fatalf("failed to create logger: %v", err)
+	}
+	setLogger(logger)
+	t.Cleanup(func() {
+		logger.Flush()
+		logger.Close()
+		os.Remove(logger.Path())
+	})
+
+	cleanupLogsFn = func() (CleanupStats, error) {
+		return CleanupStats{}, errors.New("zapped")
+	}
+
+	runStartupCleanup()
+}
+
 func TestRun_CleanupFailureDoesNotBlock(t *testing.T) {
 	defer resetTestHooks()
 	stdout := captureStdoutPipe()
@@ -2440,6 +2566,17 @@ func TestRunLogWriter(t *testing.T) {
 	os.Remove(logger.Path())
 }
 
+func TestNewLogWriterDefaultLimit(t *testing.T) {
+	lw := newLogWriter("TEST: ", 0)
+	if lw.maxLen != codexLogLineLimit {
+		t.Fatalf("newLogWriter maxLen = %d, want %d", lw.maxLen, codexLogLineLimit)
+	}
+	lw = newLogWriter("TEST: ", -5)
+	if lw.maxLen != codexLogLineLimit {
+		t.Fatalf("negative maxLen should default, got %d", lw.maxLen)
+	}
+}
+
 func TestRunDiscardInvalidJSON(t *testing.T) {
 	reader := bufio.NewReader(strings.NewReader("bad line\n{\"type\":\"ok\"}\n"))
 	next, err := discardInvalidJSON(nil, reader)
@@ -2526,6 +2663,149 @@ func TestRunForwardSignals(t *testing.T) {
 	defer mu.Unlock()
 	if len(logs) == 0 {
 		t.Fatalf("expected log entry for forwarded signal")
+	}
+}
+
+func TestRunNonParallelPrintsLogPath(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := t.TempDir()
+	t.Setenv("TMPDIR", tempDir)
+
+	os.Args = []string{"codex-wrapper", "do-stuff"}
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+	codexCommand = "echo"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
+		return []string{`{"type":"thread.started","thread_id":"cli-session"}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`}
+	}
+
+	var exitCode int
+	stderr := captureStderr(t, func() {
+		_ = captureOutput(t, func() {
+			exitCode = run()
+		})
+	})
+	if exitCode != 0 {
+		t.Fatalf("run() exit = %d, want 0", exitCode)
+	}
+	expectedLog := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+	wantLine := fmt.Sprintf("Log: %s", expectedLog)
+	if !strings.Contains(stderr, wantLine) {
+		t.Fatalf("stderr missing %q, got: %q", wantLine, stderr)
+	}
+}
+
+func TestRealProcessNilSafety(t *testing.T) {
+	var proc *realProcess
+	if pid := proc.Pid(); pid != 0 {
+		t.Fatalf("Pid() = %d, want 0", pid)
+	}
+	if err := proc.Kill(); err != nil {
+		t.Fatalf("Kill() error = %v", err)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("Signal() error = %v", err)
+	}
+}
+
+func TestRealProcessKill(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command not available on Windows")
+	}
+
+	cmd := exec.Command("sleep", "5")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("unable to start sleep command: %v", err)
+	}
+	waited := false
+	defer func() {
+		if waited {
+			return
+		}
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			cmd.Wait()
+		}
+	}()
+
+	proc := &realProcess{proc: cmd.Process}
+	if proc.Pid() == 0 {
+		t.Fatalf("Pid() returned 0 for active process")
+	}
+	if err := proc.Kill(); err != nil {
+		t.Fatalf("Kill() error = %v", err)
+	}
+	waitErr := cmd.Wait()
+	waited = true
+	if waitErr == nil {
+		t.Fatalf("Kill() should lead to non-nil wait error")
+	}
+}
+
+func TestRealProcessSignal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command not available on Windows")
+	}
+
+	cmd := exec.Command("sleep", "5")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("unable to start sleep command: %v", err)
+	}
+	waited := false
+	defer func() {
+		if waited {
+			return
+		}
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			cmd.Wait()
+		}
+	}()
+
+	proc := &realProcess{proc: cmd.Process}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("Signal() error = %v", err)
+	}
+	waitErr := cmd.Wait()
+	waited = true
+	if waitErr == nil {
+		t.Fatalf("Signal() should lead to non-nil wait error")
+	}
+}
+
+func TestRealCmdProcess(t *testing.T) {
+	rc := &realCmd{}
+	if rc.Process() != nil {
+		t.Fatalf("Process() should return nil when realCmd has no command")
+	}
+	rc = &realCmd{cmd: &exec.Cmd{}}
+	if rc.Process() != nil {
+		t.Fatalf("Process() should return nil when exec.Cmd has no process")
+	}
+
+	if runtime.GOOS == "windows" {
+		return
+	}
+
+	cmd := exec.Command("sleep", "5")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("unable to start sleep command: %v", err)
+	}
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			cmd.Wait()
+		}
+	}()
+
+	rc = &realCmd{cmd: cmd}
+	handle := rc.Process()
+	if handle == nil {
+		t.Fatalf("expected non-nil process handle")
+	}
+	if pid := handle.Pid(); pid == 0 {
+		t.Fatalf("process handle returned pid=0")
 	}
 }
 

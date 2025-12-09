@@ -80,6 +80,8 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 				currentTask.Error = strings.TrimPrefix(line, "Error: ")
 			} else if strings.HasPrefix(line, "Session:") {
 				currentTask.SessionID = strings.TrimPrefix(line, "Session: ")
+			} else if strings.HasPrefix(line, "Log:") {
+				currentTask.LogPath = strings.TrimSpace(strings.TrimPrefix(line, "Log:"))
 			} else if line != "" && !strings.HasPrefix(line, "===") && !strings.HasPrefix(line, "---") {
 				if currentTask.Message != "" {
 					currentTask.Message += "\n"
@@ -94,6 +96,32 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 	}
 
 	return payload
+}
+
+func extractTaskBlock(t *testing.T, output, taskID string) string {
+	t.Helper()
+	header := fmt.Sprintf("--- Task: %s ---", taskID)
+	lines := strings.Split(output, "\n")
+	var block []string
+	collecting := false
+	for _, raw := range lines {
+		trimmed := strings.TrimSpace(raw)
+		if !collecting {
+			if trimmed == header {
+				collecting = true
+				block = append(block, trimmed)
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "--- Task: ") && trimmed != header {
+			break
+		}
+		block = append(block, trimmed)
+	}
+	if len(block) == 0 {
+		t.Fatalf("task block %s not found in output:\n%s", taskID, output)
+	}
+	return strings.Join(block, "\n")
 }
 
 func findResultByID(t *testing.T, payload integrationOutput, id string) TaskResult {
@@ -256,6 +284,194 @@ b`
 	}
 }
 
+func TestRunParallelOutputsIncludeLogPaths(t *testing.T) {
+	defer resetTestHooks()
+	origRun := runCodexTaskFn
+	t.Cleanup(func() {
+		runCodexTaskFn = origRun
+		resetTestHooks()
+	})
+
+	tempDir := t.TempDir()
+	logPathFor := func(id string) string {
+		return filepath.Join(tempDir, fmt.Sprintf("%s.log", id))
+	}
+
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		res := TaskResult{
+			TaskID:    task.ID,
+			Message:   fmt.Sprintf("result-%s", task.ID),
+			SessionID: fmt.Sprintf("session-%s", task.ID),
+			LogPath:   logPathFor(task.ID),
+		}
+		if task.ID == "beta" {
+			res.ExitCode = 9
+			res.Error = "boom"
+		}
+		return res
+	}
+
+	input := `---TASK---
+id: alpha
+---CONTENT---
+task-alpha
+---TASK---
+id: beta
+---CONTENT---
+task-beta`
+	stdinReader = bytes.NewReader([]byte(input))
+	os.Args = []string{"codex-wrapper", "--parallel"}
+
+	var exitCode int
+	output := captureStdout(t, func() {
+		exitCode = run()
+	})
+
+	if exitCode != 9 {
+		t.Fatalf("parallel run exit=%d, want 9", exitCode)
+	}
+
+	payload := parseIntegrationOutput(t, output)
+	alpha := findResultByID(t, payload, "alpha")
+	beta := findResultByID(t, payload, "beta")
+
+	if alpha.LogPath != logPathFor("alpha") {
+		t.Fatalf("alpha log path = %q, want %q", alpha.LogPath, logPathFor("alpha"))
+	}
+	if beta.LogPath != logPathFor("beta") {
+		t.Fatalf("beta log path = %q, want %q", beta.LogPath, logPathFor("beta"))
+	}
+
+	for _, id := range []string{"alpha", "beta"} {
+		want := fmt.Sprintf("Log: %s", logPathFor(id))
+		if !strings.Contains(output, want) {
+			t.Fatalf("parallel output missing %q for %s:\n%s", want, id, output)
+		}
+	}
+}
+
+func TestRunParallelStartupLogsPrinted(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+	input := `---TASK---
+id: a
+---CONTENT---
+fail
+---TASK---
+id: b
+---CONTENT---
+ok-b
+---TASK---
+id: c
+dependencies: a
+---CONTENT---
+should-skip
+---TASK---
+id: d
+---CONTENT---
+ok-d`
+	stdinReader = bytes.NewReader([]byte(input))
+	os.Args = []string{"codex-wrapper", "--parallel"}
+
+	expectedLog := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+
+	origRun := runCodexTaskFn
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		path := expectedLog
+		if logger := activeLogger(); logger != nil && logger.Path() != "" {
+			path = logger.Path()
+		}
+		if task.ID == "a" {
+			return TaskResult{TaskID: task.ID, ExitCode: 3, Error: "boom", LogPath: path}
+		}
+		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: task.Task, LogPath: path}
+	}
+	t.Cleanup(func() { runCodexTaskFn = origRun })
+
+	var exitCode int
+	var stdoutOut string
+	stderrOut := captureStderr(t, func() {
+		stdoutOut = captureStdout(t, func() {
+			exitCode = run()
+		})
+	})
+
+	if exitCode == 0 {
+		t.Fatalf("expected non-zero exit due to task failure, got %d", exitCode)
+	}
+	if stdoutOut == "" {
+		t.Fatalf("expected parallel summary on stdout")
+	}
+
+	lines := strings.Split(strings.TrimSpace(stderrOut), "\n")
+	var bannerSeen bool
+	var taskLines []string
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if line == "=== Starting Parallel Execution ===" {
+			if bannerSeen {
+				t.Fatalf("banner printed multiple times:\n%s", stderrOut)
+			}
+			bannerSeen = true
+			continue
+		}
+		taskLines = append(taskLines, line)
+	}
+
+	if !bannerSeen {
+		t.Fatalf("expected startup banner in stderr, got:\n%s", stderrOut)
+	}
+
+	expectedLines := map[string]struct{}{
+		fmt.Sprintf("Task a: Log: %s", expectedLog): {},
+		fmt.Sprintf("Task b: Log: %s", expectedLog): {},
+		fmt.Sprintf("Task d: Log: %s", expectedLog): {},
+	}
+
+	if len(taskLines) != len(expectedLines) {
+		t.Fatalf("startup log lines mismatch, got %d lines:\n%s", len(taskLines), stderrOut)
+	}
+
+	for _, line := range taskLines {
+		if _, ok := expectedLines[line]; !ok {
+			t.Fatalf("unexpected startup line %q\nstderr:\n%s", line, stderrOut)
+		}
+	}
+}
+
+func TestRunNonParallelOutputsIncludeLogPathsIntegration(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+	os.Args = []string{"codex-wrapper", "integration-log-check"}
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+	codexCommand = "echo"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
+		return []string{`{"type":"thread.started","thread_id":"integration-session"}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"done"}}`}
+	}
+
+	var exitCode int
+	stderr := captureStderr(t, func() {
+		_ = captureStdout(t, func() {
+			exitCode = run()
+		})
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("run() exit=%d, want 0", exitCode)
+	}
+	expectedLog := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+	wantLine := fmt.Sprintf("Log: %s", expectedLog)
+	if !strings.Contains(stderr, wantLine) {
+		t.Fatalf("stderr missing %q, got: %q", wantLine, stderr)
+	}
+}
+
 func TestRunParallelPartialFailureBlocksDependents(t *testing.T) {
 	defer resetTestHooks()
 	origRun := runCodexTaskFn
@@ -264,11 +480,17 @@ func TestRunParallelPartialFailureBlocksDependents(t *testing.T) {
 		resetTestHooks()
 	})
 
+	tempDir := t.TempDir()
+	logPathFor := func(id string) string {
+		return filepath.Join(tempDir, fmt.Sprintf("%s.log", id))
+	}
+
 	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		path := logPathFor(task.ID)
 		if task.ID == "A" {
-			return TaskResult{TaskID: "A", ExitCode: 2, Error: "boom"}
+			return TaskResult{TaskID: "A", ExitCode: 2, Error: "boom", LogPath: path}
 		}
-		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: task.Task}
+		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: task.Task, LogPath: path}
 	}
 
 	input := `---TASK---
@@ -317,6 +539,26 @@ ok-e`
 	}
 	if payload.Summary.Failed != 2 || payload.Summary.Total != 4 {
 		t.Fatalf("unexpected summary after partial failure: %+v", payload.Summary)
+	}
+	if resA.LogPath != logPathFor("A") {
+		t.Fatalf("task A log path = %q, want %q", resA.LogPath, logPathFor("A"))
+	}
+	if resB.LogPath != "" {
+		t.Fatalf("task B should not report a log path when skipped, got %q", resB.LogPath)
+	}
+	if resD.LogPath != logPathFor("D") || resE.LogPath != logPathFor("E") {
+		t.Fatalf("expected log paths for D/E, got D=%q E=%q", resD.LogPath, resE.LogPath)
+	}
+	for _, id := range []string{"A", "D", "E"} {
+		block := extractTaskBlock(t, output, id)
+		want := fmt.Sprintf("Log: %s", logPathFor(id))
+		if !strings.Contains(block, want) {
+			t.Fatalf("task %s block missing %q:\n%s", id, want, block)
+		}
+	}
+	blockB := extractTaskBlock(t, output, "B")
+	if strings.Contains(blockB, "Log:") {
+		t.Fatalf("skipped task B should not emit a log line:\n%s", blockB)
 	}
 }
 
