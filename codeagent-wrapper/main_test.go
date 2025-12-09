@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,11 +27,17 @@ func resetTestHooks() {
 	isTerminalFn = defaultIsTerminal
 	codexCommand = "codex"
 	cleanupHook = nil
+	cleanupLogsFn = cleanupOldLogs
+	signalNotifyFn = signal.Notify
+	signalStopFn = signal.Stop
 	buildCodexArgsFn = buildCodexArgs
 	selectBackendFn = selectBackend
 	commandContext = exec.CommandContext
+	newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+		return &realCmd{cmd: commandContext(ctx, name, args...)}
+	}
 	jsonMarshal = json.Marshal
-	forceKillDelay = 5
+	forceKillDelay.Store(5)
 	closeLogger()
 }
 
@@ -121,6 +128,444 @@ func captureOutput(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, _ := os.Pipe()
+	old := os.Stderr
+	os.Stderr = w
+	fn()
+	w.Close()
+	os.Stderr = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String()
+}
+
+type ctxAwareReader struct {
+	reader io.ReadCloser
+	mu     sync.Mutex
+	reason string
+	closed bool
+}
+
+func newCtxAwareReader(r io.ReadCloser) *ctxAwareReader {
+	return &ctxAwareReader{reader: r}
+}
+
+func (r *ctxAwareReader) Read(p []byte) (int, error) {
+	if r.reader == nil {
+		return 0, io.EOF
+	}
+	return r.reader.Read(p)
+}
+
+func (r *ctxAwareReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.reader == nil {
+		r.closed = true
+		return nil
+	}
+	r.closed = true
+	return r.reader.Close()
+}
+
+func (r *ctxAwareReader) CloseWithReason(reason string) error {
+	r.mu.Lock()
+	if !r.closed {
+		r.reason = reason
+	}
+	r.mu.Unlock()
+	return r.Close()
+}
+
+func (r *ctxAwareReader) Reason() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reason
+}
+
+type drainBlockingStdout struct {
+	inner *ctxAwareReader
+}
+
+func newDrainBlockingStdout(inner *ctxAwareReader) *drainBlockingStdout {
+	return &drainBlockingStdout{inner: inner}
+}
+
+func (d *drainBlockingStdout) Read(p []byte) (int, error) {
+	return d.inner.Read(p)
+}
+
+func (d *drainBlockingStdout) Close() error {
+	return d.inner.Close()
+}
+
+func (d *drainBlockingStdout) CloseWithReason(reason string) error {
+	if reason != stdoutCloseReasonDrain {
+		return nil
+	}
+	return d.inner.CloseWithReason(reason)
+}
+
+type drainBlockingCmd struct {
+	inner    *fakeCmd
+	injected atomic.Bool
+}
+
+func newDrainBlockingCmd(inner *fakeCmd) *drainBlockingCmd {
+	return &drainBlockingCmd{inner: inner}
+}
+
+func (d *drainBlockingCmd) Start() error {
+	return d.inner.Start()
+}
+
+func (d *drainBlockingCmd) Wait() error {
+	return d.inner.Wait()
+}
+
+func (d *drainBlockingCmd) StdoutPipe() (io.ReadCloser, error) {
+	stdout, err := d.inner.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	ctxReader, ok := stdout.(*ctxAwareReader)
+	if !ok {
+		return stdout, nil
+	}
+	d.injected.Store(true)
+	return newDrainBlockingStdout(ctxReader), nil
+}
+
+func (d *drainBlockingCmd) StdinPipe() (io.WriteCloser, error) {
+	return d.inner.StdinPipe()
+}
+
+func (d *drainBlockingCmd) SetStderr(w io.Writer) {
+	d.inner.SetStderr(w)
+}
+
+func (d *drainBlockingCmd) Process() processHandle {
+	return d.inner.Process()
+}
+
+type bufferWriteCloser struct {
+	buf    bytes.Buffer
+	mu     sync.Mutex
+	closed bool
+}
+
+func newBufferWriteCloser() *bufferWriteCloser {
+	return &bufferWriteCloser{}
+}
+
+func (b *bufferWriteCloser) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return 0, io.ErrClosedPipe
+	}
+	return b.buf.Write(p)
+}
+
+func (b *bufferWriteCloser) Close() error {
+	b.mu.Lock()
+	b.closed = true
+	b.mu.Unlock()
+	return nil
+}
+
+func (b *bufferWriteCloser) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+type fakeProcess struct {
+	pid         int
+	killed      atomic.Bool
+	mu          sync.Mutex
+	signals     []os.Signal
+	signalCount atomic.Int32
+	killCount   atomic.Int32
+	onSignal    func(os.Signal)
+	onKill      func()
+}
+
+func newFakeProcess(pid int) *fakeProcess {
+	if pid == 0 {
+		pid = 4242
+	}
+	return &fakeProcess{pid: pid}
+}
+
+func (p *fakeProcess) Pid() int {
+	return p.pid
+}
+
+func (p *fakeProcess) Kill() error {
+	p.killed.Store(true)
+	p.killCount.Add(1)
+	if p.onKill != nil {
+		p.onKill()
+	}
+	return nil
+}
+
+func (p *fakeProcess) Signal(sig os.Signal) error {
+	p.mu.Lock()
+	p.signals = append(p.signals, sig)
+	p.mu.Unlock()
+	p.signalCount.Add(1)
+	if p.onSignal != nil {
+		p.onSignal(sig)
+	}
+	return nil
+}
+
+func (p *fakeProcess) Signals() []os.Signal {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cp := make([]os.Signal, len(p.signals))
+	copy(cp, p.signals)
+	return cp
+}
+
+func (p *fakeProcess) Killed() bool {
+	return p.killed.Load()
+}
+
+func (p *fakeProcess) SignalCount() int {
+	return int(p.signalCount.Load())
+}
+
+func (p *fakeProcess) KillCount() int {
+	return int(p.killCount.Load())
+}
+
+type fakeStdoutEvent struct {
+	Delay time.Duration
+	Data  string
+}
+
+type fakeCmdConfig struct {
+	StdoutPlan          []fakeStdoutEvent
+	WaitDelay           time.Duration
+	WaitErr             error
+	StartErr            error
+	PID                 int
+	KeepStdoutOpen      bool
+	BlockWait           bool
+	ReleaseWaitOnKill   bool
+	ReleaseWaitOnSignal bool
+}
+
+type fakeCmd struct {
+	mu sync.Mutex
+
+	stdout         *ctxAwareReader
+	stdoutWriter   *io.PipeWriter
+	stdoutPlan     []fakeStdoutEvent
+	stdoutOnce     sync.Once
+	stdoutClaim    bool
+	keepStdoutOpen bool
+
+	stdoutWriteMu sync.Mutex
+
+	stdinWriter *bufferWriteCloser
+	stdinClaim  bool
+
+	stderr io.Writer
+
+	waitDelay time.Duration
+	waitErr   error
+	startErr  error
+
+	waitOnce        sync.Once
+	waitDone        chan struct{}
+	waitResult      error
+	waitReleaseCh   chan struct{}
+	waitReleaseOnce sync.Once
+	waitBlocked     bool
+
+	started bool
+
+	startCount      atomic.Int32
+	waitCount       atomic.Int32
+	stdoutPipeCount atomic.Int32
+
+	process *fakeProcess
+}
+
+func newFakeCmd(cfg fakeCmdConfig) *fakeCmd {
+	r, w := io.Pipe()
+	cmd := &fakeCmd{
+		stdout:         newCtxAwareReader(r),
+		stdoutWriter:   w,
+		stdoutPlan:     append([]fakeStdoutEvent(nil), cfg.StdoutPlan...),
+		stdinWriter:    newBufferWriteCloser(),
+		waitDelay:      cfg.WaitDelay,
+		waitErr:        cfg.WaitErr,
+		startErr:       cfg.StartErr,
+		waitDone:       make(chan struct{}),
+		keepStdoutOpen: cfg.KeepStdoutOpen,
+		process:        newFakeProcess(cfg.PID),
+	}
+	if len(cmd.stdoutPlan) == 0 {
+		cmd.stdoutPlan = nil
+	}
+	if cfg.BlockWait {
+		cmd.waitBlocked = true
+		cmd.waitReleaseCh = make(chan struct{})
+		releaseOnSignal := cfg.ReleaseWaitOnSignal
+		releaseOnKill := cfg.ReleaseWaitOnKill
+		if !releaseOnSignal && !releaseOnKill {
+			releaseOnKill = true
+		}
+		cmd.process.onSignal = func(os.Signal) {
+			if releaseOnSignal {
+				cmd.releaseWait()
+			}
+		}
+		cmd.process.onKill = func() {
+			if releaseOnKill {
+				cmd.releaseWait()
+			}
+		}
+	}
+	return cmd
+}
+
+func (f *fakeCmd) Start() error {
+	f.mu.Lock()
+	if f.started {
+		f.mu.Unlock()
+		return errors.New("start already called")
+	}
+	f.started = true
+	f.mu.Unlock()
+
+	f.startCount.Add(1)
+
+	if f.startErr != nil {
+		f.waitOnce.Do(func() {
+			f.waitResult = f.startErr
+			close(f.waitDone)
+		})
+		return f.startErr
+	}
+
+	go f.runStdoutScript()
+	return nil
+}
+
+func (f *fakeCmd) Wait() error {
+	f.waitCount.Add(1)
+	f.waitOnce.Do(func() {
+		if f.waitBlocked && f.waitReleaseCh != nil {
+			<-f.waitReleaseCh
+		} else if f.waitDelay > 0 {
+			time.Sleep(f.waitDelay)
+		}
+		f.waitResult = f.waitErr
+		close(f.waitDone)
+	})
+	<-f.waitDone
+	return f.waitResult
+}
+
+func (f *fakeCmd) StdoutPipe() (io.ReadCloser, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.stdoutClaim {
+		return nil, errors.New("stdout pipe already claimed")
+	}
+	f.stdoutClaim = true
+	f.stdoutPipeCount.Add(1)
+	return f.stdout, nil
+}
+
+func (f *fakeCmd) StdinPipe() (io.WriteCloser, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.stdinClaim {
+		return nil, errors.New("stdin pipe already claimed")
+	}
+	f.stdinClaim = true
+	return f.stdinWriter, nil
+}
+
+func (f *fakeCmd) SetStderr(w io.Writer) {
+	f.stderr = w
+}
+
+func (f *fakeCmd) Process() processHandle {
+	if f == nil {
+		return nil
+	}
+	return f.process
+}
+
+func (f *fakeCmd) runStdoutScript() {
+	if len(f.stdoutPlan) == 0 {
+		if !f.keepStdoutOpen {
+			f.CloseStdout(nil)
+		}
+		return
+	}
+	for _, ev := range f.stdoutPlan {
+		if ev.Delay > 0 {
+			time.Sleep(ev.Delay)
+		}
+		f.WriteStdout(ev.Data)
+	}
+	if !f.keepStdoutOpen {
+		f.CloseStdout(nil)
+	}
+}
+
+func (f *fakeCmd) releaseWait() {
+	if f.waitReleaseCh == nil {
+		return
+	}
+	f.waitReleaseOnce.Do(func() {
+		close(f.waitReleaseCh)
+	})
+}
+
+func (f *fakeCmd) WriteStdout(data string) {
+	if data == "" {
+		return
+	}
+	f.stdoutWriteMu.Lock()
+	defer f.stdoutWriteMu.Unlock()
+	if f.stdoutWriter != nil {
+		_, _ = io.WriteString(f.stdoutWriter, data)
+	}
+}
+
+func (f *fakeCmd) CloseStdout(err error) {
+	f.stdoutOnce.Do(func() {
+		if f.stdoutWriter == nil {
+			return
+		}
+		if err != nil {
+			_ = f.stdoutWriter.CloseWithError(err)
+			return
+		}
+		_ = f.stdoutWriter.Close()
+	})
+}
+
+func (f *fakeCmd) StdinContents() string {
+	if f.stdinWriter == nil {
+		return ""
+	}
+	return f.stdinWriter.String()
+}
+
 func createFakeCodexScript(t *testing.T, threadID, message string) string {
 	t.Helper()
 	scriptPath := filepath.Join(t.TempDir(), "codex.sh")
@@ -132,6 +577,296 @@ printf '%%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"
 		t.Fatalf("failed to create fake codex script: %v", err)
 	}
 	return scriptPath
+}
+
+func TestFakeCmdInfra(t *testing.T) {
+	t.Run("pipes and wait scheduling", func(t *testing.T) {
+		fake := newFakeCmd(fakeCmdConfig{
+			StdoutPlan: []fakeStdoutEvent{
+				{Data: "line1\n"},
+				{Delay: 5 * time.Millisecond, Data: "line2\n"},
+			},
+			WaitDelay: 20 * time.Millisecond,
+		})
+
+		stdout, err := fake.StdoutPipe()
+		if err != nil {
+			t.Fatalf("StdoutPipe() error = %v", err)
+		}
+
+		if err := fake.Start(); err != nil {
+			t.Fatalf("Start() error = %v", err)
+		}
+
+		scanner := bufio.NewScanner(stdout)
+		var lines []string
+		for scanner.Scan() {
+			lines = append(lines, scanner.Text())
+			if len(lines) == 2 {
+				break
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			t.Fatalf("scanner error: %v", err)
+		}
+		if len(lines) != 2 || lines[0] != "line1" || lines[1] != "line2" {
+			t.Fatalf("unexpected stdout lines: %v", lines)
+		}
+
+		ctxReader, ok := stdout.(*ctxAwareReader)
+		if !ok {
+			t.Fatalf("stdout pipe is %T, want *ctxAwareReader", stdout)
+		}
+		if err := ctxReader.CloseWithReason("test-complete"); err != nil {
+			t.Fatalf("CloseWithReason error: %v", err)
+		}
+		if ctxReader.Reason() != "test-complete" {
+			t.Fatalf("CloseWithReason reason mismatch: %q", ctxReader.Reason())
+		}
+
+		waitStart := time.Now()
+		if err := fake.Wait(); err != nil {
+			t.Fatalf("Wait() error = %v", err)
+		}
+		if elapsed := time.Since(waitStart); elapsed < 20*time.Millisecond {
+			t.Fatalf("Wait() returned too early: %v", elapsed)
+		}
+
+		if fake.startCount.Load() != 1 {
+			t.Fatalf("Start() count = %d, want 1", fake.startCount.Load())
+		}
+		if fake.waitCount.Load() != 1 {
+			t.Fatalf("Wait() count = %d, want 1", fake.waitCount.Load())
+		}
+		if fake.stdoutPipeCount.Load() != 1 {
+			t.Fatalf("StdoutPipe() count = %d, want 1", fake.stdoutPipeCount.Load())
+		}
+	})
+
+	t.Run("integration with runCodexTask", func(t *testing.T) {
+		defer resetTestHooks()
+
+		fake := newFakeCmd(fakeCmdConfig{
+			StdoutPlan: []fakeStdoutEvent{
+				{Data: `{"type":"thread.started","thread_id":"fake-thread"}` + "\n"},
+				{
+					Delay: time.Millisecond,
+					Data:  `{"type":"item.completed","item":{"type":"agent_message","text":"fake-msg"}}` + "\n",
+				},
+			},
+			WaitDelay: 5 * time.Millisecond,
+		})
+
+		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+			return fake
+		}
+		buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
+			return []string{targetArg}
+		}
+		codexCommand = "fake-cmd"
+
+		res := runCodexTask(TaskSpec{Task: "ignored"}, false, 2)
+		if res.ExitCode != 0 {
+			t.Fatalf("runCodexTask exit = %d, want 0 (%s)", res.ExitCode, res.Error)
+		}
+		if res.Message != "fake-msg" {
+			t.Fatalf("message = %q, want fake-msg", res.Message)
+		}
+		if res.SessionID != "fake-thread" {
+			t.Fatalf("sessionID = %q, want fake-thread", res.SessionID)
+		}
+		if fake.startCount.Load() != 1 {
+			t.Fatalf("Start() count = %d, want 1", fake.startCount.Load())
+		}
+		if fake.waitCount.Load() != 1 {
+			t.Fatalf("Wait() count = %d, want 1", fake.waitCount.Load())
+		}
+	})
+}
+
+func TestRunCodexTask_WaitBeforeParse(t *testing.T) {
+	defer resetTestHooks()
+
+	const (
+		threadID   = "wait-first-thread"
+		message    = "wait-first-message"
+		waitDelay  = 100 * time.Millisecond
+		extraDelay = 2 * time.Second
+	)
+
+	fake := newFakeCmd(fakeCmdConfig{
+		StdoutPlan: []fakeStdoutEvent{
+			{Data: fmt.Sprintf(`{"type":"thread.started","thread_id":"%s"}`+"\n", threadID)},
+			{Data: fmt.Sprintf(`{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}`+"\n", message)},
+			{Delay: extraDelay},
+		},
+		WaitDelay: waitDelay,
+	})
+
+	newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+		return fake
+	}
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
+		return []string{targetArg}
+	}
+	codexCommand = "fake-cmd"
+
+	start := time.Now()
+	result := runCodexTask(TaskSpec{Task: "ignored"}, false, 5)
+	elapsed := time.Since(start)
+
+	if result.ExitCode != 0 {
+		t.Fatalf("runCodexTask exit = %d, want 0 (%s)", result.ExitCode, result.Error)
+	}
+	if result.Message != message {
+		t.Fatalf("message = %q, want %q", result.Message, message)
+	}
+	if result.SessionID != threadID {
+		t.Fatalf("sessionID = %q, want %q", result.SessionID, threadID)
+	}
+	if elapsed >= extraDelay {
+		t.Fatalf("runCodexTask took %v, want < %v", elapsed, extraDelay)
+	}
+
+	if fake.stdout == nil {
+		t.Fatalf("stdout reader not initialized")
+	}
+	if reason := fake.stdout.Reason(); reason != stdoutCloseReasonWait {
+		t.Fatalf("stdout close reason = %q, want %q", reason, stdoutCloseReasonWait)
+	}
+}
+
+func TestRunCodexTask_ParseStall(t *testing.T) {
+	defer resetTestHooks()
+
+	const threadID = "stall-thread"
+	startG := runtime.NumGoroutine()
+
+	fake := newFakeCmd(fakeCmdConfig{
+		StdoutPlan: []fakeStdoutEvent{
+			{Data: fmt.Sprintf(`{"type":"thread.started","thread_id":"%s"}`+"\n", threadID)},
+		},
+		KeepStdoutOpen: true,
+	})
+
+	blockingCmd := newDrainBlockingCmd(fake)
+	newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+		return blockingCmd
+	}
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
+		return []string{targetArg}
+	}
+	codexCommand = "fake-cmd"
+
+	start := time.Now()
+	result := runCodexTask(TaskSpec{Task: "stall"}, false, 60)
+	elapsed := time.Since(start)
+	if !blockingCmd.injected.Load() {
+		t.Fatalf("stdout wrapper was not installed")
+	}
+
+	if result.ExitCode == 0 || result.Error == "" {
+		t.Fatalf("expected runCodexTask to error when parse stalls, got %+v", result)
+	}
+	errText := strings.ToLower(result.Error)
+	if !strings.Contains(errText, "drain timeout") && !strings.Contains(errText, "agent_message") {
+		t.Fatalf("error %q does not mention drain timeout or missing agent_message", result.Error)
+	}
+
+	if elapsed < stdoutDrainTimeout {
+		t.Fatalf("runCodexTask returned after %v (reason=%s), want >= %v to confirm drainTimer firing", elapsed, fake.stdout.Reason(), stdoutDrainTimeout)
+	}
+	maxDuration := stdoutDrainTimeout + time.Second
+	if elapsed >= maxDuration {
+		t.Fatalf("runCodexTask took %v, want < %v", elapsed, maxDuration)
+	}
+
+	if fake.stdout == nil {
+		t.Fatalf("stdout reader not initialized")
+	}
+	if !fake.stdout.closed {
+		t.Fatalf("stdout reader still open; drainTimer should force close")
+	}
+	if reason := fake.stdout.Reason(); reason != stdoutCloseReasonDrain {
+		t.Fatalf("stdout close reason = %q, want %q", reason, stdoutCloseReasonDrain)
+	}
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	allowed := startG + 8
+	finalG := runtime.NumGoroutine()
+	for finalG > allowed && time.Now().Before(deadline) {
+		runtime.Gosched()
+		time.Sleep(10 * time.Millisecond)
+		runtime.GC()
+		finalG = runtime.NumGoroutine()
+	}
+	if finalG > allowed {
+		t.Fatalf("goroutines leaked: before=%d after=%d", startG, finalG)
+	}
+}
+
+func TestRunCodexTask_ContextTimeout(t *testing.T) {
+	defer resetTestHooks()
+	forceKillDelay.Store(0)
+
+	fake := newFakeCmd(fakeCmdConfig{
+		KeepStdoutOpen:      true,
+		BlockWait:           true,
+		ReleaseWaitOnKill:   true,
+		ReleaseWaitOnSignal: false,
+	})
+
+	newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+		return fake
+	}
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
+		return []string{targetArg}
+	}
+	codexCommand = "fake-cmd"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	var capturedTimer *forceKillTimer
+	terminateCommandFn = func(cmd commandRunner) *forceKillTimer {
+		timer := terminateCommand(cmd)
+		capturedTimer = timer
+		return timer
+	}
+	defer func() { terminateCommandFn = terminateCommand }()
+
+	result := runCodexTaskWithContext(ctx, TaskSpec{Task: "ctx-timeout", WorkDir: defaultWorkdir}, nil, false, false, 60)
+
+	if result.ExitCode != 124 {
+		t.Fatalf("exit code = %d, want 124 (%s)", result.ExitCode, result.Error)
+	}
+	if !strings.Contains(strings.ToLower(result.Error), "timeout") {
+		t.Fatalf("error %q does not mention timeout", result.Error)
+	}
+	if fake.process == nil {
+		t.Fatalf("fake process not initialized")
+	}
+	if fake.process.SignalCount() == 0 {
+		t.Fatalf("expected SIGTERM to be sent, got 0")
+	}
+	if fake.process.KillCount() == 0 {
+		t.Fatalf("expected Kill to eventually run, got 0")
+	}
+	if capturedTimer == nil {
+		t.Fatalf("forceKillTimer not captured")
+	}
+	if !capturedTimer.stopped.Load() {
+		t.Fatalf("forceKillTimer.Stop was not called")
+	}
+	if !capturedTimer.drained.Load() {
+		t.Fatalf("forceKillTimer drain logic did not run")
+	}
+	if fake.stdout == nil {
+		t.Fatalf("stdout reader not initialized")
+	}
+	if reason := fake.stdout.Reason(); reason != stdoutCloseReasonCtx {
+		t.Fatalf("stdout close reason = %q, want %q", reason, stdoutCloseReasonCtx)
+	}
 }
 
 func TestRunParseArgs_NewMode(t *testing.T) {
@@ -299,7 +1034,7 @@ func TestRunParseArgs_BackendFlag(t *testing.T) {
 	}
 }
 
-func TestParseParallelConfig_Success(t *testing.T) {
+func TestRunParseParallelConfig_Success(t *testing.T) {
 	input := `---TASK---
 id: task-1
 dependencies: task-0
@@ -319,13 +1054,13 @@ do something`
 	}
 }
 
-func TestParseParallelConfig_InvalidFormat(t *testing.T) {
+func TestRunParseParallelConfig_InvalidFormat(t *testing.T) {
 	if _, err := parseParallelConfig([]byte("invalid format")); err == nil {
 		t.Fatalf("expected error for invalid format, got nil")
 	}
 }
 
-func TestParseParallelConfig_EmptyTasks(t *testing.T) {
+func TestRunParseParallelConfig_EmptyTasks(t *testing.T) {
 	input := `---TASK---
 id: empty
 ---CONTENT---
@@ -335,7 +1070,7 @@ id: empty
 	}
 }
 
-func TestParseParallelConfig_MissingID(t *testing.T) {
+func TestRunParseParallelConfig_MissingID(t *testing.T) {
 	input := `---TASK---
 ---CONTENT---
 do something`
@@ -344,7 +1079,7 @@ do something`
 	}
 }
 
-func TestParseParallelConfig_MissingTask(t *testing.T) {
+func TestRunParseParallelConfig_MissingTask(t *testing.T) {
 	input := `---TASK---
 id: task-1
 ---CONTENT---
@@ -354,7 +1089,7 @@ id: task-1
 	}
 }
 
-func TestParseParallelConfig_DuplicateID(t *testing.T) {
+func TestRunParseParallelConfig_DuplicateID(t *testing.T) {
 	input := `---TASK---
 id: dup
 ---CONTENT---
@@ -368,7 +1103,7 @@ two`
 	}
 }
 
-func TestParseParallelConfig_DelimiterFormat(t *testing.T) {
+func TestRunParseParallelConfig_DelimiterFormat(t *testing.T) {
 	input := `---TASK---
 id: T1
 workdir: /tmp
@@ -389,7 +1124,7 @@ code with special chars: $var "quotes"`
 	}
 }
 
-func TestShouldUseStdin(t *testing.T) {
+func TestRunShouldUseStdin(t *testing.T) {
 	tests := []struct {
 		name  string
 		task  string
@@ -667,7 +1402,7 @@ func TestRunNormalizeText(t *testing.T) {
 	}
 }
 
-func TestParseJSONStream(t *testing.T) {
+func TestRunParseJSONStream(t *testing.T) {
 	type testCase struct {
 		name         string
 		input        string
@@ -736,7 +1471,7 @@ func TestParseJSONStream_GeminiEvents(t *testing.T) {
 	}
 }
 
-func TestParseJSONStreamWithWarn_InvalidLine(t *testing.T) {
+func TestRunParseJSONStreamWithWarn_InvalidLine(t *testing.T) {
 	var warnings []string
 	warnFn := func(msg string) { warnings = append(warnings, msg) }
 	message, threadID := parseJSONStreamWithWarn(strings.NewReader("not-json"), warnFn)
@@ -830,6 +1565,10 @@ func TestRunTruncate(t *testing.T) {
 				t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.want)
 			}
 		})
+	}
+
+	if got := truncate("data", -1); got != "" {
+		t.Fatalf("truncate should return empty string for negative maxLen, got %q", got)
 	}
 }
 
@@ -998,7 +1737,7 @@ func TestRunIsTerminal(t *testing.T) {
 	}
 }
 
-func TestReadPipedTask(t *testing.T) {
+func TestRunReadPipedTask(t *testing.T) {
 	defer resetTestHooks()
 	tests := []struct {
 		name       string
@@ -1075,6 +1814,83 @@ func TestRunCodexTask_WithEcho(t *testing.T) {
 	res := runCodexTask(TaskSpec{Task: jsonOutput}, false, 10)
 	if res.ExitCode != 0 || res.Message != "Test output" || res.SessionID != "test-session" {
 		t.Fatalf("unexpected result: %+v", res)
+	}
+}
+
+func TestRunCodexTask_LogPathWithActiveLogger(t *testing.T) {
+	defer resetTestHooks()
+
+	logger, err := NewLoggerWithSuffix("active-logpath")
+	if err != nil {
+		t.Fatalf("failed to create logger: %v", err)
+	}
+	setLogger(logger)
+
+	codexCommand = "echo"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+
+	jsonOutput := `{"type":"thread.started","thread_id":"fake-thread"}
+{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`
+
+	result := runCodexTask(TaskSpec{Task: jsonOutput}, false, 5)
+	if result.LogPath != logger.Path() {
+		t.Fatalf("LogPath = %q, want %q", result.LogPath, logger.Path())
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("exit = %d, want 0 (%s)", result.ExitCode, result.Error)
+	}
+}
+
+func TestRunCodexTask_LogPathWithTempLogger(t *testing.T) {
+	defer resetTestHooks()
+
+	codexCommand = "echo"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+
+	jsonOutput := `{"type":"thread.started","thread_id":"temp-thread"}
+{"type":"item.completed","item":{"type":"agent_message","text":"temp"}}`
+
+	result := runCodexTask(TaskSpec{Task: jsonOutput}, true, 5)
+	t.Cleanup(func() {
+		if result.LogPath != "" {
+			os.Remove(result.LogPath)
+		}
+	})
+	if result.LogPath == "" {
+		t.Fatalf("LogPath should not be empty for temp logger")
+	}
+	if _, err := os.Stat(result.LogPath); err != nil {
+		t.Fatalf("log file %q should exist (err=%v)", result.LogPath, err)
+	}
+	if activeLogger() != nil {
+		t.Fatalf("active logger should be cleared after silent run")
+	}
+}
+
+func TestRunCodexTask_LogPathOnStartError(t *testing.T) {
+	defer resetTestHooks()
+
+	logger, err := NewLoggerWithSuffix("start-error")
+	if err != nil {
+		t.Fatalf("failed to create logger: %v", err)
+	}
+	setLogger(logger)
+
+	tmpFile, err := os.CreateTemp("", "start-error")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	codexCommand = tmpFile.Name()
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
+
+	result := runCodexTask(TaskSpec{Task: "ignored"}, false, 5)
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit")
+	}
+	if result.LogPath != logger.Path() {
+		t.Fatalf("LogPath = %q, want %q", result.LogPath, logger.Path())
 	}
 }
 
@@ -1211,7 +2027,24 @@ func TestCancelReason(t *testing.T) {
 	}
 }
 
-func TestSilentMode(t *testing.T) {
+func TestRunCodexProcess(t *testing.T) {
+	defer resetTestHooks()
+	script := createFakeCodexScript(t, "proc-thread", "proc-msg")
+	codexCommand = script
+
+	msg, threadID, exitCode := runCodexProcess(context.Background(), nil, "ignored", false, 5)
+	if exitCode != 0 {
+		t.Fatalf("exit = %d, want 0", exitCode)
+	}
+	if msg != "proc-msg" {
+		t.Fatalf("message = %q, want proc-msg", msg)
+	}
+	if threadID != "proc-thread" {
+		t.Fatalf("threadID = %q, want proc-thread", threadID)
+	}
+}
+
+func TestRunSilentMode(t *testing.T) {
 	defer resetTestHooks()
 	jsonOutput := `{"type":"thread.started","thread_id":"silent-session"}
 {"type":"item.completed","item":{"type":"agent_message","text":"quiet"}}`
@@ -1246,7 +2079,7 @@ func TestSilentMode(t *testing.T) {
 	}
 }
 
-func TestGenerateFinalOutput(t *testing.T) {
+func TestRunGenerateFinalOutput(t *testing.T) {
 	results := []TaskResult{{TaskID: "a", ExitCode: 0, Message: "ok"}, {TaskID: "b", ExitCode: 1, Error: "boom"}, {TaskID: "c", ExitCode: 0}}
 	out := generateFinalOutput(results)
 	if out == "" {
@@ -1258,9 +2091,37 @@ func TestGenerateFinalOutput(t *testing.T) {
 	if !strings.Contains(out, "Task: a") || !strings.Contains(out, "Task: b") {
 		t.Fatalf("task entries missing")
 	}
+	if strings.Contains(out, "Log:") {
+		t.Fatalf("unexpected log line when LogPath empty, got %q", out)
+	}
 }
 
-func TestTopologicalSort_LinearChain(t *testing.T) {
+func TestRunGenerateFinalOutput_LogPath(t *testing.T) {
+	results := []TaskResult{
+		{
+			TaskID:    "a",
+			ExitCode:  0,
+			Message:   "ok",
+			SessionID: "sid",
+			LogPath:   "/tmp/log-a",
+		},
+		{
+			TaskID:   "b",
+			ExitCode: 7,
+			Error:    "bad",
+			LogPath:  "/tmp/log-b",
+		},
+	}
+	out := generateFinalOutput(results)
+	if !strings.Contains(out, "Session: sid\nLog: /tmp/log-a") {
+		t.Fatalf("output missing log line after session: %q", out)
+	}
+	if !strings.Contains(out, "Log: /tmp/log-b") {
+		t.Fatalf("output missing log line for failed task: %q", out)
+	}
+}
+
+func TestRunTopologicalSort_LinearChain(t *testing.T) {
 	tasks := []TaskSpec{{ID: "a"}, {ID: "b", Dependencies: []string{"a"}}, {ID: "c", Dependencies: []string{"b"}}}
 	layers, err := topologicalSort(tasks)
 	if err != nil {
@@ -1271,7 +2132,7 @@ func TestTopologicalSort_LinearChain(t *testing.T) {
 	}
 }
 
-func TestTopologicalSort_Branching(t *testing.T) {
+func TestRunTopologicalSort_Branching(t *testing.T) {
 	tasks := []TaskSpec{{ID: "root"}, {ID: "left", Dependencies: []string{"root"}}, {ID: "right", Dependencies: []string{"root"}}, {ID: "leaf", Dependencies: []string{"left", "right"}}}
 	layers, err := topologicalSort(tasks)
 	if err != nil {
@@ -1282,7 +2143,7 @@ func TestTopologicalSort_Branching(t *testing.T) {
 	}
 }
 
-func TestTopologicalSort_ParallelTasks(t *testing.T) {
+func TestRunTopologicalSort_ParallelTasks(t *testing.T) {
 	tasks := []TaskSpec{{ID: "a"}, {ID: "b"}, {ID: "c"}}
 	layers, err := topologicalSort(tasks)
 	if err != nil {
@@ -1293,7 +2154,7 @@ func TestTopologicalSort_ParallelTasks(t *testing.T) {
 	}
 }
 
-func TestShouldSkipTask(t *testing.T) {
+func TestRunShouldSkipTask(t *testing.T) {
 	failed := map[string]TaskResult{"a": {TaskID: "a", ExitCode: 1}, "b": {TaskID: "b", ExitCode: 2}}
 	tests := []struct {
 		name           string
@@ -1322,28 +2183,28 @@ func TestShouldSkipTask(t *testing.T) {
 	}
 }
 
-func TestTopologicalSort_CycleDetection(t *testing.T) {
+func TestRunTopologicalSort_CycleDetection(t *testing.T) {
 	tasks := []TaskSpec{{ID: "a", Dependencies: []string{"b"}}, {ID: "b", Dependencies: []string{"a"}}}
 	if _, err := topologicalSort(tasks); err == nil || !strings.Contains(err.Error(), "cycle detected") {
 		t.Fatalf("expected cycle error, got %v", err)
 	}
 }
 
-func TestTopologicalSort_IndirectCycle(t *testing.T) {
+func TestRunTopologicalSort_IndirectCycle(t *testing.T) {
 	tasks := []TaskSpec{{ID: "a", Dependencies: []string{"c"}}, {ID: "b", Dependencies: []string{"a"}}, {ID: "c", Dependencies: []string{"b"}}}
 	if _, err := topologicalSort(tasks); err == nil || !strings.Contains(err.Error(), "cycle detected") {
 		t.Fatalf("expected cycle error, got %v", err)
 	}
 }
 
-func TestTopologicalSort_MissingDependency(t *testing.T) {
+func TestRunTopologicalSort_MissingDependency(t *testing.T) {
 	tasks := []TaskSpec{{ID: "a", Dependencies: []string{"missing"}}}
 	if _, err := topologicalSort(tasks); err == nil || !strings.Contains(err.Error(), "dependency \"missing\" not found") {
 		t.Fatalf("expected missing dependency error, got %v", err)
 	}
 }
 
-func TestTopologicalSort_LargeGraph(t *testing.T) {
+func TestRunTopologicalSort_LargeGraph(t *testing.T) {
 	const count = 200
 	tasks := make([]TaskSpec, count)
 	for i := 0; i < count; i++ {
@@ -1365,7 +2226,7 @@ func TestTopologicalSort_LargeGraph(t *testing.T) {
 	}
 }
 
-func TestExecuteConcurrent_ParallelExecution(t *testing.T) {
+func TestRunExecuteConcurrent_ParallelExecution(t *testing.T) {
 	orig := runCodexTaskFn
 	defer func() { runCodexTaskFn = orig }()
 
@@ -1401,7 +2262,7 @@ func TestExecuteConcurrent_ParallelExecution(t *testing.T) {
 	}
 }
 
-func TestExecuteConcurrent_LayerOrdering(t *testing.T) {
+func TestRunExecuteConcurrent_LayerOrdering(t *testing.T) {
 	orig := runCodexTaskFn
 	defer func() { runCodexTaskFn = orig }()
 
@@ -1423,7 +2284,7 @@ func TestExecuteConcurrent_LayerOrdering(t *testing.T) {
 	}
 }
 
-func TestExecuteConcurrent_ErrorIsolation(t *testing.T) {
+func TestRunExecuteConcurrent_ErrorIsolation(t *testing.T) {
 	orig := runCodexTaskFn
 	defer func() { runCodexTaskFn = orig }()
 
@@ -1456,7 +2317,7 @@ func TestExecuteConcurrent_ErrorIsolation(t *testing.T) {
 	}
 }
 
-func TestExecuteConcurrent_PanicRecovered(t *testing.T) {
+func TestRunExecuteConcurrent_PanicRecovered(t *testing.T) {
 	orig := runCodexTaskFn
 	defer func() { runCodexTaskFn = orig }()
 
@@ -1470,7 +2331,7 @@ func TestExecuteConcurrent_PanicRecovered(t *testing.T) {
 	}
 }
 
-func TestExecuteConcurrent_LargeFanout(t *testing.T) {
+func TestRunExecuteConcurrent_LargeFanout(t *testing.T) {
 	orig := runCodexTaskFn
 	defer func() { runCodexTaskFn = orig }()
 
@@ -1510,6 +2371,37 @@ test`
 	}
 }
 
+func TestRun_ParallelTriggersCleanup(t *testing.T) {
+	defer resetTestHooks()
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"codex-wrapper", "--parallel"}
+	stdinReader = strings.NewReader(`---TASK---
+id: only
+---CONTENT---
+noop`)
+
+	cleanupCalls := 0
+	cleanupLogsFn = func() (CleanupStats, error) {
+		cleanupCalls++
+		return CleanupStats{}, nil
+	}
+
+	orig := runCodexTaskFn
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: "ok"}
+	}
+	defer func() { runCodexTaskFn = orig }()
+
+	if exitCode := run(); exitCode != 0 {
+		t.Fatalf("exit = %d, want 0", exitCode)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup called %d times, want 1", cleanupCalls)
+	}
+}
+
 func TestRun_Version(t *testing.T) {
 	defer resetTestHooks()
 	os.Args = []string{"codeagent-wrapper", "--version"}
@@ -1539,6 +2431,172 @@ func TestRun_HelpShort(t *testing.T) {
 	os.Args = []string{"codeagent-wrapper", "-h"}
 	if code := run(); code != 0 {
 		t.Errorf("exit = %d, want 0", code)
+	}
+}
+
+func TestRun_HelpDoesNotTriggerCleanup(t *testing.T) {
+	defer resetTestHooks()
+	os.Args = []string{"codex-wrapper", "--help"}
+	cleanupLogsFn = func() (CleanupStats, error) {
+		t.Fatalf("cleanup should not run for --help")
+		return CleanupStats{}, nil
+	}
+
+	if code := run(); code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+}
+
+func TestRun_VersionDoesNotTriggerCleanup(t *testing.T) {
+	defer resetTestHooks()
+	os.Args = []string{"codex-wrapper", "--version"}
+	cleanupLogsFn = func() (CleanupStats, error) {
+		t.Fatalf("cleanup should not run for --version")
+		return CleanupStats{}, nil
+	}
+
+	if code := run(); code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+}
+
+func TestRunCleanupMode_Success(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = func() (CleanupStats, error) {
+		return CleanupStats{
+			Scanned:      5,
+			Deleted:      3,
+			Kept:         2,
+			DeletedFiles: []string{"codex-wrapper-111.log", "codex-wrapper-222.log", "codex-wrapper-333.log"},
+			KeptFiles:    []string{"codex-wrapper-444.log", "codex-wrapper-555.log"},
+		}, nil
+	}
+
+	var exitCode int
+	output := captureOutput(t, func() {
+		exitCode = runCleanupMode()
+	})
+	if exitCode != 0 {
+		t.Fatalf("exit = %d, want 0", exitCode)
+	}
+	want := "Cleanup completed\nFiles scanned: 5\nFiles deleted: 3\n  - codex-wrapper-111.log\n  - codex-wrapper-222.log\n  - codex-wrapper-333.log\nFiles kept: 2\n  - codex-wrapper-444.log\n  - codex-wrapper-555.log\n"
+	if output != want {
+		t.Fatalf("output = %q, want %q", output, want)
+	}
+}
+
+func TestRunCleanupMode_SuccessWithErrorsLine(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = func() (CleanupStats, error) {
+		return CleanupStats{
+			Scanned:      2,
+			Deleted:      1,
+			Kept:         0,
+			Errors:       1,
+			DeletedFiles: []string{"codex-wrapper-123.log"},
+		}, nil
+	}
+
+	var exitCode int
+	output := captureOutput(t, func() {
+		exitCode = runCleanupMode()
+	})
+	if exitCode != 0 {
+		t.Fatalf("exit = %d, want 0", exitCode)
+	}
+	want := "Cleanup completed\nFiles scanned: 2\nFiles deleted: 1\n  - codex-wrapper-123.log\nFiles kept: 0\nDeletion errors: 1\n"
+	if output != want {
+		t.Fatalf("output = %q, want %q", output, want)
+	}
+}
+
+func TestRunCleanupMode_ZeroStatsOutput(t *testing.T) {
+	defer resetTestHooks()
+	calls := 0
+	cleanupLogsFn = func() (CleanupStats, error) {
+		calls++
+		return CleanupStats{}, nil
+	}
+
+	var exitCode int
+	output := captureOutput(t, func() {
+		exitCode = runCleanupMode()
+	})
+	if exitCode != 0 {
+		t.Fatalf("exit = %d, want 0", exitCode)
+	}
+	want := "Cleanup completed\nFiles scanned: 0\nFiles deleted: 0\nFiles kept: 0\n"
+	if output != want {
+		t.Fatalf("output = %q, want %q", output, want)
+	}
+	if calls != 1 {
+		t.Fatalf("cleanup called %d times, want 1", calls)
+	}
+}
+
+func TestRunCleanupMode_Error(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = func() (CleanupStats, error) {
+		return CleanupStats{}, fmt.Errorf("boom")
+	}
+
+	var exitCode int
+	errOutput := captureStderr(t, func() {
+		exitCode = runCleanupMode()
+	})
+	if exitCode != 1 {
+		t.Fatalf("exit = %d, want 1", exitCode)
+	}
+	if !strings.Contains(errOutput, "Cleanup failed") || !strings.Contains(errOutput, "boom") {
+		t.Fatalf("stderr = %q, want error message", errOutput)
+	}
+}
+
+func TestRunCleanupMode_MissingFn(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = nil
+
+	var exitCode int
+	errOutput := captureStderr(t, func() {
+		exitCode = runCleanupMode()
+	})
+	if exitCode != 1 {
+		t.Fatalf("exit = %d, want 1", exitCode)
+	}
+	if !strings.Contains(errOutput, "log cleanup function not configured") {
+		t.Fatalf("stderr = %q, want missing-fn message", errOutput)
+	}
+}
+
+func TestRun_CleanupFlag(t *testing.T) {
+	defer resetTestHooks()
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"codex-wrapper", "--cleanup"}
+
+	calls := 0
+	cleanupLogsFn = func() (CleanupStats, error) {
+		calls++
+		return CleanupStats{Scanned: 1, Deleted: 1}, nil
+	}
+
+	var exitCode int
+	output := captureOutput(t, func() {
+		exitCode = run()
+	})
+	if exitCode != 0 {
+		t.Fatalf("exit = %d, want 0", exitCode)
+	}
+	if calls != 1 {
+		t.Fatalf("cleanup called %d times, want 1", calls)
+	}
+	want := "Cleanup completed\nFiles scanned: 1\nFiles deleted: 1\nFiles kept: 0\n"
+	if output != want {
+		t.Fatalf("output = %q, want %q", output, want)
+	}
+	if logger := activeLogger(); logger != nil {
+		t.Fatalf("logger should not initialize for --cleanup mode")
 	}
 }
 
@@ -1756,7 +2814,7 @@ func TestRun_LoggerRemovedOnSignal(t *testing.T) {
 	defer signal.Reset(syscall.SIGINT, syscall.SIGTERM)
 
 	// Set shorter delays for faster test
-	forceKillDelay = 1
+	forceKillDelay.Store(1)
 
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)
@@ -1825,13 +2883,64 @@ func TestRun_CleanupHookAlwaysCalled(t *testing.T) {
 	}
 }
 
+func TestRunStartupCleanupNil(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = nil
+	runStartupCleanup()
+}
+
+func TestRunStartupCleanupErrorLogged(t *testing.T) {
+	defer resetTestHooks()
+
+	logger, err := NewLoggerWithSuffix("startup-error")
+	if err != nil {
+		t.Fatalf("failed to create logger: %v", err)
+	}
+	setLogger(logger)
+	t.Cleanup(func() {
+		logger.Flush()
+		logger.Close()
+		os.Remove(logger.Path())
+	})
+
+	cleanupLogsFn = func() (CleanupStats, error) {
+		return CleanupStats{}, errors.New("zapped")
+	}
+
+	runStartupCleanup()
+}
+
+func TestRun_CleanupFailureDoesNotBlock(t *testing.T) {
+	defer resetTestHooks()
+	stdout := captureStdoutPipe()
+	defer restoreStdoutPipe(stdout)
+
+	cleanupCalled := 0
+	cleanupLogsFn = func() (CleanupStats, error) {
+		cleanupCalled++
+		panic("boom")
+	}
+
+	codexCommand = createFakeCodexScript(t, "tid-cleanup", "ok")
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+	os.Args = []string{"codex-wrapper", "task"}
+
+	if exit := run(); exit != 0 {
+		t.Fatalf("exit = %d, want 0", exit)
+	}
+	if cleanupCalled != 1 {
+		t.Fatalf("cleanup called %d times, want 1", cleanupCalled)
+	}
+}
+
 // Coverage helper reused by logger_test to keep focused runs exercising core paths.
-func TestParseJSONStream_CoverageSuite(t *testing.T) {
+func TestRunParseJSONStream_CoverageSuite(t *testing.T) {
 	suite := []struct {
 		name string
 		fn   func(*testing.T)
 	}{
-		{"TestParseJSONStream", TestParseJSONStream},
+		{"TestRunParseJSONStream", TestRunParseJSONStream},
 		{"TestRunNormalizeText", TestRunNormalizeText},
 		{"TestRunTruncate", TestRunTruncate},
 		{"TestRunMin", TestRunMin},
@@ -1843,27 +2952,323 @@ func TestParseJSONStream_CoverageSuite(t *testing.T) {
 	}
 }
 
-func TestHello(t *testing.T) {
+func TestRunHello(t *testing.T) {
 	if got := hello(); got != "hello world" {
 		t.Fatalf("hello() = %q, want %q", got, "hello world")
 	}
 }
 
-func TestGreet(t *testing.T) {
+func TestRunGreet(t *testing.T) {
 	if got := greet("Linus"); got != "hello Linus" {
 		t.Fatalf("greet() = %q, want %q", got, "hello Linus")
 	}
 }
 
-func TestFarewell(t *testing.T) {
+func TestRunFarewell(t *testing.T) {
 	if got := farewell("Linus"); got != "goodbye Linus" {
 		t.Fatalf("farewell() = %q, want %q", got, "goodbye Linus")
 	}
 }
 
-func TestFarewellEmpty(t *testing.T) {
+func TestRunFarewellEmpty(t *testing.T) {
 	if got := farewell(""); got != "goodbye " {
 		t.Fatalf("farewell(\"\") = %q, want %q", got, "goodbye ")
+	}
+}
+
+func TestRunTailBuffer(t *testing.T) {
+	tb := &tailBuffer{limit: 5}
+	if n, err := tb.Write([]byte("abcd")); err != nil || n != 4 {
+		t.Fatalf("Write returned (%d, %v), want (4, nil)", n, err)
+	}
+	if n, err := tb.Write([]byte("efg")); err != nil || n != 3 {
+		t.Fatalf("Write returned (%d, %v), want (3, nil)", n, err)
+	}
+	if got := tb.String(); got != "cdefg" {
+		t.Fatalf("tail buffer = %q, want %q", got, "cdefg")
+	}
+	if n, err := tb.Write([]byte("0123456")); err != nil || n != 7 {
+		t.Fatalf("Write returned (%d, %v), want (7, nil)", n, err)
+	}
+	if got := tb.String(); got != "23456" {
+		t.Fatalf("tail buffer = %q, want %q", got, "23456")
+	}
+}
+
+func TestRunLogWriter(t *testing.T) {
+	defer resetTestHooks()
+	logger, err := NewLoggerWithSuffix("logwriter")
+	if err != nil {
+		t.Fatalf("failed to create logger: %v", err)
+	}
+	setLogger(logger)
+
+	lw := newLogWriter("TEST: ", 10)
+	if _, err := lw.Write([]byte("hello\n")); err != nil {
+		t.Fatalf("write hello failed: %v", err)
+	}
+	if _, err := lw.Write([]byte("world-is-long")); err != nil {
+		t.Fatalf("write world failed: %v", err)
+	}
+	lw.Flush()
+
+	logger.Flush()
+	logger.Close()
+
+	data, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatalf("failed to read log file: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "TEST: hello") {
+		t.Fatalf("log missing hello entry: %s", text)
+	}
+	if !strings.Contains(text, "TEST: world-i...") {
+		t.Fatalf("log missing truncated entry: %s", text)
+	}
+	os.Remove(logger.Path())
+}
+
+func TestNewLogWriterDefaultLimit(t *testing.T) {
+	lw := newLogWriter("TEST: ", 0)
+	if lw.maxLen != codexLogLineLimit {
+		t.Fatalf("newLogWriter maxLen = %d, want %d", lw.maxLen, codexLogLineLimit)
+	}
+	lw = newLogWriter("TEST: ", -5)
+	if lw.maxLen != codexLogLineLimit {
+		t.Fatalf("negative maxLen should default, got %d", lw.maxLen)
+	}
+}
+
+func TestRunDiscardInvalidJSON(t *testing.T) {
+	reader := bufio.NewReader(strings.NewReader("bad line\n{\"type\":\"ok\"}\n"))
+	next, err := discardInvalidJSON(nil, reader)
+	if err != nil {
+		t.Fatalf("discardInvalidJSON error: %v", err)
+	}
+	line, err := next.ReadString('\n')
+	if err != nil {
+		t.Fatalf("failed to read next line: %v", err)
+	}
+	if strings.TrimSpace(line) != `{"type":"ok"}` {
+		t.Fatalf("unexpected remaining line: %q", line)
+	}
+
+	t.Run("no newline", func(t *testing.T) {
+		reader := bufio.NewReader(strings.NewReader("partial"))
+		decoder := json.NewDecoder(strings.NewReader(""))
+		if _, err := discardInvalidJSON(decoder, reader); !errors.Is(err, io.EOF) {
+			t.Fatalf("expected EOF when no newline, got %v", err)
+		}
+	})
+}
+
+func TestRunForwardSignals(t *testing.T) {
+	defer resetTestHooks()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command not available on Windows")
+	}
+
+	cmd := exec.Command("sleep", "5")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("unable to start sleep command: %v", err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		cmd.Wait()
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	forceKillDelay.Store(0)
+	defer forceKillDelay.Store(5)
+
+	ready := make(chan struct{})
+	var captured chan<- os.Signal
+	signalNotifyFn = func(ch chan<- os.Signal, sig ...os.Signal) {
+		captured = ch
+		close(ready)
+	}
+	signalStopFn = func(ch chan<- os.Signal) {}
+	defer func() {
+		signalNotifyFn = signal.Notify
+		signalStopFn = signal.Stop
+	}()
+
+	var mu sync.Mutex
+	var logs []string
+	forwardSignals(ctx, cmd, func(msg string) {
+		mu.Lock()
+		defer mu.Unlock()
+		logs = append(logs, msg)
+	})
+
+	select {
+	case <-ready:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("signalNotifyFn not invoked")
+	}
+
+	captured <- syscall.SIGINT
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("process did not exit after forwarded signal")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(logs) == 0 {
+		t.Fatalf("expected log entry for forwarded signal")
+	}
+}
+
+func TestRunNonParallelPrintsLogPath(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := t.TempDir()
+	t.Setenv("TMPDIR", tempDir)
+
+	os.Args = []string{"codex-wrapper", "do-stuff"}
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+	codexCommand = "echo"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
+		return []string{`{"type":"thread.started","thread_id":"cli-session"}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`}
+	}
+
+	var exitCode int
+	stderr := captureStderr(t, func() {
+		_ = captureOutput(t, func() {
+			exitCode = run()
+		})
+	})
+	if exitCode != 0 {
+		t.Fatalf("run() exit = %d, want 0", exitCode)
+	}
+	expectedLog := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+	wantLine := fmt.Sprintf("Log: %s", expectedLog)
+	if !strings.Contains(stderr, wantLine) {
+		t.Fatalf("stderr missing %q, got: %q", wantLine, stderr)
+	}
+}
+
+func TestRealProcessNilSafety(t *testing.T) {
+	var proc *realProcess
+	if pid := proc.Pid(); pid != 0 {
+		t.Fatalf("Pid() = %d, want 0", pid)
+	}
+	if err := proc.Kill(); err != nil {
+		t.Fatalf("Kill() error = %v", err)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("Signal() error = %v", err)
+	}
+}
+
+func TestRealProcessKill(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command not available on Windows")
+	}
+
+	cmd := exec.Command("sleep", "5")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("unable to start sleep command: %v", err)
+	}
+	waited := false
+	defer func() {
+		if waited {
+			return
+		}
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			cmd.Wait()
+		}
+	}()
+
+	proc := &realProcess{proc: cmd.Process}
+	if proc.Pid() == 0 {
+		t.Fatalf("Pid() returned 0 for active process")
+	}
+	if err := proc.Kill(); err != nil {
+		t.Fatalf("Kill() error = %v", err)
+	}
+	waitErr := cmd.Wait()
+	waited = true
+	if waitErr == nil {
+		t.Fatalf("Kill() should lead to non-nil wait error")
+	}
+}
+
+func TestRealProcessSignal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command not available on Windows")
+	}
+
+	cmd := exec.Command("sleep", "5")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("unable to start sleep command: %v", err)
+	}
+	waited := false
+	defer func() {
+		if waited {
+			return
+		}
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			cmd.Wait()
+		}
+	}()
+
+	proc := &realProcess{proc: cmd.Process}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("Signal() error = %v", err)
+	}
+	waitErr := cmd.Wait()
+	waited = true
+	if waitErr == nil {
+		t.Fatalf("Signal() should lead to non-nil wait error")
+	}
+}
+
+func TestRealCmdProcess(t *testing.T) {
+	rc := &realCmd{}
+	if rc.Process() != nil {
+		t.Fatalf("Process() should return nil when realCmd has no command")
+	}
+	rc = &realCmd{cmd: &exec.Cmd{}}
+	if rc.Process() != nil {
+		t.Fatalf("Process() should return nil when exec.Cmd has no process")
+	}
+
+	if runtime.GOOS == "windows" {
+		return
+	}
+
+	cmd := exec.Command("sleep", "5")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("unable to start sleep command: %v", err)
+	}
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			cmd.Wait()
+		}
+	}()
+
+	rc = &realCmd{cmd: cmd}
+	handle := rc.Process()
+	if handle == nil {
+		t.Fatalf("expected non-nil process handle")
+	}
+	if pid := handle.Pid(); pid == 0 {
+		t.Fatalf("process handle returned pid=0")
 	}
 }
 

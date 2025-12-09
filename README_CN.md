@@ -20,7 +20,7 @@
 - Codex 擅长专注的代码生成和执行
 - 两者结合效果优于单独使用
 
-## 快速开始
+## 快速开始（windows上请在Powershell中执行）
 
 ```bash
 git clone https://github.com/cexll/myclaude.git
@@ -233,6 +233,33 @@ python3 install.py --module dev
 
 # 手动
 bash install.sh
+```
+
+#### Windows 系统
+
+Windows 系统会将 `codex-wrapper.exe` 安装到 `%USERPROFILE%\bin`。
+
+```powershell
+# PowerShell（推荐）
+powershell -ExecutionPolicy Bypass -File install.ps1
+
+# 批处理（cmd）
+install.bat
+```
+
+**添加到 PATH**（如果安装程序未自动检测）：
+
+```powershell
+# PowerShell - 永久添加（当前用户）
+[Environment]::SetEnvironmentVariable('PATH', "$HOME\bin;" + [Environment]::GetEnvironmentVariable('PATH','User'), 'User')
+
+# PowerShell - 仅当前会话
+$Env:PATH = "$HOME\bin;$Env:PATH"
+```
+
+```batch
+REM cmd.exe - 永久添加（当前用户）
+setx PATH "%USERPROFILE%\bin;%PATH%"
 ```
 
 ---

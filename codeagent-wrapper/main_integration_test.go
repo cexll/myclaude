@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -79,6 +80,8 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 				currentTask.Error = strings.TrimPrefix(line, "Error: ")
 			} else if strings.HasPrefix(line, "Session:") {
 				currentTask.SessionID = strings.TrimPrefix(line, "Session: ")
+			} else if strings.HasPrefix(line, "Log:") {
+				currentTask.LogPath = strings.TrimSpace(strings.TrimPrefix(line, "Log:"))
 			} else if line != "" && !strings.HasPrefix(line, "===") && !strings.HasPrefix(line, "---") {
 				if currentTask.Message != "" {
 					currentTask.Message += "\n"
@@ -95,6 +98,32 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 	return payload
 }
 
+func extractTaskBlock(t *testing.T, output, taskID string) string {
+	t.Helper()
+	header := fmt.Sprintf("--- Task: %s ---", taskID)
+	lines := strings.Split(output, "\n")
+	var block []string
+	collecting := false
+	for _, raw := range lines {
+		trimmed := strings.TrimSpace(raw)
+		if !collecting {
+			if trimmed == header {
+				collecting = true
+				block = append(block, trimmed)
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "--- Task: ") && trimmed != header {
+			break
+		}
+		block = append(block, trimmed)
+	}
+	if len(block) == 0 {
+		t.Fatalf("task block %s not found in output:\n%s", taskID, output)
+	}
+	return strings.Join(block, "\n")
+}
+
 func findResultByID(t *testing.T, payload integrationOutput, id string) TaskResult {
 	t.Helper()
 	for _, res := range payload.Results {
@@ -106,7 +135,7 @@ func findResultByID(t *testing.T, payload integrationOutput, id string) TaskResu
 	return TaskResult{}
 }
 
-func TestParallelEndToEnd_OrderAndConcurrency(t *testing.T) {
+func TestRunParallelEndToEnd_OrderAndConcurrency(t *testing.T) {
 	defer resetTestHooks()
 	origRun := runCodexTaskFn
 	t.Cleanup(func() {
@@ -217,7 +246,7 @@ task-e`
 	}
 }
 
-func TestParallelCycleDetectionStopsExecution(t *testing.T) {
+func TestRunParallelCycleDetectionStopsExecution(t *testing.T) {
 	defer resetTestHooks()
 	origRun := runCodexTaskFn
 	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
@@ -255,7 +284,7 @@ b`
 	}
 }
 
-func TestParallelPartialFailureBlocksDependents(t *testing.T) {
+func TestRunParallelOutputsIncludeLogPaths(t *testing.T) {
 	defer resetTestHooks()
 	origRun := runCodexTaskFn
 	t.Cleanup(func() {
@@ -263,11 +292,205 @@ func TestParallelPartialFailureBlocksDependents(t *testing.T) {
 		resetTestHooks()
 	})
 
+	tempDir := t.TempDir()
+	logPathFor := func(id string) string {
+		return filepath.Join(tempDir, fmt.Sprintf("%s.log", id))
+	}
+
 	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
-		if task.ID == "A" {
-			return TaskResult{TaskID: "A", ExitCode: 2, Error: "boom"}
+		res := TaskResult{
+			TaskID:    task.ID,
+			Message:   fmt.Sprintf("result-%s", task.ID),
+			SessionID: fmt.Sprintf("session-%s", task.ID),
+			LogPath:   logPathFor(task.ID),
 		}
-		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: task.Task}
+		if task.ID == "beta" {
+			res.ExitCode = 9
+			res.Error = "boom"
+		}
+		return res
+	}
+
+	input := `---TASK---
+id: alpha
+---CONTENT---
+task-alpha
+---TASK---
+id: beta
+---CONTENT---
+task-beta`
+	stdinReader = bytes.NewReader([]byte(input))
+	os.Args = []string{"codex-wrapper", "--parallel"}
+
+	var exitCode int
+	output := captureStdout(t, func() {
+		exitCode = run()
+	})
+
+	if exitCode != 9 {
+		t.Fatalf("parallel run exit=%d, want 9", exitCode)
+	}
+
+	payload := parseIntegrationOutput(t, output)
+	alpha := findResultByID(t, payload, "alpha")
+	beta := findResultByID(t, payload, "beta")
+
+	if alpha.LogPath != logPathFor("alpha") {
+		t.Fatalf("alpha log path = %q, want %q", alpha.LogPath, logPathFor("alpha"))
+	}
+	if beta.LogPath != logPathFor("beta") {
+		t.Fatalf("beta log path = %q, want %q", beta.LogPath, logPathFor("beta"))
+	}
+
+	for _, id := range []string{"alpha", "beta"} {
+		want := fmt.Sprintf("Log: %s", logPathFor(id))
+		if !strings.Contains(output, want) {
+			t.Fatalf("parallel output missing %q for %s:\n%s", want, id, output)
+		}
+	}
+}
+
+func TestRunParallelStartupLogsPrinted(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+	input := `---TASK---
+id: a
+---CONTENT---
+fail
+---TASK---
+id: b
+---CONTENT---
+ok-b
+---TASK---
+id: c
+dependencies: a
+---CONTENT---
+should-skip
+---TASK---
+id: d
+---CONTENT---
+ok-d`
+	stdinReader = bytes.NewReader([]byte(input))
+	os.Args = []string{"codex-wrapper", "--parallel"}
+
+	expectedLog := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+
+	origRun := runCodexTaskFn
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		path := expectedLog
+		if logger := activeLogger(); logger != nil && logger.Path() != "" {
+			path = logger.Path()
+		}
+		if task.ID == "a" {
+			return TaskResult{TaskID: task.ID, ExitCode: 3, Error: "boom", LogPath: path}
+		}
+		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: task.Task, LogPath: path}
+	}
+	t.Cleanup(func() { runCodexTaskFn = origRun })
+
+	var exitCode int
+	var stdoutOut string
+	stderrOut := captureStderr(t, func() {
+		stdoutOut = captureStdout(t, func() {
+			exitCode = run()
+		})
+	})
+
+	if exitCode == 0 {
+		t.Fatalf("expected non-zero exit due to task failure, got %d", exitCode)
+	}
+	if stdoutOut == "" {
+		t.Fatalf("expected parallel summary on stdout")
+	}
+
+	lines := strings.Split(strings.TrimSpace(stderrOut), "\n")
+	var bannerSeen bool
+	var taskLines []string
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if line == "=== Starting Parallel Execution ===" {
+			if bannerSeen {
+				t.Fatalf("banner printed multiple times:\n%s", stderrOut)
+			}
+			bannerSeen = true
+			continue
+		}
+		taskLines = append(taskLines, line)
+	}
+
+	if !bannerSeen {
+		t.Fatalf("expected startup banner in stderr, got:\n%s", stderrOut)
+	}
+
+	expectedLines := map[string]struct{}{
+		fmt.Sprintf("Task a: Log: %s", expectedLog): {},
+		fmt.Sprintf("Task b: Log: %s", expectedLog): {},
+		fmt.Sprintf("Task d: Log: %s", expectedLog): {},
+	}
+
+	if len(taskLines) != len(expectedLines) {
+		t.Fatalf("startup log lines mismatch, got %d lines:\n%s", len(taskLines), stderrOut)
+	}
+
+	for _, line := range taskLines {
+		if _, ok := expectedLines[line]; !ok {
+			t.Fatalf("unexpected startup line %q\nstderr:\n%s", line, stderrOut)
+		}
+	}
+}
+
+func TestRunNonParallelOutputsIncludeLogPathsIntegration(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+	os.Args = []string{"codex-wrapper", "integration-log-check"}
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+	codexCommand = "echo"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
+		return []string{`{"type":"thread.started","thread_id":"integration-session"}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"done"}}`}
+	}
+
+	var exitCode int
+	stderr := captureStderr(t, func() {
+		_ = captureStdout(t, func() {
+			exitCode = run()
+		})
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("run() exit=%d, want 0", exitCode)
+	}
+	expectedLog := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+	wantLine := fmt.Sprintf("Log: %s", expectedLog)
+	if !strings.Contains(stderr, wantLine) {
+		t.Fatalf("stderr missing %q, got: %q", wantLine, stderr)
+	}
+}
+
+func TestRunParallelPartialFailureBlocksDependents(t *testing.T) {
+	defer resetTestHooks()
+	origRun := runCodexTaskFn
+	t.Cleanup(func() {
+		runCodexTaskFn = origRun
+		resetTestHooks()
+	})
+
+	tempDir := t.TempDir()
+	logPathFor := func(id string) string {
+		return filepath.Join(tempDir, fmt.Sprintf("%s.log", id))
+	}
+
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		path := logPathFor(task.ID)
+		if task.ID == "A" {
+			return TaskResult{TaskID: "A", ExitCode: 2, Error: "boom", LogPath: path}
+		}
+		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: task.Task, LogPath: path}
 	}
 
 	input := `---TASK---
@@ -317,9 +540,29 @@ ok-e`
 	if payload.Summary.Failed != 2 || payload.Summary.Total != 4 {
 		t.Fatalf("unexpected summary after partial failure: %+v", payload.Summary)
 	}
+	if resA.LogPath != logPathFor("A") {
+		t.Fatalf("task A log path = %q, want %q", resA.LogPath, logPathFor("A"))
+	}
+	if resB.LogPath != "" {
+		t.Fatalf("task B should not report a log path when skipped, got %q", resB.LogPath)
+	}
+	if resD.LogPath != logPathFor("D") || resE.LogPath != logPathFor("E") {
+		t.Fatalf("expected log paths for D/E, got D=%q E=%q", resD.LogPath, resE.LogPath)
+	}
+	for _, id := range []string{"A", "D", "E"} {
+		block := extractTaskBlock(t, output, id)
+		want := fmt.Sprintf("Log: %s", logPathFor(id))
+		if !strings.Contains(block, want) {
+			t.Fatalf("task %s block missing %q:\n%s", id, want, block)
+		}
+	}
+	blockB := extractTaskBlock(t, output, "B")
+	if strings.Contains(blockB, "Log:") {
+		t.Fatalf("skipped task B should not emit a log line:\n%s", blockB)
+	}
 }
 
-func TestParallelTimeoutPropagation(t *testing.T) {
+func TestRunParallelTimeoutPropagation(t *testing.T) {
 	defer resetTestHooks()
 	origRun := runCodexTaskFn
 	t.Cleanup(func() {
@@ -363,7 +606,7 @@ slow`
 	}
 }
 
-func TestConcurrentSpeedupBenchmark(t *testing.T) {
+func TestRunConcurrentSpeedupBenchmark(t *testing.T) {
 	defer resetTestHooks()
 	origRun := runCodexTaskFn
 	t.Cleanup(func() {
@@ -397,4 +640,211 @@ func TestConcurrentSpeedupBenchmark(t *testing.T) {
 	}
 	ratio := float64(concurrentElapsed) / float64(serialElapsed)
 	t.Logf("speedup ratio (concurrent/serial)=%.3f", ratio)
+}
+
+func TestRunStartupCleanupRemovesOrphansEndToEnd(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+
+	orphanA := createTempLog(t, tempDir, "codex-wrapper-5001.log")
+	orphanB := createTempLog(t, tempDir, "codex-wrapper-5002-extra.log")
+	orphanC := createTempLog(t, tempDir, "codex-wrapper-5003-suffix.log")
+	runningPID := 81234
+	runningLog := createTempLog(t, tempDir, fmt.Sprintf("codex-wrapper-%d.log", runningPID))
+	unrelated := createTempLog(t, tempDir, "wrapper.log")
+
+	stubProcessRunning(t, func(pid int) bool {
+		return pid == runningPID || pid == os.Getpid()
+	})
+	stubProcessStartTime(t, func(pid int) time.Time {
+		if pid == runningPID || pid == os.Getpid() {
+			return time.Now().Add(-1 * time.Hour)
+		}
+		return time.Time{}
+	})
+
+	codexCommand = createFakeCodexScript(t, "tid-startup", "ok")
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+	os.Args = []string{"codex-wrapper", "task"}
+
+	if exit := run(); exit != 0 {
+		t.Fatalf("run() exit=%d, want 0", exit)
+	}
+
+	for _, orphan := range []string{orphanA, orphanB, orphanC} {
+		if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+			t.Fatalf("expected orphan %s to be removed, err=%v", orphan, err)
+		}
+	}
+	if _, err := os.Stat(runningLog); err != nil {
+		t.Fatalf("expected running log to remain, err=%v", err)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Fatalf("expected unrelated file to remain, err=%v", err)
+	}
+}
+
+func TestRunStartupCleanupConcurrentWrappers(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+
+	const totalLogs = 40
+	for i := 0; i < totalLogs; i++ {
+		createTempLog(t, tempDir, fmt.Sprintf("codex-wrapper-%d.log", 9000+i))
+	}
+
+	stubProcessRunning(t, func(pid int) bool {
+		return false
+	})
+	stubProcessStartTime(t, func(int) time.Time { return time.Time{} })
+
+	var wg sync.WaitGroup
+	const instances = 5
+	start := make(chan struct{})
+
+	for i := 0; i < instances; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			runStartupCleanup()
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+
+	matches, err := filepath.Glob(filepath.Join(tempDir, "codex-wrapper-*.log"))
+	if err != nil {
+		t.Fatalf("glob error: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected all orphan logs to be removed, remaining=%v", matches)
+	}
+}
+
+func TestRunCleanupFlagEndToEnd_Success(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+
+	staleA := createTempLog(t, tempDir, "codex-wrapper-2100.log")
+	staleB := createTempLog(t, tempDir, "codex-wrapper-2200-extra.log")
+	keeper := createTempLog(t, tempDir, "codex-wrapper-2300.log")
+
+	stubProcessRunning(t, func(pid int) bool {
+		return pid == 2300 || pid == os.Getpid()
+	})
+	stubProcessStartTime(t, func(pid int) time.Time {
+		if pid == 2300 || pid == os.Getpid() {
+			return time.Now().Add(-1 * time.Hour)
+		}
+		return time.Time{}
+	})
+
+	os.Args = []string{"codex-wrapper", "--cleanup"}
+
+	var exitCode int
+	output := captureStdout(t, func() {
+		exitCode = run()
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("cleanup exit = %d, want 0", exitCode)
+	}
+
+	// Check that output contains expected counts and file names
+	if !strings.Contains(output, "Cleanup completed") {
+		t.Fatalf("missing 'Cleanup completed' in output: %q", output)
+	}
+	if !strings.Contains(output, "Files scanned: 3") {
+		t.Fatalf("missing 'Files scanned: 3' in output: %q", output)
+	}
+	if !strings.Contains(output, "Files deleted: 2") {
+		t.Fatalf("missing 'Files deleted: 2' in output: %q", output)
+	}
+	if !strings.Contains(output, "Files kept: 1") {
+		t.Fatalf("missing 'Files kept: 1' in output: %q", output)
+	}
+	if !strings.Contains(output, "codex-wrapper-2100.log") || !strings.Contains(output, "codex-wrapper-2200-extra.log") {
+		t.Fatalf("missing deleted file names in output: %q", output)
+	}
+	if !strings.Contains(output, "codex-wrapper-2300.log") {
+		t.Fatalf("missing kept file names in output: %q", output)
+	}
+
+	for _, path := range []string{staleA, staleB} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be removed, err=%v", path, err)
+		}
+	}
+	if _, err := os.Stat(keeper); err != nil {
+		t.Fatalf("expected kept log to remain, err=%v", err)
+	}
+
+	currentLog := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+	if _, err := os.Stat(currentLog); err == nil {
+		t.Fatalf("cleanup mode should not create new log file %s", currentLog)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat(%s) unexpected error: %v", currentLog, err)
+	}
+}
+
+func TestRunCleanupFlagEndToEnd_FailureDoesNotAffectStartup(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+
+	calls := 0
+	cleanupLogsFn = func() (CleanupStats, error) {
+		calls++
+		return CleanupStats{Scanned: 1}, fmt.Errorf("permission denied")
+	}
+
+	os.Args = []string{"codex-wrapper", "--cleanup"}
+
+	var exitCode int
+	errOutput := captureStderr(t, func() {
+		exitCode = run()
+	})
+
+	if exitCode != 1 {
+		t.Fatalf("cleanup failure exit = %d, want 1", exitCode)
+	}
+	if !strings.Contains(errOutput, "Cleanup failed") || !strings.Contains(errOutput, "permission denied") {
+		t.Fatalf("cleanup stderr = %q, want failure message", errOutput)
+	}
+	if calls != 1 {
+		t.Fatalf("cleanup called %d times, want 1", calls)
+	}
+
+	currentLog := filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d.log", os.Getpid()))
+	if _, err := os.Stat(currentLog); err == nil {
+		t.Fatalf("cleanup failure should not create new log file %s", currentLog)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat(%s) unexpected error: %v", currentLog, err)
+	}
+
+	cleanupLogsFn = func() (CleanupStats, error) {
+		return CleanupStats{}, nil
+	}
+	codexCommand = createFakeCodexScript(t, "tid-cleanup-e2e", "ok")
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+	os.Args = []string{"codex-wrapper", "post-cleanup task"}
+
+	var normalExit int
+	normalOutput := captureStdout(t, func() {
+		normalExit = run()
+	})
+
+	if normalExit != 0 {
+		t.Fatalf("normal run exit = %d, want 0", normalExit)
+	}
+	if !strings.Contains(normalOutput, "ok") {
+		t.Fatalf("normal run output = %q, want codex output", normalOutput)
+	}
 }
