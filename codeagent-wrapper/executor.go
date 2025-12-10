@@ -641,15 +641,20 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 }
 
 func forwardSignals(ctx context.Context, cmd commandRunner, logErrorFn func(string)) {
-	sigCh := make(chan os.Signal, 1)
-	if signalNotifyFn != nil {
-		signalNotifyFn(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	notify := signalNotifyFn
+	stop := signalStopFn
+	if notify == nil {
+		notify = signal.Notify
+	}
+	if stop == nil {
+		stop = signal.Stop
 	}
 
+	sigCh := make(chan os.Signal, 1)
+	notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
 	go func() {
-		if signalStopFn != nil {
-			defer signalStopFn(sigCh)
-		}
+		defer stop(sigCh)
 		select {
 		case sig := <-sigCh:
 			logErrorFn(fmt.Sprintf("Received signal: %v", sig))
