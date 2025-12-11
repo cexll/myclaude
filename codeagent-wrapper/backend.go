@@ -31,8 +31,8 @@ func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	}
 	args := []string{"-p"}
 
-	// Default to skip permissions for Claude backend
-	if !cfg.SkipPermissions {
+	// Only skip permissions when explicitly requested
+	if cfg.SkipPermissions {
 		args = append(args, "--dangerously-skip-permissions")
 	}
 
