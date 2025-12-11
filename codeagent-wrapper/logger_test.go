@@ -477,13 +477,13 @@ func TestRunCleanupOldLogsPerformanceBound(t *testing.T) {
 }
 
 func TestRunCleanupOldLogsCoverageSuite(t *testing.T) {
-	TestRunParseJSONStream_CoverageSuite(t)
+	TestBackendParseJSONStream_CoverageSuite(t)
 }
 
 // Reuse the existing coverage suite so the focused TestLogger run still exercises
 // the rest of the codebase and keeps coverage high.
 func TestRunLoggerCoverageSuite(t *testing.T) {
-	TestRunParseJSONStream_CoverageSuite(t)
+	TestBackendParseJSONStream_CoverageSuite(t)
 }
 
 func TestRunCleanupOldLogsKeepsCurrentProcessLog(t *testing.T) {

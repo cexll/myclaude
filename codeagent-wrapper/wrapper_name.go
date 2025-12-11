@@ -11,6 +11,24 @@ const (
 	legacyWrapperName  = "codex-wrapper"
 )
 
+var executablePathFn = os.Executable
+
+func normalizeWrapperName(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	base := filepath.Base(path)
+	base = strings.TrimSuffix(base, ".exe") // tolerate Windows executables
+
+	switch base {
+	case defaultWrapperName, legacyWrapperName:
+		return base
+	default:
+		return ""
+	}
+}
+
 // currentWrapperName resolves the wrapper name based on the invoked binary.
 // Only known names are honored to avoid leaking build/test binary names into logs.
 func currentWrapperName() string {
@@ -18,15 +36,31 @@ func currentWrapperName() string {
 		return defaultWrapperName
 	}
 
-	base := filepath.Base(os.Args[0])
-	base = strings.TrimSuffix(base, ".exe") // tolerate Windows executables
-
-	switch base {
-	case defaultWrapperName, legacyWrapperName:
-		return base
-	default:
-		return defaultWrapperName
+	if name := normalizeWrapperName(os.Args[0]); name != "" {
+		return name
 	}
+
+	execPath, err := executablePathFn()
+	if err == nil {
+		if name := normalizeWrapperName(execPath); name != "" {
+			return name
+		}
+
+		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+			if name := normalizeWrapperName(resolved); name != "" {
+				return name
+			}
+			if alias := resolveAlias(execPath, resolved); alias != "" {
+				return alias
+			}
+		}
+
+		if alias := resolveAlias(execPath, ""); alias != "" {
+			return alias
+		}
+	}
+
+	return defaultWrapperName
 }
 
 // logPrefixes returns the set of accepted log name prefixes, including the
@@ -57,4 +91,36 @@ func primaryLogPrefix() string {
 		return defaultWrapperName
 	}
 	return prefixes[0]
+}
+
+func resolveAlias(execPath string, target string) string {
+	if execPath == "" {
+		return ""
+	}
+
+	dir := filepath.Dir(execPath)
+	for _, candidate := range []string{defaultWrapperName, legacyWrapperName} {
+		aliasPath := filepath.Join(dir, candidate)
+		info, err := os.Lstat(aliasPath)
+		if err != nil {
+			continue
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+
+		resolved, err := filepath.EvalSymlinks(aliasPath)
+		if err != nil {
+			continue
+		}
+		if target != "" && resolved != target {
+			continue
+		}
+
+		if name := normalizeWrapperName(aliasPath); name != "" {
+			return name
+		}
+	}
+
+	return ""
 }

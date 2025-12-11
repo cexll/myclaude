@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -318,4 +320,107 @@ func TestLoggerOrderPreservation(t *testing.T) {
 	}
 
 	t.Logf("Order preservation test: all %d goroutines maintained sequence order", len(sequences))
+}
+
+func TestConcurrentWorkerPoolLimit(t *testing.T) {
+	orig := runCodexTaskFn
+	defer func() { runCodexTaskFn = orig }()
+
+	logger, err := NewLoggerWithSuffix("pool-limit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setLogger(logger)
+	t.Cleanup(func() {
+		_ = closeLogger()
+		_ = logger.RemoveLogFile()
+	})
+
+	var active int64
+	var maxSeen int64
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		if task.Context == nil {
+			t.Fatalf("context not propagated for task %s", task.ID)
+		}
+		cur := atomic.AddInt64(&active, 1)
+		for {
+			prev := atomic.LoadInt64(&maxSeen)
+			if cur <= prev || atomic.CompareAndSwapInt64(&maxSeen, prev, cur) {
+				break
+			}
+		}
+		select {
+		case <-task.Context.Done():
+			atomic.AddInt64(&active, -1)
+			return TaskResult{TaskID: task.ID, ExitCode: 130, Error: "context cancelled"}
+		case <-time.After(30 * time.Millisecond):
+		}
+		atomic.AddInt64(&active, -1)
+		return TaskResult{TaskID: task.ID}
+	}
+
+	layers := [][]TaskSpec{{{ID: "t1"}, {ID: "t2"}, {ID: "t3"}, {ID: "t4"}, {ID: "t5"}}}
+	results := executeConcurrentWithContext(context.Background(), layers, 5, 2)
+
+	if len(results) != 5 {
+		t.Fatalf("unexpected result count: got %d", len(results))
+	}
+	if maxSeen > 2 {
+		t.Fatalf("worker pool exceeded limit: saw %d active workers", maxSeen)
+	}
+
+	logger.Flush()
+	data, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatalf("failed to read log file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "worker_limit=2") {
+		t.Fatalf("concurrency planning log missing, content: %s", content)
+	}
+	if !strings.Contains(content, "parallel: start") {
+		t.Fatalf("concurrency start logs missing, content: %s", content)
+	}
+}
+
+func TestConcurrentCancellationPropagation(t *testing.T) {
+	orig := runCodexTaskFn
+	defer func() { runCodexTaskFn = orig }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		if task.Context == nil {
+			t.Fatalf("context not propagated for task %s", task.ID)
+		}
+		select {
+		case <-task.Context.Done():
+			return TaskResult{TaskID: task.ID, ExitCode: 130, Error: "context cancelled"}
+		case <-time.After(200 * time.Millisecond):
+			return TaskResult{TaskID: task.ID}
+		}
+	}
+
+	layers := [][]TaskSpec{{{ID: "a"}, {ID: "b"}, {ID: "c"}}}
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	results := executeConcurrentWithContext(ctx, layers, 1, 2)
+	if len(results) != 3 {
+		t.Fatalf("unexpected result count: got %d", len(results))
+	}
+
+	cancelled := 0
+	for _, res := range results {
+		if res.ExitCode != 0 {
+			cancelled++
+		}
+	}
+
+	if cancelled == 0 {
+		t.Fatalf("expected cancellation to propagate, got results: %+v", results)
+	}
 }

@@ -7,7 +7,7 @@ description: Execute codeagent-wrapper for multi-backend AI code tasks. Supports
 
 ## Overview
 
-Execute codeagent-wrapper commands with pluggable AI backends (Codex, Claude, Gemini). Supports file references via `@` syntax and parallel task execution.
+Execute codeagent-wrapper commands with pluggable AI backends (Codex, Claude, Gemini). Supports file references via `@` syntax, parallel task execution with backend selection, and configurable security controls.
 
 ## When to Use
 
@@ -49,7 +49,8 @@ codeagent-wrapper --backend gemini "simple task"
 
 - `task` (required): Task description, supports `@file` references
 - `working_dir` (optional): Working directory (default: current)
-- `--backend` (optional): Select AI backend (codex/claude/gemini)
+- `--backend` (optional): Select AI backend (codex/claude/gemini, default: codex)
+  - **Note**: Claude backend defaults to `--dangerously-skip-permissions` for automation compatibility
 
 ## Return Format
 
@@ -60,18 +61,25 @@ Agent response text here...
 SESSION_ID: 019a7247-ac9d-71f3-89e2-a823dbd8fd14
 ```
 
-## Resume Session 
+## Resume Session
 
 ```bash
+# Resume with default backend
 codeagent-wrapper resume <session_id> - <<'EOF'
+<follow-up task>
+EOF
+
+# Resume with specific backend
+codeagent-wrapper --backend claude resume <session_id> - <<'EOF'
 <follow-up task>
 EOF
 ```
 
 ## Parallel Execution
 
+**With global backend**:
 ```bash
-codeagent-wrapper --parallel <<'EOF'
+codeagent-wrapper --parallel --backend claude <<'EOF'
 ---TASK---
 id: task1
 workdir: /path/to/dir
@@ -85,12 +93,44 @@ dependent task
 EOF
 ```
 
+**With per-task backend**:
+```bash
+codeagent-wrapper --parallel <<'EOF'
+---TASK---
+id: task1
+backend: codex
+workdir: /path/to/dir
+---CONTENT---
+analyze code structure
+---TASK---
+id: task2
+backend: claude
+dependencies: task1
+---CONTENT---
+design architecture based on analysis
+---TASK---
+id: task3
+backend: gemini
+dependencies: task2
+---CONTENT---
+generate implementation code
+EOF
+```
+
+**Concurrency Control**:
+Set `CODEAGENT_MAX_PARALLEL_WORKERS` to limit concurrent tasks (default: unlimited).
+
 ## Environment Variables
 
-- `CODEX_TIMEOUT`: Override timeout in milliseconds (default: 7200000)
+- `CODEX_TIMEOUT`: Override timeout in milliseconds (default: 7200000 = 2 hours)
+- `CODEAGENT_SKIP_PERMISSIONS`: Control permission checks
+  - For **Claude** backend: Set to `true`/`1` to **disable** `--dangerously-skip-permissions` (default: enabled)
+  - For **Codex/Gemini** backends: Set to `true`/`1` to enable permission skipping (default: disabled)
+- `CODEAGENT_MAX_PARALLEL_WORKERS`: Limit concurrent tasks in parallel mode (default: unlimited, recommended: 8)
 
 ## Invocation Pattern
 
+**Single Task**:
 ```
 Bash tool parameters:
 - command: codeagent-wrapper --backend <backend> - [working_dir] <<'EOF'
@@ -99,3 +139,33 @@ Bash tool parameters:
 - timeout: 7200000
 - description: <brief description>
 ```
+
+**Parallel Tasks**:
+```
+Bash tool parameters:
+- command: codeagent-wrapper --parallel --backend <backend> <<'EOF'
+  ---TASK---
+  id: task_id
+  backend: <backend>  # Optional, overrides global
+  workdir: /path
+  dependencies: dep1, dep2
+  ---CONTENT---
+  task content
+  EOF
+- timeout: 7200000
+- description: <brief description>
+```
+
+## Security Best Practices
+
+- **Claude Backend**: Defaults to `--dangerously-skip-permissions` for automation workflows
+  - To enforce permission checks with Claude: Set `CODEAGENT_SKIP_PERMISSIONS=true`
+- **Codex/Gemini Backends**: Permission checks enabled by default
+- **Concurrency Limits**: Set `CODEAGENT_MAX_PARALLEL_WORKERS` in production to prevent resource exhaustion
+- **Automation Context**: This wrapper is designed for AI-driven automation where permission prompts would block execution
+
+## Recent Updates
+
+- Multi-backend support for all modes (workdir, resume, parallel)
+- Security controls with configurable permission checks
+- Concurrency limits with worker pool and fail-fast cancellation

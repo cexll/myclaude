@@ -126,7 +126,22 @@ var runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
 		task.UseStdin = true
 	}
 
-	return runCodexTask(task, true, timeout)
+	backendName := task.Backend
+	if backendName == "" {
+		backendName = defaultBackendName
+	}
+
+	backend, err := selectBackendFn(backendName)
+	if err != nil {
+		return TaskResult{TaskID: task.ID, ExitCode: 1, Error: err.Error()}
+	}
+	task.Backend = backend.Name()
+
+	parentCtx := task.Context
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	return runCodexTaskWithContext(parentCtx, task, backend, nil, false, true, timeout)
 }
 
 func topologicalSort(tasks []TaskSpec) ([][]TaskSpec, error) {
@@ -196,6 +211,11 @@ func topologicalSort(tasks []TaskSpec) ([][]TaskSpec, error) {
 }
 
 func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
+	maxWorkers := resolveMaxParallelWorkers()
+	return executeConcurrentWithContext(context.Background(), layers, timeout, maxWorkers)
+}
+
+func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec, timeout int, maxWorkers int) []TaskResult {
 	totalTasks := 0
 	for _, layer := range layers {
 		totalTasks += len(layer)
@@ -226,6 +246,49 @@ func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
 		startPrintMu.Unlock()
 	}
 
+	ctx := parentCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	workerLimit := maxWorkers
+	if workerLimit < 0 {
+		workerLimit = 0
+	}
+
+	var sem chan struct{}
+	if workerLimit > 0 {
+		sem = make(chan struct{}, workerLimit)
+	}
+
+	logConcurrencyPlanning(workerLimit, totalTasks)
+
+	acquireSlot := func() bool {
+		if sem == nil {
+			return true
+		}
+		select {
+		case sem <- struct{}{}:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	releaseSlot := func() {
+		if sem == nil {
+			return
+		}
+		select {
+		case <-sem:
+		default:
+		}
+	}
+
+	var activeWorkers int64
+
 	for _, layer := range layers {
 		var wg sync.WaitGroup
 		executed := 0
@@ -233,6 +296,13 @@ func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
 		for _, task := range layer {
 			if skip, reason := shouldSkipTask(task, failed); skip {
 				res := TaskResult{TaskID: task.ID, ExitCode: 1, Error: reason}
+				results = append(results, res)
+				failed[task.ID] = res
+				continue
+			}
+
+			if ctx.Err() != nil {
+				res := cancelledTaskResult(task.ID, ctx)
 				results = append(results, res)
 				failed[task.ID] = res
 				continue
@@ -247,6 +317,21 @@ func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
 						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r)}
 					}
 				}()
+
+				if !acquireSlot() {
+					resultsCh <- cancelledTaskResult(ts.ID, ctx)
+					return
+				}
+				defer releaseSlot()
+
+				current := atomic.AddInt64(&activeWorkers, 1)
+				logConcurrencyState("start", ts.ID, int(current), workerLimit)
+				defer func() {
+					after := atomic.AddInt64(&activeWorkers, -1)
+					logConcurrencyState("done", ts.ID, int(after), workerLimit)
+				}()
+
+				ts.Context = ctx
 				printTaskStart(ts.ID)
 				resultsCh <- runCodexTaskFn(ts, timeout)
 			}(task)
@@ -264,6 +349,16 @@ func executeConcurrent(layers [][]TaskSpec, timeout int) []TaskResult {
 	}
 
 	return results
+}
+
+func cancelledTaskResult(taskID string, ctx context.Context) TaskResult {
+	exitCode := 130
+	msg := "execution cancelled"
+	if ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		exitCode = 124
+		msg = "execution timeout"
+	}
+	return TaskResult{TaskID: taskID, ExitCode: exitCode, Error: msg}
 }
 
 func shouldSkipTask(task TaskSpec, failed map[string]TaskResult) (bool, string) {
@@ -346,15 +441,15 @@ func buildCodexArgs(cfg *Config, targetArg string) []string {
 }
 
 func runCodexTask(taskSpec TaskSpec, silent bool, timeoutSec int) TaskResult {
-	return runCodexTaskWithContext(context.Background(), taskSpec, nil, false, silent, timeoutSec)
+	return runCodexTaskWithContext(context.Background(), taskSpec, nil, nil, false, silent, timeoutSec)
 }
 
 func runCodexProcess(parentCtx context.Context, codexArgs []string, taskText string, useStdin bool, timeoutSec int) (message, threadID string, exitCode int) {
-	res := runCodexTaskWithContext(parentCtx, TaskSpec{Task: taskText, WorkDir: defaultWorkdir, Mode: "new", UseStdin: useStdin}, codexArgs, true, false, timeoutSec)
+	res := runCodexTaskWithContext(parentCtx, TaskSpec{Task: taskText, WorkDir: defaultWorkdir, Mode: "new", UseStdin: useStdin}, nil, codexArgs, true, false, timeoutSec)
 	return res.Message, res.SessionID, res.ExitCode
 }
 
-func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) TaskResult {
+func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backend Backend, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) TaskResult {
 	result := TaskResult{TaskID: taskSpec.ID}
 	setLogPath := func() {
 		if result.LogPath != "" {
@@ -372,6 +467,19 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 		WorkDir:   taskSpec.WorkDir,
 		Backend:   defaultBackendName,
 	}
+
+	commandName := codexCommand
+	argsBuilder := buildCodexArgsFn
+	if backend != nil {
+		commandName = backend.Command()
+		argsBuilder = backend.BuildArgs
+		cfg.Backend = backend.Name()
+	} else if taskSpec.Backend != "" {
+		cfg.Backend = taskSpec.Backend
+	} else if commandName != "" {
+		cfg.Backend = commandName
+	}
+
 	if cfg.Mode == "" {
 		cfg.Mode = "new"
 	}
@@ -389,7 +497,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 	if useCustomArgs {
 		codexArgs = customArgs
 	} else {
-		codexArgs = buildCodexArgsFn(cfg, targetArg)
+		codexArgs = argsBuilder(cfg, targetArg)
 	}
 
 	prefixMsg := func(msg string) string {
@@ -467,7 +575,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 		return fmt.Sprintf("%s; stderr: %s", msg, stderrBuf.String())
 	}
 
-	cmd := newCommandRunner(ctx, codexCommand, codexArgs...)
+	cmd := newCommandRunner(ctx, commandName, codexArgs...)
 
 	stderrWriters := []io.Writer{stderrBuf}
 	if stderrLogger != nil {
@@ -507,23 +615,23 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 		stdoutReader = io.TeeReader(stdout, stdoutLogger)
 	}
 
-	logInfoFn(fmt.Sprintf("Starting %s with args: %s %s...", codexCommand, codexCommand, strings.Join(codexArgs[:min(5, len(codexArgs))], " ")))
+	logInfoFn(fmt.Sprintf("Starting %s with args: %s %s...", commandName, commandName, strings.Join(codexArgs[:min(5, len(codexArgs))], " ")))
 
 	if err := cmd.Start(); err != nil {
 		if strings.Contains(err.Error(), "executable file not found") {
-			msg := fmt.Sprintf("%s command not found in PATH", codexCommand)
+			msg := fmt.Sprintf("%s command not found in PATH", commandName)
 			logErrorFn(msg)
 			result.ExitCode = 127
 			result.Error = attachStderr(msg)
 			return result
 		}
-		logErrorFn("Failed to start " + codexCommand + ": " + err.Error())
+		logErrorFn("Failed to start " + commandName + ": " + err.Error())
 		result.ExitCode = 1
-		result.Error = attachStderr("failed to start " + codexCommand + ": " + err.Error())
+		result.Error = attachStderr("failed to start " + commandName + ": " + err.Error())
 		return result
 	}
 
-	logInfoFn(fmt.Sprintf("Starting %s with PID: %d", codexCommand, cmd.Process().Pid()))
+	logInfoFn(fmt.Sprintf("Starting %s with PID: %d", commandName, cmd.Process().Pid()))
 	if logger := activeLogger(); logger != nil {
 		logInfoFn(fmt.Sprintf("Log capturing to: %s", logger.Path()))
 	}
@@ -560,7 +668,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 	case waitErr = <-waitCh:
 	case <-ctx.Done():
 		ctxCancelled = true
-		logErrorFn(cancelReason(ctx))
+		logErrorFn(cancelReason(commandName, ctx))
 		forceKillTimer = terminateCommandFn(cmd)
 		waitErr = <-waitCh
 	}
@@ -592,7 +700,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		if errors.Is(ctxErr, context.DeadlineExceeded) {
 			result.ExitCode = 124
-			result.Error = attachStderr(fmt.Sprintf("%s execution timeout", codexCommand))
+			result.Error = attachStderr(fmt.Sprintf("%s execution timeout", commandName))
 			return result
 		}
 		result.ExitCode = 130
@@ -603,23 +711,23 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, custo
 	if waitErr != nil {
 		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			code := exitErr.ExitCode()
-			logErrorFn(fmt.Sprintf("%s exited with status %d", codexCommand, code))
+			logErrorFn(fmt.Sprintf("%s exited with status %d", commandName, code))
 			result.ExitCode = code
-			result.Error = attachStderr(fmt.Sprintf("%s exited with status %d", codexCommand, code))
+			result.Error = attachStderr(fmt.Sprintf("%s exited with status %d", commandName, code))
 			return result
 		}
-		logErrorFn(codexCommand + " error: " + waitErr.Error())
+		logErrorFn(commandName + " error: " + waitErr.Error())
 		result.ExitCode = 1
-		result.Error = attachStderr(codexCommand + " error: " + waitErr.Error())
+		result.Error = attachStderr(commandName + " error: " + waitErr.Error())
 		return result
 	}
 
 	message := parsed.message
 	threadID := parsed.threadID
 	if message == "" {
-		logErrorFn(fmt.Sprintf("%s completed without agent_message output", codexCommand))
+		logErrorFn(fmt.Sprintf("%s completed without agent_message output", commandName))
 		result.ExitCode = 1
-		result.Error = attachStderr(fmt.Sprintf("%s completed without agent_message output", codexCommand))
+		result.Error = attachStderr(fmt.Sprintf("%s completed without agent_message output", commandName))
 		return result
 	}
 
@@ -671,16 +779,20 @@ func forwardSignals(ctx context.Context, cmd commandRunner, logErrorFn func(stri
 	}()
 }
 
-func cancelReason(ctx context.Context) string {
+func cancelReason(commandName string, ctx context.Context) string {
 	if ctx == nil {
 		return "Context cancelled"
 	}
 
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Sprintf("%s execution timeout", codexCommand)
+	if commandName == "" {
+		commandName = codexCommand
 	}
 
-	return "Execution cancelled, terminating codex process"
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Sprintf("%s execution timeout", commandName)
+	}
+
+	return fmt.Sprintf("Execution cancelled, terminating %s process", commandName)
 }
 
 type stdoutReasonCloser interface {

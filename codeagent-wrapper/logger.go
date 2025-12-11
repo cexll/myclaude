@@ -478,3 +478,26 @@ func parsePIDFromLog(path string) (int, bool) {
 
 	return 0, false
 }
+
+func logConcurrencyPlanning(limit, total int) {
+	logger := activeLogger()
+	if logger == nil {
+		return
+	}
+	logger.Info(fmt.Sprintf("parallel: worker_limit=%s total_tasks=%d", renderWorkerLimit(limit), total))
+}
+
+func logConcurrencyState(event, taskID string, active, limit int) {
+	logger := activeLogger()
+	if logger == nil {
+		return
+	}
+	logger.Debug(fmt.Sprintf("parallel: %s task=%s active=%d limit=%s", event, taskID, active, renderWorkerLimit(limit)))
+}
+
+func renderWorkerLimit(limit int) string {
+	if limit <= 0 {
+		return "unbounded"
+	}
+	return strconv.Itoa(limit)
+}

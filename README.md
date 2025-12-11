@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-5.0-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
 
 > AI-powered development automation with Claude Code + Codex collaboration
 
@@ -242,6 +242,8 @@ python3 install.py --module dev
 
 # Manual
 bash install.sh
+# Create legacy codex-wrapper alias (uses $INSTALL_DIR or ~/bin)
+bash scripts/install.sh
 ```
 
 #### Windows

@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-5.0-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
 
 > AI 驱动的开发自动化 - Claude Code + Codex 协作
 
@@ -233,6 +233,8 @@ python3 install.py --module dev
 
 # 手动
 bash install.sh
+# 创建 codex-wrapper 兼容别名（使用 $INSTALL_DIR 或 ~/bin）
+bash scripts/install.sh
 ```
 
 #### Windows 系统

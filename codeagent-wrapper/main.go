@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	version             = "5.0.0"
+	version             = "5.2.0"
 	defaultWorkdir      = "."
 	defaultTimeout      = 7200 // seconds
 	codexLogLineLimit   = 1000
@@ -47,6 +47,8 @@ var (
 	signalStopFn       = signal.Stop
 	terminateCommandFn = terminateCommand
 	defaultBuildArgsFn = buildCodexArgs
+	runTaskFn          = runCodexTask
+	exitFn             = os.Exit
 )
 
 var forceKillDelay atomic.Int32
@@ -103,7 +105,7 @@ func runCleanupMode() int {
 
 func main() {
 	exitCode := run()
-	os.Exit(exitCode)
+	exitFn(exitCode)
 }
 
 // run is the main logic, returns exit code for testability
@@ -153,16 +155,59 @@ func run() (exitCode int) {
 
 	// Handle remaining commands
 	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "--parallel":
-			if len(os.Args) > 2 {
-				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin and does not accept additional arguments.")
+		args := os.Args[1:]
+		parallelIndex := -1
+		for i, arg := range args {
+			if arg == "--parallel" {
+				parallelIndex = i
+				break
+			}
+		}
+
+		if parallelIndex != -1 {
+			backendName := defaultBackendName
+			var extras []string
+
+			for i := 0; i < len(args); i++ {
+				arg := args[i]
+				switch {
+				case arg == "--parallel":
+					continue
+				case arg == "--backend":
+					if i+1 >= len(args) {
+						fmt.Fprintln(os.Stderr, "ERROR: --backend flag requires a value")
+						return 1
+					}
+					backendName = args[i+1]
+					i++
+				case strings.HasPrefix(arg, "--backend="):
+					value := strings.TrimPrefix(arg, "--backend=")
+					if value == "" {
+						fmt.Fprintln(os.Stderr, "ERROR: --backend flag requires a value")
+						return 1
+					}
+					backendName = value
+				default:
+					extras = append(extras, arg)
+				}
+			}
+
+			if len(extras) > 0 {
+				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend is allowed.")
 				fmt.Fprintln(os.Stderr, "Usage examples:")
 				fmt.Fprintf(os.Stderr, "  %s --parallel < tasks.txt\n", name)
 				fmt.Fprintf(os.Stderr, "  echo '...' | %s --parallel\n", name)
 				fmt.Fprintf(os.Stderr, "  %s --parallel <<'EOF'\n", name)
 				return 1
 			}
+
+			backend, err := selectBackendFn(backendName)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+				return 1
+			}
+			backendName = backend.Name()
+
 			data, err := io.ReadAll(stdinReader)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: failed to read stdin: %v\n", err)
@@ -173,6 +218,13 @@ func run() (exitCode int) {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 				return 1
+			}
+
+			cfg.GlobalBackend = backendName
+			for i := range cfg.Tasks {
+				if strings.TrimSpace(cfg.Tasks[i].Backend) == "" {
+					cfg.Tasks[i].Backend = backendName
+				}
 			}
 
 			timeoutSec := resolveTimeout()
@@ -318,7 +370,7 @@ func run() (exitCode int) {
 		UseStdin:  useStdin,
 	}
 
-	result := runCodexTask(taskSpec, false, cfg.Timeout)
+	result := runTaskFn(taskSpec, false, cfg.Timeout)
 
 	if result.ExitCode != 0 {
 		return result.ExitCode

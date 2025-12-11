@@ -2,36 +2,43 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
 // Config holds CLI configuration
 type Config struct {
-	Mode          string // "new" or "resume"
-	Task          string
-	SessionID     string
-	WorkDir       string
-	ExplicitStdin bool
-	Timeout       int
-	Backend       string
+	Mode               string // "new" or "resume"
+	Task               string
+	SessionID          string
+	WorkDir            string
+	ExplicitStdin      bool
+	Timeout            int
+	Backend            string
+	SkipPermissions    bool
+	MaxParallelWorkers int
 }
 
 // ParallelConfig defines the JSON schema for parallel execution
 type ParallelConfig struct {
-	Tasks []TaskSpec `json:"tasks"`
+	Tasks         []TaskSpec `json:"tasks"`
+	GlobalBackend string     `json:"backend,omitempty"`
 }
 
 // TaskSpec describes an individual task entry in the parallel config
 type TaskSpec struct {
-	ID           string   `json:"id"`
-	Task         string   `json:"task"`
-	WorkDir      string   `json:"workdir,omitempty"`
-	Dependencies []string `json:"dependencies,omitempty"`
-	SessionID    string   `json:"session_id,omitempty"`
-	Mode         string   `json:"-"`
-	UseStdin     bool     `json:"-"`
+	ID           string          `json:"id"`
+	Task         string          `json:"task"`
+	WorkDir      string          `json:"workdir,omitempty"`
+	Dependencies []string        `json:"dependencies,omitempty"`
+	SessionID    string          `json:"session_id,omitempty"`
+	Backend      string          `json:"backend,omitempty"`
+	Mode         string          `json:"-"`
+	UseStdin     bool            `json:"-"`
+	Context      context.Context `json:"-"`
 }
 
 // TaskResult captures the execution outcome of a task
@@ -59,6 +66,32 @@ func selectBackend(name string) (Backend, error) {
 		return backend, nil
 	}
 	return nil, fmt.Errorf("unsupported backend %q", name)
+}
+
+func envFlagEnabled(key string) bool {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return false
+	}
+	val = strings.TrimSpace(strings.ToLower(val))
+	switch val {
+	case "", "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+func parseBoolFlag(val string, defaultValue bool) bool {
+	val = strings.TrimSpace(strings.ToLower(val))
+	switch val {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultValue
+	}
 }
 
 func parseParallelConfig(data []byte) (*ParallelConfig, error) {
@@ -106,6 +139,8 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 			case "session_id":
 				task.SessionID = value
 				task.Mode = "resume"
+			case "backend":
+				task.Backend = value
 			case "dependencies":
 				for _, dep := range strings.Split(value, ",") {
 					dep = strings.TrimSpace(dep)
@@ -114,6 +149,10 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 					}
 				}
 			}
+		}
+
+		if task.Mode == "" {
+			task.Mode = "new"
 		}
 
 		if task.ID == "" {
@@ -145,6 +184,7 @@ func parseArgs() (*Config, error) {
 	}
 
 	backendName := defaultBackendName
+	skipPermissions := envFlagEnabled("CODEAGENT_SKIP_PERMISSIONS")
 	filtered := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -163,6 +203,15 @@ func parseArgs() (*Config, error) {
 			}
 			backendName = value
 			continue
+		case arg == "--skip-permissions", arg == "--dangerously-skip-permissions":
+			skipPermissions = true
+			continue
+		case strings.HasPrefix(arg, "--skip-permissions="):
+			skipPermissions = parseBoolFlag(strings.TrimPrefix(arg, "--skip-permissions="), skipPermissions)
+			continue
+		case strings.HasPrefix(arg, "--dangerously-skip-permissions="):
+			skipPermissions = parseBoolFlag(strings.TrimPrefix(arg, "--dangerously-skip-permissions="), skipPermissions)
+			continue
 		}
 		filtered = append(filtered, arg)
 	}
@@ -172,7 +221,8 @@ func parseArgs() (*Config, error) {
 	}
 	args = filtered
 
-	cfg := &Config{WorkDir: defaultWorkdir, Backend: backendName}
+	cfg := &Config{WorkDir: defaultWorkdir, Backend: backendName, SkipPermissions: skipPermissions}
+	cfg.MaxParallelWorkers = resolveMaxParallelWorkers()
 
 	if args[0] == "resume" {
 		if len(args) < 3 {
@@ -195,4 +245,19 @@ func parseArgs() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func resolveMaxParallelWorkers() int {
+	raw := strings.TrimSpace(os.Getenv("CODEAGENT_MAX_PARALLEL_WORKERS"))
+	if raw == "" {
+		return 0
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		logWarn(fmt.Sprintf("Invalid CODEAGENT_MAX_PARALLEL_WORKERS=%q, falling back to unlimited", raw))
+		return 0
+	}
+
+	return value
 }

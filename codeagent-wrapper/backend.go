@@ -29,14 +29,29 @@ func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	if cfg == nil {
 		return nil
 	}
-	// claude -p --dangerously-skip-permissions --output-format stream-json --verbose <prompt>
-	args := []string{
-		"-p",
-		"--dangerously-skip-permissions",
-		"--output-format", "stream-json",
-		"--verbose",
+	args := []string{"-p"}
+
+	// Default to skip permissions for Claude backend
+	if !cfg.SkipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
 	}
-	return append(args, targetArg)
+
+	workdir := cfg.WorkDir
+	if workdir == "" {
+		workdir = defaultWorkdir
+	}
+
+	if cfg.Mode == "resume" {
+		if cfg.SessionID != "" {
+			args = append(args, "--session-id", cfg.SessionID)
+		}
+	} else {
+		args = append(args, "-C", workdir)
+	}
+
+	args = append(args, "--output-format", "stream-json", "--verbose", targetArg)
+
+	return args
 }
 
 type GeminiBackend struct{}
@@ -49,6 +64,22 @@ func (GeminiBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	if cfg == nil {
 		return nil
 	}
-	// gemini -o stream-json -y -p <prompt>
-	return []string{"-o", "stream-json", "-y", "-p", targetArg}
+	args := []string{"-o", "stream-json", "-y"}
+
+	workdir := cfg.WorkDir
+	if workdir == "" {
+		workdir = defaultWorkdir
+	}
+
+	if cfg.Mode == "resume" {
+		if cfg.SessionID != "" {
+			args = append(args, "--session-id", cfg.SessionID)
+		}
+	} else {
+		args = append(args, "-C", workdir)
+	}
+
+	args = append(args, "-p", targetArg)
+
+	return args
 }
