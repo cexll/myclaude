@@ -170,6 +170,36 @@ func (l *Logger) RemoveLogFile() error {
 	return os.Remove(l.path)
 }
 
+// ExtractRecentErrors reads the log file and returns the most recent ERROR and WARN entries.
+// Returns up to maxEntries entries in chronological order.
+func (l *Logger) ExtractRecentErrors(maxEntries int) []string {
+	if l == nil || l.path == "" {
+		return nil
+	}
+
+	f, err := os.Open(l.path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var entries []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "] ERROR:") || strings.Contains(line, "] WARN:") {
+			entries = append(entries, line)
+		}
+	}
+
+	// Keep only the last maxEntries
+	if len(entries) > maxEntries {
+		entries = entries[len(entries)-maxEntries:]
+	}
+
+	return entries
+}
+
 // Flush waits for all pending log entries to be written. Primarily for tests.
 // Returns after a 5-second timeout to prevent indefinite blocking.
 func (l *Logger) Flush() {

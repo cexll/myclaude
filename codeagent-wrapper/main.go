@@ -141,8 +141,17 @@ func run() (exitCode int) {
 		if err := closeLogger(); err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: failed to close logger: %v\n", err)
 		}
-		// Always remove log file after completion
+		// On failure, extract and display recent errors before removing log
 		if logger != nil {
+			if exitCode != 0 {
+				if errors := logger.ExtractRecentErrors(10); len(errors) > 0 {
+					fmt.Fprintln(os.Stderr, "\n=== Recent Errors ===")
+					for _, entry := range errors {
+						fmt.Fprintln(os.Stderr, entry)
+					}
+					fmt.Fprintf(os.Stderr, "Log file: %s (deleted)\n", logger.Path())
+				}
+			}
 			if err := logger.RemoveLogFile(); err != nil && !os.IsNotExist(err) {
 				// Silently ignore removal errors
 			}
