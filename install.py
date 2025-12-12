@@ -340,28 +340,56 @@ def op_run_command(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
     command = op.get("command", "")
     if sys.platform == "win32" and command.strip() == "bash install.sh":
         command = "cmd /c install.bat"
-    result = subprocess.run(
+
+    # Stream output in real-time while capturing for logging
+    process = subprocess.Popen(
         command,
         shell=True,
         cwd=ctx["config_dir"],
         env=env,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
+
+    stdout_lines: List[str] = []
+    stderr_lines: List[str] = []
+
+    # Read stdout and stderr in real-time
+    import selectors
+    sel = selectors.DefaultSelector()
+    sel.register(process.stdout, selectors.EVENT_READ)  # type: ignore[arg-type]
+    sel.register(process.stderr, selectors.EVENT_READ)  # type: ignore[arg-type]
+
+    while process.poll() is None or sel.get_map():
+        for key, _ in sel.select(timeout=0.1):
+            line = key.fileobj.readline()  # type: ignore[union-attr]
+            if not line:
+                sel.unregister(key.fileobj)
+                continue
+            if key.fileobj == process.stdout:
+                stdout_lines.append(line)
+                print(line, end="", flush=True)
+            else:
+                stderr_lines.append(line)
+                print(line, end="", file=sys.stderr, flush=True)
+
+    sel.close()
+    process.wait()
 
     write_log(
         {
             "level": "INFO",
             "message": f"Command: {command}",
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
+            "stdout": "".join(stdout_lines),
+            "stderr": "".join(stderr_lines),
+            "returncode": process.returncode,
         },
         ctx,
     )
 
-    if result.returncode != 0:
-        raise RuntimeError(f"Command failed with code {result.returncode}: {command}")
+    if process.returncode != 0:
+        raise RuntimeError(f"Command failed with code {process.returncode}: {command}")
 
 
 def write_log(entry: Dict[str, Any], ctx: Dict[str, Any]) -> None:
