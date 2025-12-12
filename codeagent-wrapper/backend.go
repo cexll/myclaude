@@ -43,7 +43,8 @@ func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 
 	if cfg.Mode == "resume" {
 		if cfg.SessionID != "" {
-			args = append(args, "--session-id", cfg.SessionID)
+			// Claude CLI uses -r <session_id> for resume.
+			args = append(args, "-r", cfg.SessionID)
 		}
 	} else {
 		args = append(args, "-C", workdir)
