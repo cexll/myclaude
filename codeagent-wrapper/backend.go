@@ -74,7 +74,7 @@ func (GeminiBackend) BuildArgs(cfg *Config, targetArg string) []string {
 
 	if cfg.Mode == "resume" {
 		if cfg.SessionID != "" {
-			args = append(args, "--session-id", cfg.SessionID)
+			args = append(args, "-r", cfg.SessionID)
 		}
 	} else {
 		args = append(args, "-C", workdir)
