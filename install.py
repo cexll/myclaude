@@ -60,6 +60,11 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Force overwrite existing files",
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose output to terminal",
+    )
     return parser.parse_args(argv)
 
 
@@ -124,6 +129,7 @@ def resolve_paths(config: Dict[str, Any], args: argparse.Namespace) -> Dict[str,
         "status_file": install_dir / "installed_modules.json",
         "config_dir": config_dir,
         "force": bool(getattr(args, "force", False)),
+        "verbose": bool(getattr(args, "verbose", False)),
         "applied_paths": [],
         "status_backup": None,
     }
@@ -372,6 +378,17 @@ def write_log(entry: Dict[str, Any], ctx: Dict[str, Any]) -> None:
             if key in entry and entry[key] not in (None, ""):
                 fh.write(f"  {key}: {entry[key]}\n")
 
+    # Terminal output when verbose
+    if ctx.get("verbose"):
+        prefix = {"INFO": "ℹ️ ", "WARNING": "⚠️ ", "ERROR": "❌"}.get(level, "")
+        print(f"{prefix}[{level}] {message}")
+        if entry.get("stdout"):
+            print(f"  stdout: {entry['stdout'][:500]}")
+        if entry.get("stderr"):
+            print(f"  stderr: {entry['stderr'][:500]}", file=sys.stderr)
+        if entry.get("returncode") is not None:
+            print(f"  returncode: {entry['returncode']}")
+
 
 def write_status(results: List[Dict[str, Any]], ctx: Dict[str, Any]) -> None:
     status = {
@@ -447,11 +464,17 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     prepare_status_backup(ctx)
 
+    total = len(modules)
+    print(f"Installing {total} module(s) to {ctx['install_dir']}...")
+
     results: List[Dict[str, Any]] = []
-    for name, cfg in modules.items():
+    for idx, (name, cfg) in enumerate(modules.items(), 1):
+        print(f"[{idx}/{total}] Installing module: {name}...")
         try:
             results.append(execute_module(name, cfg, ctx))
-        except Exception:  # noqa: BLE001
+            print(f"  ✓ {name} installed successfully")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  ✗ {name} failed: {exc}", file=sys.stderr)
             if not args.force:
                 rollback(ctx)
                 return 1
@@ -467,6 +490,19 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             break
 
     write_status(results, ctx)
+
+    # Summary
+    success = sum(1 for r in results if r.get("status") == "success")
+    failed = len(results) - success
+    if failed == 0:
+        print(f"\n✓ Installation complete: {success} module(s) installed")
+        print(f"  Log file: {ctx['log_file']}")
+    else:
+        print(f"\n⚠ Installation finished with errors: {success} success, {failed} failed")
+        print(f"  Check log file for details: {ctx['log_file']}")
+        if not args.force:
+            return 1
+
     return 0
 
 
