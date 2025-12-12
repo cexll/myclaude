@@ -20,6 +20,9 @@ from typing import Any, Dict, Iterable, List, Optional
 import jsonschema
 
 DEFAULT_INSTALL_DIR = "~/.claude"
+GREEN = "\033[92m"
+RED = "\033[91m"
+RESET = "\033[0m"
 
 
 def _ensure_list(ctx: Dict[str, Any], key: str) -> List[Any]:
@@ -167,6 +170,7 @@ def ensure_install_dir(path: Path) -> None:
 
 
 def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+    start_time = datetime.now()
     result: Dict[str, Any] = {
         "module": name,
         "status": "success",
@@ -203,6 +207,7 @@ def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[
             )
             raise
 
+    result["duration_seconds"] = (datetime.now() - start_time).total_seconds()
     return result
 
 
@@ -338,6 +343,46 @@ def write_status(results: List[Dict[str, Any]], ctx: Dict[str, Any]) -> None:
         json.dump(status, fh, indent=2, ensure_ascii=False)
 
 
+def print_summary(results: List[Dict[str, Any]], ctx: Dict[str, Any]) -> None:
+    install_dir = Path(ctx["install_dir"]).resolve()
+    log_file = Path(ctx["log_file"]).resolve()
+    status_file = Path(ctx["status_file"]).resolve()
+
+    total = len(results)
+    successes = sum(1 for r in results if r.get("status") == "success")
+    failures = total - successes
+
+    print("\nInstallation Summary")
+    print("=" * 22)
+    print(f"Install directory : {install_dir}")
+    print(f"Log file          : {log_file}")
+    print(f"Status file       : {status_file}")
+
+    print("\nModules:")
+    if not results:
+        print("  No modules were installed or selected.")
+    else:
+        header = f"{'Name':<20} {'Status':<14} {'Installed At':<25} {'Time':>8}"
+        print(header)
+        print("-" * len(header))
+        for item in results:
+            status = item.get("status", "unknown")
+            color = GREEN if status == "success" else RED
+            symbol = "✓" if status == "success" else "✗"
+            installed_at = item.get("installed_at", "-")
+            duration = item.get("duration_seconds")
+            duration_text = f"{duration:.2f}s" if isinstance(duration, (int, float)) else "-"
+            status_label = f"{color}{symbol} {status}{RESET}"
+            print(
+                f"{item.get('module', '-'): <20} "
+                f"{status_label:<14} "
+                f"{installed_at:<25} "
+                f"{duration_text:>8}"
+            )
+
+    print(f"\nStats: Success {successes} | Failed {failures} | Total {total}")
+
+
 def prepare_status_backup(ctx: Dict[str, Any]) -> None:
     status_path = Path(ctx["status_file"])
     if status_path.exists():
@@ -415,11 +460,13 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     "status": "failed",
                     "operations": [],
                     "installed_at": datetime.now().isoformat(),
+                    "duration_seconds": 0.0,
                 }
             )
             break
 
     write_status(results, ctx)
+    print_summary(results, ctx)
     return 0
 
 

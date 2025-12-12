@@ -35,7 +35,7 @@
       ]
     },
     "bmad": {
-      "enabled": false,
+      "enabled": true,
       "description": "BMAD agile workflow with multi-agent orchestration",
       "operations": [
         {
@@ -52,7 +52,7 @@
       ]
     },
     "requirements": {
-      "enabled": false,
+      "enabled": true,
       "description": "Requirements-driven development workflow",
       "operations": [
         {
