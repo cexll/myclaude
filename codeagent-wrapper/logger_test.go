@@ -768,3 +768,101 @@ func (f fakeFileInfo) Mode() os.FileMode  { return f.mode }
 func (f fakeFileInfo) ModTime() time.Time { return f.modTime }
 func (f fakeFileInfo) IsDir() bool        { return false }
 func (f fakeFileInfo) Sys() interface{}   { return nil }
+
+func TestExtractRecentErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		content    string
+		maxEntries int
+		want       []string
+	}{
+		{
+			name:       "empty log",
+			content:    "",
+			maxEntries: 10,
+			want:       nil,
+		},
+		{
+			name: "no errors",
+			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
+[2025-01-01 12:00:01.000] [PID:123] DEBUG: processing`,
+			maxEntries: 10,
+			want:       nil,
+		},
+		{
+			name: "single error",
+			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
+[2025-01-01 12:00:01.000] [PID:123] ERROR: something failed`,
+			maxEntries: 10,
+			want:       []string{"[2025-01-01 12:00:01.000] [PID:123] ERROR: something failed"},
+		},
+		{
+			name: "error and warn",
+			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
+[2025-01-01 12:00:01.000] [PID:123] WARN: warning message
+[2025-01-01 12:00:02.000] [PID:123] ERROR: error message`,
+			maxEntries: 10,
+			want: []string{
+				"[2025-01-01 12:00:01.000] [PID:123] WARN: warning message",
+				"[2025-01-01 12:00:02.000] [PID:123] ERROR: error message",
+			},
+		},
+		{
+			name: "truncate to max",
+			content: `[2025-01-01 12:00:00.000] [PID:123] ERROR: error 1
+[2025-01-01 12:00:01.000] [PID:123] ERROR: error 2
+[2025-01-01 12:00:02.000] [PID:123] ERROR: error 3
+[2025-01-01 12:00:03.000] [PID:123] ERROR: error 4
+[2025-01-01 12:00:04.000] [PID:123] ERROR: error 5`,
+			maxEntries: 3,
+			want: []string{
+				"[2025-01-01 12:00:02.000] [PID:123] ERROR: error 3",
+				"[2025-01-01 12:00:03.000] [PID:123] ERROR: error 4",
+				"[2025-01-01 12:00:04.000] [PID:123] ERROR: error 5",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			logPath := filepath.Join(tempDir, "test.log")
+			if err := os.WriteFile(logPath, []byte(tt.content), 0o644); err != nil {
+				t.Fatalf("failed to write test log: %v", err)
+			}
+
+			logger := &Logger{path: logPath}
+			got := logger.ExtractRecentErrors(tt.maxEntries)
+
+			if len(got) != len(tt.want) {
+				t.Fatalf("ExtractRecentErrors() got %d entries, want %d", len(got), len(tt.want))
+			}
+			for i, entry := range got {
+				if entry != tt.want[i] {
+					t.Errorf("entry[%d] = %q, want %q", i, entry, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestExtractRecentErrorsNilLogger(t *testing.T) {
+	var logger *Logger
+	if got := logger.ExtractRecentErrors(10); got != nil {
+		t.Fatalf("nil logger ExtractRecentErrors() should return nil, got %v", got)
+	}
+}
+
+func TestExtractRecentErrorsEmptyPath(t *testing.T) {
+	logger := &Logger{path: ""}
+	if got := logger.ExtractRecentErrors(10); got != nil {
+		t.Fatalf("empty path ExtractRecentErrors() should return nil, got %v", got)
+	}
+}
+
+func TestExtractRecentErrorsFileNotExist(t *testing.T) {
+	logger := &Logger{path: "/nonexistent/path/to/log.log"}
+	if got := logger.ExtractRecentErrors(10); got != nil {
+		t.Fatalf("nonexistent file ExtractRecentErrors() should return nil, got %v", got)
+	}
+}
