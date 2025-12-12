@@ -3881,3 +3881,35 @@ func TestRun_CLI_Success(t *testing.T) {
 		t.Fatalf("unexpected output: %q", output)
 	}
 }
+
+func TestResolveMaxParallelWorkers(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		want     int
+	}{
+		{"empty env returns unlimited", "", 0},
+		{"valid value", "4", 4},
+		{"zero value", "0", 0},
+		{"at limit", "100", 100},
+		{"exceeds limit capped", "150", 100},
+		{"negative falls back to unlimited", "-1", 0},
+		{"invalid string falls back to unlimited", "abc", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envValue != "" {
+				os.Setenv("CODEAGENT_MAX_PARALLEL_WORKERS", tt.envValue)
+			} else {
+				os.Unsetenv("CODEAGENT_MAX_PARALLEL_WORKERS")
+			}
+			defer os.Unsetenv("CODEAGENT_MAX_PARALLEL_WORKERS")
+
+			got := resolveMaxParallelWorkers()
+			if got != tt.want {
+				t.Errorf("resolveMaxParallelWorkers() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

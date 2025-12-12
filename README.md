@@ -125,7 +125,7 @@ Requirements → Architecture → Sprint Plan → Development → Review → QA
 ## Enterprise Workflow Features
 
 - **Multi-backend execution:** `codeagent-wrapper --backend codex|claude|gemini` (default `codex`) so you can match the model to the task without changing workflows.
-- **GitHub workflow commands:** `/gh-create-issue "short need"` creates structured issues; `/gh-implement 123` pulls issue #123, drives development, and prepares the PR.
+- **GitHub workflow commands:** `/gh-create-issue "short need"` creates structured issues; `/gh-issue-implement 123` pulls issue #123, drives development, and prepares the PR.
 - **Skills + hooks activation:** .claude/hooks run automation (tests, reviews), while `.claude/skills/skill-rules.json` auto-suggests the right skills. Keep hooks enabled in `.claude/settings.json` to activate the enterprise workflow helpers.
 
 ---
@@ -242,8 +242,6 @@ python3 install.py --module dev
 
 # Manual
 bash install.sh
-# Create legacy codex-wrapper alias (uses $INSTALL_DIR or ~/bin)
-bash scripts/install.sh
 ```
 
 #### Windows

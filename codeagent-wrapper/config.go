@@ -249,6 +249,8 @@ func parseArgs() (*Config, error) {
 	return cfg, nil
 }
 
+const maxParallelWorkersLimit = 100
+
 func resolveMaxParallelWorkers() int {
 	raw := strings.TrimSpace(os.Getenv("CODEAGENT_MAX_PARALLEL_WORKERS"))
 	if raw == "" {
@@ -259,6 +261,11 @@ func resolveMaxParallelWorkers() int {
 	if err != nil || value < 0 {
 		logWarn(fmt.Sprintf("Invalid CODEAGENT_MAX_PARALLEL_WORKERS=%q, falling back to unlimited", raw))
 		return 0
+	}
+
+	if value > maxParallelWorkersLimit {
+		logWarn(fmt.Sprintf("CODEAGENT_MAX_PARALLEL_WORKERS=%d exceeds limit, capping at %d", value, maxParallelWorkersLimit))
+		return maxParallelWorkersLimit
 	}
 
 	return value

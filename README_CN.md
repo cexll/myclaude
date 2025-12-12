@@ -233,8 +233,6 @@ python3 install.py --module dev
 
 # 手动
 bash install.sh
-# 创建 codex-wrapper 兼容别名（使用 $INSTALL_DIR 或 ~/bin）
-bash scripts/install.sh
 ```
 
 #### Windows 系统
