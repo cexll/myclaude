@@ -137,12 +137,13 @@ def resolve_paths(config: Dict[str, Any], args: argparse.Namespace) -> Dict[str,
 
 def list_modules(config: Dict[str, Any]) -> None:
     print("Available Modules:")
-    print(f"{'Name':<15} {'Enabled':<8} Description")
+    print(f"{'Name':<15} {'Default':<8} Description")
     print("-" * 60)
     for name, cfg in config.get("modules", {}).items():
-        enabled = "✓" if cfg.get("enabled", False) else "✗"
+        default = "✓" if cfg.get("enabled", False) else "✗"
         desc = cfg.get("description", "")
-        print(f"{name:<15} {enabled:<8} {desc}")
+        print(f"{name:<15} {default:<8} {desc}")
+    print("\n✓ = installed by default when no --module specified")
 
 
 def select_modules(config: Dict[str, Any], module_arg: Optional[str]) -> Dict[str, Any]:
