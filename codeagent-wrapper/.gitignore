@@ -1,3 +1,9 @@
+# Build artifacts
+codeagent-wrapper
+codeagent-wrapper.exe
+*.test
+
+# Coverage reports
 coverage.out
 coverage*.out
 cover.out

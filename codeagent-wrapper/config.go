@@ -104,15 +104,17 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 	var cfg ParallelConfig
 	seen := make(map[string]struct{})
 
+	taskIndex := 0
 	for _, taskBlock := range tasks {
 		taskBlock = strings.TrimSpace(taskBlock)
 		if taskBlock == "" {
 			continue
 		}
+		taskIndex++
 
 		parts := strings.SplitN(taskBlock, "---CONTENT---", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("task block missing ---CONTENT--- separator")
+			return nil, fmt.Errorf("task block #%d missing ---CONTENT--- separator", taskIndex)
 		}
 
 		meta := strings.TrimSpace(parts[0])
@@ -156,13 +158,13 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 		}
 
 		if task.ID == "" {
-			return nil, fmt.Errorf("task missing id field")
+			return nil, fmt.Errorf("task block #%d missing id field", taskIndex)
 		}
 		if content == "" {
-			return nil, fmt.Errorf("task %q missing content", task.ID)
+			return nil, fmt.Errorf("task block #%d (%q) missing content", taskIndex, task.ID)
 		}
 		if _, exists := seen[task.ID]; exists {
-			return nil, fmt.Errorf("duplicate task id: %s", task.ID)
+			return nil, fmt.Errorf("task block #%d has duplicate id: %s", taskIndex, task.ID)
 		}
 
 		task.Task = content
