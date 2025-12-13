@@ -13,12 +13,7 @@
 - **Concurrency Control**: `CODEAGENT_MAX_PARALLEL_WORKERS` env var limits concurrent tasks (max 100)
 - **Test Coverage**: 93.4% (backend.go 100%, config.go 97.8%, executor.go 96.4%)
 
-#### GitHub Workflow Automation
-- **`/gh-create-issue`**: Guided dialogue for structured issue creation
-- **`/gh-issue-implement`**: Full issue-to-PR lifecycle
-  - Issue analysis and requirements clarification
-  - Development execution via codeagent-wrapper
-  - Automated progress updates and PR creation
+#### Dev Workflow
 - **`/dev`**: 6-step minimal dev workflow with mandatory 90% test coverage
 
 #### Hooks System
@@ -34,7 +29,7 @@
 
 #### Installation System Enhancements
 - **`merge_json` operation**: Auto-merge `settings.json` configuration
-- **Modular Installation**: `python3 install.py --module dev,gh`
+- **Modular Installation**: `python3 install.py --module dev`
 - **Verbose Logging**: `--verbose/-v` enables terminal real-time output
 - **Streaming Output**: `op_run_command` streams bash script execution
 
@@ -66,8 +61,6 @@
 - Updated version test case from 5.1.0 → 5.2.0 (codeagent-wrapper/main_test.go:23)
 
 #### Commands & Documentation
-- `gh-implement.md` → `gh-issue-implement.md` semantic naming
-- Fixed README example command: `/gh-implement` → `/gh-issue-implement`
 - Reverted `skills/codex/SKILL.md` to `codex-wrapper` for backward compatibility
 
 #### dev-workflow
@@ -84,7 +77,6 @@
 - `CODEAGENT_MAX_PARALLEL_WORKERS`: Parallel task concurrency limit (default: unlimited, recommended: 8, max: 100)
 
 #### Configuration Files
-- `config.json`: Added "gh" module definition
 - `config.schema.json`: Added `op_merge_json` schema validation
 
 ### ⚠️ Breaking Changes
@@ -101,14 +93,14 @@ python3 install.py --module dev --force
 ### 📦 Installation
 
 ```bash
-# Full install (dev + GitHub workflow)
-python3 install.py --module dev,gh
+# Install dev module
+python3 install.py --module dev
 
 # List all modules
 python3 install.py --list-modules
 
 # Verbose logging mode
-python3 install.py --module gh --verbose
+python3 install.py --module dev --verbose
 ```
 
 ### 🧪 Test Results
