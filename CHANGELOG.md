@@ -1,8 +1,13 @@
 # Changelog
 
-## 5.2.0 - 2025-12-12
+## 5.2.0 - 2025-12-13
 
 ### 🚀 Core Features
+
+#### Skills System Enhancements
+- **New Skills**: Added `codeagent`, `product-requirements`, `prototype-prompt-generator` to `skill-rules.json`
+- **Auto-Activation**: Skills automatically trigger based on keyword/pattern matching via hooks
+- **Backward Compatibility**: Retained `skills/codex/SKILL.md` for existing workflows
 
 #### Multi-Backend Support (codeagent-wrapper)
 - **Renamed**: `codex-wrapper` → `codeagent-wrapper` with pluggable backend architecture
@@ -32,6 +37,7 @@
 - **Modular Installation**: `python3 install.py --module dev`
 - **Verbose Logging**: `--verbose/-v` enables terminal real-time output
 - **Streaming Output**: `op_run_command` streams bash script execution
+- **Configuration Cleanup**: Removed deprecated `gh` module from `config.json`
 
 ### 📚 Documentation
 
