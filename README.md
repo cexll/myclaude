@@ -7,21 +7,21 @@
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
 [![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
 
-> AI-powered development automation with Claude Code + Codex collaboration
+> AI-powered development automation with multi-backend execution (Codex/Claude/Gemini)
 
-## Core Concept: Claude Code + Codex
+## Core Concept: Multi-Backend Architecture
 
-This system leverages a **dual-agent architecture**:
+This system leverages a **dual-agent architecture** with pluggable AI backends:
 
 | Role | Agent | Responsibility |
 |------|-------|----------------|
 | **Orchestrator** | Claude Code | Planning, context gathering, verification, user interaction |
-| **Executor** | Codex | Code editing, test execution, file operations |
+| **Executor** | codeagent-wrapper | Code editing, test execution (Codex/Claude/Gemini backends) |
 
 **Why this separation?**
 - Claude Code excels at understanding context and orchestrating complex workflows
-- Codex excels at focused code generation and execution
-- Together they provide better results than either alone
+- Specialized backends (Codex for code, Claude for reasoning, Gemini for prototyping) excel at focused execution
+- Backend selection via `--backend codex|claude|gemini` matches the model to the task
 
 ## Quick Start(Please execute in Powershell on Windows)
 
@@ -246,7 +246,7 @@ bash install.sh
 
 #### Windows
 
-Windows installs place `codex-wrapper.exe` in `%USERPROFILE%\bin`.
+Windows installs place `codeagent-wrapper.exe` in `%USERPROFILE%\bin`.
 
 ```powershell
 # PowerShell (recommended)

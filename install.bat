@@ -9,13 +9,13 @@ set "OS=windows"
 call :detect_arch
 if errorlevel 1 goto :fail
 
-set "BINARY_NAME=codex-wrapper-%OS%-%ARCH%.exe"
+set "BINARY_NAME=codeagent-wrapper-%OS%-%ARCH%.exe"
 set "URL=https://github.com/%REPO%/releases/%VERSION%/download/%BINARY_NAME%"
-set "TEMP_FILE=%TEMP%\codex-wrapper-%ARCH%-%RANDOM%.exe"
+set "TEMP_FILE=%TEMP%\codeagent-wrapper-%ARCH%-%RANDOM%.exe"
 set "DEST_DIR=%USERPROFILE%\bin"
-set "DEST=%DEST_DIR%\codex-wrapper.exe"
+set "DEST=%DEST_DIR%\codeagent-wrapper.exe"
 
-echo Downloading codex-wrapper for %ARCH% ...
+echo Downloading codeagent-wrapper for %ARCH% ...
 echo   %URL%
 call :download
 if errorlevel 1 goto :fail
@@ -43,7 +43,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo codex-wrapper installed successfully at:
+echo codeagent-wrapper installed successfully at:
 echo   %DEST%
 
 rem Automatically ensure %USERPROFILE%\bin is in the USER (HKCU) PATH
