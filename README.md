@@ -3,7 +3,7 @@
 [![Run in Smithery](https://smithery.ai/badge/skills/cexll)](https://smithery.ai/skills?ns=cexll&utm_source=github&utm_medium=badge)
 
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
 [![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
 
@@ -331,7 +331,7 @@ python3 install.py --module dev --force
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+AGPL-3.0 License - see [LICENSE](LICENSE)
 
 ## Support
 
