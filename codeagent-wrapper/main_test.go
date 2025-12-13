@@ -1377,7 +1377,7 @@ func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
 	backend := ClaudeBackend{}
 	cfg := &Config{Mode: "new", WorkDir: defaultWorkdir}
 	got := backend.BuildArgs(cfg, "todo")
-	want := []string{"-p", "--output-format", "stream-json", "--verbose", "todo"}
+	want := []string{"-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "todo"}
 	if len(got) != len(want) {
 		t.Fatalf("length mismatch")
 	}
@@ -1398,7 +1398,7 @@ func TestClaudeBackendBuildArgs_OutputValidation(t *testing.T) {
 	target := "ensure-flags"
 
 	args := backend.BuildArgs(cfg, target)
-	expectedPrefix := []string{"-p", "--output-format", "stream-json", "--verbose"}
+	expectedPrefix := []string{"-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose"}
 
 	if len(args) != len(expectedPrefix)+1 {
 		t.Fatalf("args length=%d, want %d", len(args), len(expectedPrefix)+1)
@@ -2690,7 +2690,7 @@ func TestVersionFlag(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codeagent-wrapper version 5.2.0\n"
+	want := "codeagent-wrapper version 5.2.2\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
@@ -2704,7 +2704,7 @@ func TestVersionShortFlag(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codeagent-wrapper version 5.2.0\n"
+	want := "codeagent-wrapper version 5.2.2\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
@@ -2718,7 +2718,7 @@ func TestVersionLegacyAlias(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codex-wrapper version 5.2.0\n"
+	want := "codex-wrapper version 5.2.2\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
