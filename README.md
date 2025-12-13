@@ -7,7 +7,7 @@
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-5.2.2-green)](https://github.com/cexll/myclaude)
 
 > AI-powered development automation with multi-backend execution (Codex/Claude/Gemini)
 
@@ -320,13 +320,10 @@ python3 install.py --module dev --force
 ## Documentation
 
 ### Core Guides
-- **[Architecture Overview](docs/architecture.md)** - System architecture and component design
 - **[Codeagent-Wrapper Guide](docs/CODEAGENT-WRAPPER.md)** - Multi-backend execution wrapper
-- **[GitHub Workflow Guide](docs/GITHUB-WORKFLOW.md)** - Issue-to-PR automation
 - **[Hooks Documentation](docs/HOOKS.md)** - Custom hooks and automation
 
 ### Additional Resources
-- **[Enterprise Workflow Ideas](docs/enterprise-workflow-ideas.md)** - Advanced patterns and best practices
 - **[Installation Log](install.log)** - Installation history and troubleshooting
 
 ---
