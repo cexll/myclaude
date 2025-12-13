@@ -4,21 +4,21 @@
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
 [![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
 
-> AI 驱动的开发自动化 - Claude Code + Codex 协作
+> AI 驱动的开发自动化 - 多后端执行架构 (Codex/Claude/Gemini)
 
-## 核心概念：Claude Code + Codex
+## 核心概念：多后端架构
 
-本系统采用**双智能体架构**：
+本系统采用**双智能体架构**与可插拔 AI 后端：
 
 | 角色 | 智能体 | 职责 |
 |------|-------|------|
 | **编排者** | Claude Code | 规划、上下文收集、验证、用户交互 |
-| **执行者** | Codex | 代码编辑、测试执行、文件操作 |
+| **执行者** | codeagent-wrapper | 代码编辑、测试执行（Codex/Claude/Gemini 后端）|
 
 **为什么分离？**
 - Claude Code 擅长理解上下文和编排复杂工作流
-- Codex 擅长专注的代码生成和执行
-- 两者结合效果优于单独使用
+- 专业后端（Codex 擅长代码、Claude 擅长推理、Gemini 擅长原型）专注执行
+- 通过 `--backend codex|claude|gemini` 匹配模型与任务
 
 ## 快速开始（windows上请在Powershell中执行）
 
@@ -237,7 +237,7 @@ bash install.sh
 
 #### Windows 系统
 
-Windows 系统会将 `codex-wrapper.exe` 安装到 `%USERPROFILE%\bin`。
+Windows 系统会将 `codeagent-wrapper.exe` 安装到 `%USERPROFILE%\bin`。
 
 ```powershell
 # PowerShell（推荐）
