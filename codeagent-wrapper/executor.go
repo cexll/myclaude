@@ -615,6 +615,20 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		stdoutReader = io.TeeReader(stdout, stdoutLogger)
 	}
 
+	// Start parse goroutine BEFORE starting the command to avoid race condition
+	// where fast-completing commands close stdout before parser starts reading
+	messageSeen := make(chan struct{}, 1)
+	parseCh := make(chan parseResult, 1)
+	go func() {
+		msg, tid := parseJSONStreamInternal(stdoutReader, logWarnFn, logInfoFn, func() {
+			select {
+			case messageSeen <- struct{}{}:
+			default:
+			}
+		})
+		parseCh <- parseResult{message: msg, threadID: tid}
+	}()
+
 	logInfoFn(fmt.Sprintf("Starting %s with args: %s %s...", commandName, commandName, strings.Join(codexArgs[:min(5, len(codexArgs))], " ")))
 
 	if err := cmd.Start(); err != nil {
@@ -647,18 +661,6 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
-
-	messageSeen := make(chan struct{}, 1)
-	parseCh := make(chan parseResult, 1)
-	go func() {
-		msg, tid := parseJSONStreamInternal(stdoutReader, logWarnFn, logInfoFn, func() {
-			select {
-			case messageSeen <- struct{}{}:
-			default:
-			}
-		})
-		parseCh <- parseResult{message: msg, threadID: tid}
-	}()
 
 	var waitErr error
 	var forceKillTimer *forceKillTimer
