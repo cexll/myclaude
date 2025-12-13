@@ -23,6 +23,7 @@ type commandRunner interface {
 	StdoutPipe() (io.ReadCloser, error)
 	StdinPipe() (io.WriteCloser, error)
 	SetStderr(io.Writer)
+	SetDir(string)
 	Process() processHandle
 }
 
@@ -69,6 +70,12 @@ func (r *realCmd) StdinPipe() (io.WriteCloser, error) {
 func (r *realCmd) SetStderr(w io.Writer) {
 	if r.cmd != nil {
 		r.cmd.Stderr = w
+	}
+}
+
+func (r *realCmd) SetDir(dir string) {
+	if r.cmd != nil {
+		r.cmd.Dir = dir
 	}
 }
 
@@ -576,6 +583,12 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	cmd := newCommandRunner(ctx, commandName, codexArgs...)
+
+	// For backends that don't support -C flag (claude, gemini), set working directory via cmd.Dir
+	// Codex passes workdir via -C flag, so we skip setting Dir for it to avoid conflicts
+	if cfg.Mode != "resume" && commandName != "codex" && cfg.WorkDir != "" {
+		cmd.SetDir(cfg.WorkDir)
+	}
 
 	stderrWriters := []io.Writer{stderrBuf}
 	if stderrLogger != nil {

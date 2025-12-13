@@ -250,6 +250,10 @@ func (d *drainBlockingCmd) SetStderr(w io.Writer) {
 	d.inner.SetStderr(w)
 }
 
+func (d *drainBlockingCmd) SetDir(dir string) {
+	d.inner.SetDir(dir)
+}
+
 func (d *drainBlockingCmd) Process() processHandle {
 	return d.inner.Process()
 }
@@ -503,6 +507,8 @@ func (f *fakeCmd) StdinPipe() (io.WriteCloser, error) {
 func (f *fakeCmd) SetStderr(w io.Writer) {
 	f.stderr = w
 }
+
+func (f *fakeCmd) SetDir(string) {}
 
 func (f *fakeCmd) Process() processHandle {
 	if f == nil {
@@ -1371,7 +1377,7 @@ func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
 	backend := ClaudeBackend{}
 	cfg := &Config{Mode: "new", WorkDir: defaultWorkdir}
 	got := backend.BuildArgs(cfg, "todo")
-	want := []string{"-p", "-C", defaultWorkdir, "--output-format", "stream-json", "--verbose", "todo"}
+	want := []string{"-p", "--output-format", "stream-json", "--verbose", "todo"}
 	if len(got) != len(want) {
 		t.Fatalf("length mismatch")
 	}
@@ -1411,7 +1417,7 @@ func TestBackendBuildArgs_GeminiBackend(t *testing.T) {
 	backend := GeminiBackend{}
 	cfg := &Config{Mode: "new"}
 	got := backend.BuildArgs(cfg, "task")
-	want := []string{"-o", "stream-json", "-y", "-C", defaultWorkdir, "-p", "task"}
+	want := []string{"-o", "stream-json", "-y", "-p", "task"}
 	if len(got) != len(want) {
 		t.Fatalf("length mismatch")
 	}

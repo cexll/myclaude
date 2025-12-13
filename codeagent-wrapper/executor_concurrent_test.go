@@ -117,6 +117,7 @@ func (f *execFakeRunner) StdinPipe() (io.WriteCloser, error) {
 	return &writeCloserStub{}, nil
 }
 func (f *execFakeRunner) SetStderr(io.Writer) {}
+func (f *execFakeRunner) SetDir(string)      {}
 func (f *execFakeRunner) Process() processHandle {
 	if f.process != nil {
 		return f.process
