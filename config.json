@@ -20,9 +20,33 @@
         },
         {
           "type": "copy_file",
-          "source": "skills/codex/SKILL.md",
-          "target": "skills/codex/SKILL.md",
-          "description": "Install codex skill"
+          "source": "skills/codeagent/SKILL.md",
+          "target": "skills/codeagent/SKILL.md",
+          "description": "Install codeagent skill"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/product-requirements/SKILL.md",
+          "target": "skills/product-requirements/SKILL.md",
+          "description": "Install product-requirements skill"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/prototype-prompt-generator/SKILL.md",
+          "target": "skills/prototype-prompt-generator/SKILL.md",
+          "description": "Install prototype-prompt-generator skill"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/prototype-prompt-generator/references/prompt-structure.md",
+          "target": "skills/prototype-prompt-generator/references/prompt-structure.md",
+          "description": "Install prototype-prompt-generator prompt structure reference"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/prototype-prompt-generator/references/design-systems.md",
+          "target": "skills/prototype-prompt-generator/references/design-systems.md",
+          "description": "Install prototype-prompt-generator design systems reference"
         },
         {
           "type": "run_command",
