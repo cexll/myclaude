@@ -64,15 +64,15 @@ func NewLogger() (*Logger, error) {
 // NewLoggerWithSuffix creates a logger with an optional suffix in the filename.
 // Useful for tests that need isolated log files within the same process.
 func NewLoggerWithSuffix(suffix string) (*Logger, error) {
-	filename := fmt.Sprintf("codex-wrapper-%d", os.Getpid())
+	filename := fmt.Sprintf("%s-%d", primaryLogPrefix(), os.Getpid())
 	if suffix != "" {
 		filename += "-" + suffix
 	}
 	filename += ".log"
 
-	path := filepath.Join(os.TempDir(), filename)
+	path := filepath.Clean(filepath.Join(os.TempDir(), filename))
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func (l *Logger) Close() error {
 		}
 
 		// Log file is kept for debugging - NOT removed
-		// Users can manually clean up /tmp/codex-wrapper-*.log files
+		// Users can manually clean up /tmp/<wrapper>-*.log files
 	})
 
 	return closeErr
@@ -168,6 +168,36 @@ func (l *Logger) RemoveLogFile() error {
 		return nil
 	}
 	return os.Remove(l.path)
+}
+
+// ExtractRecentErrors reads the log file and returns the most recent ERROR and WARN entries.
+// Returns up to maxEntries entries in chronological order.
+func (l *Logger) ExtractRecentErrors(maxEntries int) []string {
+	if l == nil || l.path == "" {
+		return nil
+	}
+
+	f, err := os.Open(l.path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var entries []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "] ERROR:") || strings.Contains(line, "] WARN:") {
+			entries = append(entries, line)
+		}
+	}
+
+	// Keep only the last maxEntries
+	if len(entries) > maxEntries {
+		entries = entries[len(entries)-maxEntries:]
+	}
+
+	return entries
 }
 
 // Flush waits for all pending log entries to be written. Primarily for tests.
@@ -250,7 +280,7 @@ func (l *Logger) run() {
 		case entry, ok := <-l.ch:
 			if !ok {
 				// Channel closed, final flush
-				l.writer.Flush()
+				_ = l.writer.Flush()
 				return
 			}
 			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
@@ -259,18 +289,18 @@ func (l *Logger) run() {
 			l.pendingWG.Done()
 
 		case <-ticker.C:
-			l.writer.Flush()
+			_ = l.writer.Flush()
 
 		case flushDone := <-l.flushReq:
 			// Explicit flush request - flush writer and sync to disk
-			l.writer.Flush()
-			l.file.Sync()
+			_ = l.writer.Flush()
+			_ = l.file.Sync()
 			close(flushDone)
 		}
 	}
 }
 
-// cleanupOldLogs scans os.TempDir() for codex-wrapper-*.log files and removes those
+// cleanupOldLogs scans os.TempDir() for wrapper log files and removes those
 // whose owning process is no longer running (i.e., orphaned logs).
 // It includes safety checks for:
 // - PID reuse: Compares file modification time with process start time
@@ -278,12 +308,28 @@ func (l *Logger) run() {
 func cleanupOldLogs() (CleanupStats, error) {
 	var stats CleanupStats
 	tempDir := os.TempDir()
-	pattern := filepath.Join(tempDir, "codex-wrapper-*.log")
 
-	matches, err := globLogFiles(pattern)
-	if err != nil {
-		logWarn(fmt.Sprintf("cleanupOldLogs: failed to list logs: %v", err))
-		return stats, fmt.Errorf("cleanupOldLogs: %w", err)
+	prefixes := logPrefixes()
+	if len(prefixes) == 0 {
+		prefixes = []string{defaultWrapperName}
+	}
+
+	seen := make(map[string]struct{})
+	var matches []string
+	for _, prefix := range prefixes {
+		pattern := filepath.Join(tempDir, fmt.Sprintf("%s-*.log", prefix))
+		found, err := globLogFiles(pattern)
+		if err != nil {
+			logWarn(fmt.Sprintf("cleanupOldLogs: failed to list logs: %v", err))
+			return stats, fmt.Errorf("cleanupOldLogs: %w", err)
+		}
+		for _, path := range found {
+			if _, ok := seen[path]; ok {
+				continue
+			}
+			seen[path] = struct{}{}
+			matches = append(matches, path)
+		}
 	}
 
 	var removeErr error
@@ -428,28 +474,60 @@ func isPIDReused(logPath string, pid int) bool {
 
 func parsePIDFromLog(path string) (int, bool) {
 	name := filepath.Base(path)
-	if !strings.HasPrefix(name, "codex-wrapper-") || !strings.HasSuffix(name, ".log") {
-		return 0, false
+	prefixes := logPrefixes()
+	if len(prefixes) == 0 {
+		prefixes = []string{defaultWrapperName}
 	}
 
-	core := strings.TrimSuffix(strings.TrimPrefix(name, "codex-wrapper-"), ".log")
-	if core == "" {
-		return 0, false
+	for _, prefix := range prefixes {
+		prefixWithDash := fmt.Sprintf("%s-", prefix)
+		if !strings.HasPrefix(name, prefixWithDash) || !strings.HasSuffix(name, ".log") {
+			continue
+		}
+
+		core := strings.TrimSuffix(strings.TrimPrefix(name, prefixWithDash), ".log")
+		if core == "" {
+			continue
+		}
+
+		pidPart := core
+		if idx := strings.IndexRune(core, '-'); idx != -1 {
+			pidPart = core[:idx]
+		}
+
+		if pidPart == "" {
+			continue
+		}
+
+		pid, err := strconv.Atoi(pidPart)
+		if err != nil || pid <= 0 {
+			continue
+		}
+		return pid, true
 	}
 
-	pidPart := core
-	if idx := strings.IndexRune(core, '-'); idx != -1 {
-		pidPart = core[:idx]
-	}
+	return 0, false
+}
 
-	if pidPart == "" {
-		return 0, false
+func logConcurrencyPlanning(limit, total int) {
+	logger := activeLogger()
+	if logger == nil {
+		return
 	}
+	logger.Info(fmt.Sprintf("parallel: worker_limit=%s total_tasks=%d", renderWorkerLimit(limit), total))
+}
 
-	pid, err := strconv.Atoi(pidPart)
-	if err != nil || pid <= 0 {
-		return 0, false
+func logConcurrencyState(event, taskID string, active, limit int) {
+	logger := activeLogger()
+	if logger == nil {
+		return
 	}
+	logger.Debug(fmt.Sprintf("parallel: %s task=%s active=%d limit=%s", event, taskID, active, renderWorkerLimit(limit)))
+}
 
-	return pid, true
+func renderWorkerLimit(limit int) string {
+	if limit <= 0 {
+		return "unbounded"
+	}
+	return strconv.Itoa(limit)
 }

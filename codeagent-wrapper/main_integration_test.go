@@ -166,7 +166,7 @@ id: E
 ---CONTENT---
 task-e`
 	stdinReader = bytes.NewReader([]byte(input))
-	os.Args = []string{"codex-wrapper", "--parallel"}
+	os.Args = []string{"codeagent-wrapper", "--parallel"}
 
 	var mu sync.Mutex
 	starts := make(map[string]time.Time)
@@ -269,7 +269,7 @@ dependencies: A
 ---CONTENT---
 b`
 	stdinReader = bytes.NewReader([]byte(input))
-	os.Args = []string{"codex-wrapper", "--parallel"}
+	os.Args = []string{"codeagent-wrapper", "--parallel"}
 
 	exitCode := 0
 	output := captureStdout(t, func() {
@@ -511,7 +511,7 @@ id: E
 ---CONTENT---
 ok-e`
 	stdinReader = bytes.NewReader([]byte(input))
-	os.Args = []string{"codex-wrapper", "--parallel"}
+	os.Args = []string{"codeagent-wrapper", "--parallel"}
 
 	var exitCode int
 	output := captureStdout(t, func() {
@@ -583,7 +583,7 @@ id: T
 ---CONTENT---
 slow`
 	stdinReader = bytes.NewReader([]byte(input))
-	os.Args = []string{"codex-wrapper", "--parallel"}
+	os.Args = []string{"codeagent-wrapper", "--parallel"}
 
 	exitCode := 0
 	output := captureStdout(t, func() {

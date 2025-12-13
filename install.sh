@@ -22,22 +22,22 @@ esac
 # Build download URL
 REPO="cexll/myclaude"
 VERSION="latest"
-BINARY_NAME="codex-wrapper-${OS}-${ARCH}"
+BINARY_NAME="codeagent-wrapper-${OS}-${ARCH}"
 URL="https://github.com/${REPO}/releases/${VERSION}/download/${BINARY_NAME}"
 
-echo "Downloading codex-wrapper from ${URL}..."
-if ! curl -fsSL "$URL" -o /tmp/codex-wrapper; then
+echo "Downloading codeagent-wrapper from ${URL}..."
+if ! curl -fsSL "$URL" -o /tmp/codeagent-wrapper; then
     echo "ERROR: failed to download binary" >&2
     exit 1
 fi
 
 mkdir -p "$HOME/bin"
 
-mv /tmp/codex-wrapper "$HOME/bin/codex-wrapper"
-chmod +x "$HOME/bin/codex-wrapper"
+mv /tmp/codeagent-wrapper "$HOME/bin/codeagent-wrapper"
+chmod +x "$HOME/bin/codeagent-wrapper"
 
-if "$HOME/bin/codex-wrapper" --version >/dev/null 2>&1; then
-    echo "codex-wrapper installed successfully to ~/bin/codex-wrapper"
+if "$HOME/bin/codeagent-wrapper" --version >/dev/null 2>&1; then
+    echo "codeagent-wrapper installed successfully to ~/bin/codeagent-wrapper"
 else
     echo "ERROR: installation verification failed" >&2
     exit 1

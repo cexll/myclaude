@@ -11,13 +11,13 @@ A freshly designed lightweight development workflow with no legacy baggage, focu
   ↓
 AskUserQuestion (requirements clarification)
   ↓
-Codex analysis (extract key points and tasks)
+codeagent analysis (plan mode + UI auto-detection)
   ↓
-develop-doc-generator (create dev doc)
+dev-plan-generator (create dev doc)
   ↓
-Codex concurrent development (2–5 tasks)
+codeagent concurrent development (2–5 tasks, backend split)
   ↓
-Codex testing & verification (≥90% coverage)
+codeagent testing & verification (≥90% coverage)
   ↓
 Done (generate summary)
 ```
@@ -29,23 +29,27 @@ Done (generate summary)
 - No scoring system, no complex logic
 - 2–3 rounds of Q&A until the requirement is clear
 
-### 2. Codex Analysis
-- Call codex to analyze the request
+### 2. codeagent Analysis & UI Detection
+- Call codeagent to analyze the request in plan mode style
 - Extract: core functions, technical points, task list (2–5 items)
-- Output a structured analysis
+- UI auto-detection: needs UI work when task involves style assets (.css, .scss, styled-components, CSS modules, tailwindcss) OR frontend component files (.tsx, .jsx, .vue); output yes/no plus evidence
 
 ### 3. Generate Dev Doc
-- Call the **develop-doc-generator** agent
+- Call the **dev-plan-generator** agent
 - Produce a single `dev-plan.md`
+- Append a dedicated UI task when Step 2 marks `needs_ui: true`
 - Include: task breakdown, file scope, dependencies, test commands
 
 ### 4. Concurrent Development
 - Work from the task list in dev-plan.md
+- Use codeagent per task with explicit backend selection:
+  - Backend/API/DB tasks → `--backend codex` (default)
+  - UI/style/component tasks → `--backend gemini` (enforced)
 - Independent tasks → run in parallel
 - Conflicting tasks → run serially
 
 ### 5. Testing & Verification
-- Each codex task:
+- Each codeagent task:
   - Implements the feature
   - Writes tests
   - Runs coverage
@@ -76,8 +80,14 @@ Only one file—minimal and clear.
 
 ### Tools
 - **AskUserQuestion**: interactive requirement clarification
-- **codex**: analysis, development, testing
-- **develop-doc-generator**: generate dev doc (subagent, saves context)
+- **codeagent skill**: analysis, development, testing; supports `--backend` for codex (default) or gemini (UI)
+- **dev-plan-generator agent**: generate dev doc (subagent via Task tool, saves context)
+
+## UI Auto-Detection & Backend Routing
+- **UI detection standard**: style files (.css, .scss, styled-components, CSS modules, tailwindcss) OR frontend component code (.tsx, .jsx, .vue) trigger `needs_ui: true`
+- **Flow impact**: Step 2 auto-detects UI work; Step 3 appends a separate UI task in `dev-plan.md` when detected
+- **Backend split**: backend/API tasks use codex backend (default); UI tasks force gemini backend
+- **Implementation**: Orchestrator invokes codeagent skill with appropriate backend parameter per task type
 
 ## Key Features
 
@@ -94,11 +104,11 @@ Only one file—minimal and clear.
 ### ✅ Concurrency
 - 2–5 tasks in parallel
 - Auto-detect dependencies and conflicts
-- Codex executes independently
+- codeagent executes independently
 
 ### ✅ Quality Assurance
 - Enforces 90% coverage
-- Codex tests and verifies its own work
+- codeagent tests and verifies its own work
 - Automatic retry on failure
 
 ## Example
@@ -113,20 +123,21 @@ A: Email + password
 Q: Should login be remembered?
 A: Yes, use JWT token
 
-# Step 2: Codex analysis
+# Step 2: codeagent analysis
 Output:
 - Core: email/password login + JWT auth
 - Task 1: Backend API
 - Task 2: Password hashing
 - Task 3: Frontend form
+UI detection: needs_ui = true (tailwindcss classes in frontend form)
 
 # Step 3: Generate doc
-dev-plan.md generated ✓
+dev-plan.md generated with backend + UI tasks ✓
 
-# Step 4-5: Concurrent development
-[task-1] Backend API → tests → 92% ✓
-[task-2] Password hashing → tests → 95% ✓
-[task-3] Frontend form → tests → 91% ✓
+# Step 4-5: Concurrent development (backend codex, UI gemini)
+[task-1] Backend API (codex) → tests → 92% ✓
+[task-2] Password hashing (codex) → tests → 95% ✓
+[task-3] Frontend form (gemini) → tests → 91% ✓
 ```
 
 ## Directory Structure
@@ -135,9 +146,9 @@ dev-plan.md generated ✓
 dev-workflow/
 ├── README.md                          # This doc
 ├── commands/
-│   └── dev.md                         # Workflow definition
+│   └── dev.md                         # /dev workflow orchestrator definition
 └── agents/
-    └── develop-doc-generator.md       # Doc generator
+    └── dev-plan-generator.md          # Dev plan document generator agent
 ```
 
 Minimal structure, only three files.
@@ -155,7 +166,7 @@ Minimal structure, only three files.
 1. **KISS**: keep it simple
 2. **Disposable**: no persistent config
 3. **Quality first**: enforce 90% coverage
-4. **Concurrency first**: leverage codex
+4. **Concurrency first**: leverage codeagent
 5. **No legacy baggage**: clean-slate design
 
 ---

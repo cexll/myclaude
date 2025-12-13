@@ -1,0 +1,12 @@
+{
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "$CLAUDE_PROJECT_DIR/hooks/skill-activation-prompt.sh"
+        }
+      ]
+    }
+  ]
+}

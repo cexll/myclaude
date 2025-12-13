@@ -49,6 +49,7 @@
         { "$ref": "#/$defs/op_copy_dir" },
         { "$ref": "#/$defs/op_copy_file" },
         { "$ref": "#/$defs/op_merge_dir" },
+        { "$ref": "#/$defs/op_merge_json" },
         { "$ref": "#/$defs/op_run_command" }
       ]
     },
@@ -88,6 +89,18 @@
       "properties": {
         "type": { "const": "merge_dir" },
         "source": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "op_merge_json": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "source", "target"],
+      "properties": {
+        "type": { "const": "merge_json" },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "merge_key": { "type": "string" },
         "description": { "type": "string" }
       }
     },

@@ -3,9 +3,9 @@
 [![Run in Smithery](https://smithery.ai/badge/skills/cexll)](https://smithery.ai/skills?ns=cexll&utm_source=github&utm_medium=badge)
 
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-5.0-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
 
 > AI-powered development automation with Claude Code + Codex collaboration
 
@@ -122,6 +122,12 @@ Requirements → Architecture → Sprint Plan → Development → Review → QA
 
 **Best For:** Quick tasks, no workflow overhead needed
 
+## Enterprise Workflow Features
+
+- **Multi-backend execution:** `codeagent-wrapper --backend codex|claude|gemini` (default `codex`) so you can match the model to the task without changing workflows.
+- **GitHub workflow commands:** `/gh-create-issue "short need"` creates structured issues; `/gh-issue-implement 123` pulls issue #123, drives development, and prepares the PR.
+- **Skills + hooks activation:** .claude/hooks run automation (tests, reviews), while `.claude/skills/skill-rules.json` auto-suggests the right skills. Keep hooks enabled in `.claude/settings.json` to activate the enterprise workflow helpers.
+
 ---
 
 ## Installation
@@ -204,7 +210,7 @@ The `codex` skill enables Claude Code to delegate code execution to Codex CLI.
 
 ```bash
 # Codex is invoked via the skill
-codex-wrapper - <<'EOF'
+codeagent-wrapper - <<'EOF'
 implement @src/auth.ts with JWT validation
 EOF
 ```
@@ -212,7 +218,7 @@ EOF
 ### Parallel Execution
 
 ```bash
-codex-wrapper --parallel <<'EOF'
+codeagent-wrapper --parallel <<'EOF'
 ---TASK---
 id: backend_api
 workdir: /project/backend
@@ -309,9 +315,23 @@ python3 install.py --module dev --force
 
 ---
 
+## Documentation
+
+### Core Guides
+- **[Architecture Overview](docs/architecture.md)** - System architecture and component design
+- **[Codeagent-Wrapper Guide](docs/CODEAGENT-WRAPPER.md)** - Multi-backend execution wrapper
+- **[GitHub Workflow Guide](docs/GITHUB-WORKFLOW.md)** - Issue-to-PR automation
+- **[Hooks Documentation](docs/HOOKS.md)** - Custom hooks and automation
+
+### Additional Resources
+- **[Enterprise Workflow Ideas](docs/enterprise-workflow-ideas.md)** - Advanced patterns and best practices
+- **[Installation Log](install.log)** - Installation history and troubleshooting
+
+---
+
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+AGPL-3.0 License - see [LICENSE](LICENSE)
 
 ## Support
 

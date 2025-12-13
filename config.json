@@ -27,7 +27,7 @@
         {
           "type": "run_command",
           "command": "bash install.sh",
-          "description": "Install codex-wrapper binary",
+          "description": "Install codeagent-wrapper binary",
           "env": {
             "INSTALL_DIR": "${install_dir}"
           }
@@ -82,6 +82,36 @@
           "source": "docs/DEVELOPMENT-COMMANDS.md",
           "target": "docs/DEVELOPMENT-COMMANDS.md",
           "description": "Copy development commands documentation"
+        }
+      ]
+    },
+    "gh": {
+      "enabled": true,
+      "description": "GitHub issue-to-PR workflow with codeagent integration",
+      "operations": [
+        {
+          "type": "merge_dir",
+          "source": "github-workflow",
+          "description": "Merge GitHub workflow commands"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/codeagent/SKILL.md",
+          "target": "skills/codeagent/SKILL.md",
+          "description": "Install codeagent skill"
+        },
+        {
+          "type": "copy_dir",
+          "source": "hooks",
+          "target": "hooks",
+          "description": "Copy hooks scripts"
+        },
+        {
+          "type": "merge_json",
+          "source": "hooks/hooks-config.json",
+          "target": "settings.json",
+          "merge_key": "hooks",
+          "description": "Merge hooks configuration into settings.json"
         }
       ]
     }

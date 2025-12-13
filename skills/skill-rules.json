@@ -1,0 +1,44 @@
+{
+  "skills": {
+    "codex": {
+      "type": "execution",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "refactor",
+          "implement",
+          "code change",
+          "bug fix",
+          "生成代码",
+          "重构",
+          "修复"
+        ],
+        "intentPatterns": [
+          "(refactor|rewrite|optimi[sz]e)\\b",
+          "(implement|build|write).*(feature|function|module|code)",
+          "(fix|debug).*(bug|error|issue)"
+        ]
+      }
+    },
+    "gh-workflow": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "issue",
+          "pr",
+          "pull request",
+          "github",
+          "gh workflow",
+          "merge"
+        ],
+        "intentPatterns": [
+          "(create|open|update|close|review).*(pr|pull request|issue)",
+          "\\bgithub\\b|\\bgh\\b"
+        ]
+      }
+    }
+  }
+}
