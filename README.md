@@ -1,3 +1,5 @@
+[中文](README_CN.md) [English](README.md)
+
 # Claude Code Multi-Agent Workflow System
 
 [![Run in Smithery](https://smithery.ai/badge/skills/cexll)](https://smithery.ai/skills?ns=cexll&utm_source=github&utm_medium=badge)
