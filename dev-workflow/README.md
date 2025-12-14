@@ -15,7 +15,7 @@ codeagent analysis (plan mode + UI auto-detection)
   ↓
 dev-plan-generator (create dev doc)
   ↓
-codeagent concurrent development (2–5 tasks, backend split)
+codeagent concurrent development (intelligent backend selection)
   ↓
 codeagent testing & verification (≥90% coverage)
   ↓
@@ -31,7 +31,7 @@ Done (generate summary)
 
 ### 2. codeagent Analysis & UI Detection
 - Call codeagent to analyze the request in plan mode style
-- Extract: core functions, technical points, task list (2–5 items)
+- Extract: core functions, technical points, task list with complexity ratings
 - UI auto-detection: needs UI work when task involves style assets (.css, .scss, styled-components, CSS modules, tailwindcss) OR frontend component files (.tsx, .jsx, .vue); output yes/no plus evidence
 
 ### 3. Generate Dev Doc
@@ -42,9 +42,11 @@ Done (generate summary)
 
 ### 4. Concurrent Development
 - Work from the task list in dev-plan.md
-- Use codeagent per task with explicit backend selection:
-  - Backend/API/DB tasks → `--backend codex` (default)
-  - UI/style/component tasks → `--backend gemini` (enforced)
+- Use codeagent per task with intelligent backend selection:
+  - Simple/Medium tasks → `--backend claude` (fast, cost-effective)
+  - Complex tasks → `--backend codex` (deep reasoning)
+  - UI tasks → `--backend gemini` (enforced)
+- Backend selected automatically based on task complexity rating
 - Independent tasks → run in parallel
 - Conflicting tasks → run serially
 
@@ -80,14 +82,17 @@ Only one file—minimal and clear.
 
 ### Tools
 - **AskUserQuestion**: interactive requirement clarification
-- **codeagent skill**: analysis, development, testing; supports `--backend` for codex (default) or gemini (UI)
-- **dev-plan-generator agent**: generate dev doc (subagent via Task tool, saves context)
+- **codeagent skill**: analysis, development, testing; supports `--backend` for claude/codex/gemini
+- **dev-plan-generator agent**: generate dev doc with complexity ratings (subagent via Task tool, saves context)
 
-## UI Auto-Detection & Backend Routing
-- **UI detection standard**: style files (.css, .scss, styled-components, CSS modules, tailwindcss) OR frontend component code (.tsx, .jsx, .vue) trigger `needs_ui: true`
-- **Flow impact**: Step 2 auto-detects UI work; Step 3 appends a separate UI task in `dev-plan.md` when detected
-- **Backend split**: backend/API tasks use codex backend (default); UI tasks force gemini backend
-- **Implementation**: Orchestrator invokes codeagent skill with appropriate backend parameter per task type
+## Intelligent Backend Selection
+- **Complexity-based routing**: Tasks are rated as simple/medium/complex based on functional requirements (NOT code volume)
+  - Simple: Follows existing patterns, deterministic logic → claude
+  - Medium: Requires design decisions, multiple scenarios → claude
+  - Complex: Architecture design, algorithms, deep domain knowledge → codex
+  - UI: Style/component work → gemini (enforced)
+- **Flow impact**: Step 2 analyzes complexity; Step 3 includes complexity ratings in dev-plan.md; Step 4 auto-selects backend
+- **Implementation**: Orchestrator reads complexity field and invokes codeagent skill with appropriate backend parameter
 
 ## Key Features
 
@@ -102,9 +107,9 @@ Only one file—minimal and clear.
 - Steps are straightforward
 
 ### ✅ Concurrency
-- 2–5 tasks in parallel
+- Tasks split based on natural functional boundaries
 - Auto-detect dependencies and conflicts
-- codeagent executes independently
+- codeagent executes independently with optimal backend
 
 ### ✅ Quality Assurance
 - Enforces 90% coverage
@@ -126,18 +131,18 @@ A: Yes, use JWT token
 # Step 2: codeagent analysis
 Output:
 - Core: email/password login + JWT auth
-- Task 1: Backend API
-- Task 2: Password hashing
-- Task 3: Frontend form
+- Task 1: Backend API (complexity: medium)
+- Task 2: Password hashing (complexity: simple)
+- Task 3: Frontend form (complexity: simple)
 UI detection: needs_ui = true (tailwindcss classes in frontend form)
 
 # Step 3: Generate doc
-dev-plan.md generated with backend + UI tasks ✓
+dev-plan.md generated with complexity ratings ✓
 
-# Step 4-5: Concurrent development (backend codex, UI gemini)
-[task-1] Backend API (codex) → tests → 92% ✓
-[task-2] Password hashing (codex) → tests → 95% ✓
-[task-3] Frontend form (gemini) → tests → 91% ✓
+# Step 4-5: Concurrent development (intelligent backend selection)
+[task-1] Backend API (claude, medium) → tests → 92% ✓
+[task-2] Password hashing (claude, simple) → tests → 95% ✓
+[task-3] Frontend form (gemini, UI) → tests → 91% ✓
 ```
 
 ## Directory Structure

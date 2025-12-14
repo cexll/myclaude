@@ -1,5 +1,5 @@
 ---
-description: Extreme lightweight end-to-end development workflow with requirements clarification, parallel codeagent execution, and mandatory 90% test coverage
+description: Extreme lightweight end-to-end development workflow with requirements clarification, intelligent backend selection, parallel codeagent execution, and mandatory 90% test coverage
 ---
 
 
@@ -39,7 +39,7 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   2. **Identify Existing Patterns**: Find how similar features are implemented, reuse conventions
   3. **Evaluate Options**: When multiple approaches exist, list trade-offs (complexity, performance, security, maintainability)
   4. **Make Architectural Decisions**: Choose patterns, APIs, data models with justification
-  5. **Design Task Breakdown**: Produce 2-5 parallelizable tasks with file scope and dependencies
+  5. **Design Task Breakdown**: Produce parallelizable tasks based on natural functional boundaries with file scope and dependencies
 
   **Analysis Output Structure**:
   ```
@@ -56,7 +56,7 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   [API design, data models, architecture choices made]
 
   ## Task Breakdown
-  [2-5 tasks with: ID, description, file scope, dependencies, test command]
+  [Tasks with: ID, complexity (simple/medium/complex), rationale, description, file scope, dependencies, test command]
 
   ## UI Determination
   needs_ui: [true/false]
@@ -82,9 +82,34 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   - If user chooses "Need adjustments", return to Step 1 or Step 2 based on feedback
 
 - **Step 4: Parallel Development Execution**
-  - For each task in `dev-plan.md`, invoke codeagent skill with task brief in HEREDOC format:
+
+  **Backend Selection Logic** (executed by orchestrator):
+  - For each task in `dev-plan.md`, read the `Complexity` field
+  - Resolve backend based on complexity and UI requirements:
+    ```
+    if task has UI work (from Step 2 analysis):
+      backend = "gemini"  # UI tasks always use gemini
+    elif complexity == "simple" or complexity == "medium":
+      backend = "claude"  # Most tasks use claude (fast, cost-effective)
+    elif complexity == "complex":
+      backend = "codex"   # Complex tasks use codex (deep reasoning)
+    else:
+      backend = "claude"  # Default fallback
+    ```
+
+  **Task Execution**:
+  - Invoke codeagent skill with resolved backend in HEREDOC format:
     ```bash
-    # Backend task (use codex backend - default)
+    # Example: Simple/Medium task
+    codeagent-wrapper --backend claude - <<'EOF'
+    Task: [task-id]
+    Reference: @.claude/specs/{feature_name}/dev-plan.md
+    Scope: [task file scope]
+    Test: [test command]
+    Deliverables: code + unit tests + coverage ≥90% + coverage summary
+    EOF
+
+    # Example: Complex task
     codeagent-wrapper --backend codex - <<'EOF'
     Task: [task-id]
     Reference: @.claude/specs/{feature_name}/dev-plan.md
@@ -93,7 +118,7 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
     Deliverables: code + unit tests + coverage ≥90% + coverage summary
     EOF
 
-    # UI task (use gemini backend - enforced)
+    # Example: UI task
     codeagent-wrapper --backend gemini - <<'EOF'
     Task: [task-id]
     Reference: @.claude/specs/{feature_name}/dev-plan.md
@@ -102,7 +127,9 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
     Deliverables: code + unit tests + coverage ≥90% + coverage summary
     EOF
     ```
+
   - Execute independent tasks concurrently; serialize conflicting ones; track coverage reports
+  - Backend is selected automatically based on task complexity, no manual intervention needed
 
 - **Step 5: Coverage Validation**
   - Validate each task’s coverage:
@@ -119,7 +146,9 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
 
 **Quality Standards**
 - Code coverage ≥90%
-- 2-5 genuinely parallelizable tasks
+- Tasks based on natural functional boundaries (typically 2-8)
+- Each task has clear complexity rating (simple/medium/complex)
+- Backend automatically selected based on task complexity
 - Documentation must be minimal yet actionable
 - No verbose implementations; only essential code
 

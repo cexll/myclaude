@@ -29,6 +29,8 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
 
 ### Task 1: [Task Name]
 - **ID**: task-1
+- **Complexity**: [simple|medium|complex]
+- **Rationale**: [Why this complexity level? What makes it simple/complex?]
 - **Description**: [What needs to be done]
 - **File Scope**: [Directories or files involved, e.g., src/auth/**, tests/auth/]
 - **Dependencies**: [None or depends on task-x]
@@ -38,7 +40,7 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
 ### Task 2: [Task Name]
 ...
 
-(2-5 tasks)
+(Tasks based on natural functional boundaries, typically 2-8)
 
 ## Acceptance Criteria
 - [ ] Feature point 1
@@ -53,9 +55,13 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
 
 ## Generation Rules You Must Enforce
 
-1. **Task Count**: Generate 2-5 tasks (no more, no less unless the feature is extremely simple or complex)
+1. **Task Count**: Generate tasks based on natural functional boundaries (no artificial limits)
+   - Typical range: 2-8 tasks
+   - Quality over quantity: prefer fewer well-scoped tasks over excessive fragmentation
+   - Each task should be independently completable by one agent
 2. **Task Requirements**: Each task MUST include:
    - Clear ID (task-1, task-2, etc.)
+   - Complexity rating (simple/medium/complex) with rationale
    - Specific description of what needs to be done
    - Explicit file scope (directories or files affected)
    - Dependency declaration ("None" or "depends on task-x")
@@ -65,20 +71,61 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
 4. **Test Commands**: Must include coverage parameters (e.g., `--cov=module --cov-report=term` for pytest, `--coverage` for npm)
 5. **Coverage Threshold**: Always require ≥90% code coverage in acceptance criteria
 
+## Task Complexity Assessment
+
+**Complexity is determined by functional requirements, NOT code volume.**
+
+### Simple Tasks
+**Characteristics**:
+- Well-defined, single responsibility
+- Follows existing patterns (copy-paste-modify)
+- No architecture decisions needed
+- Deterministic logic (no edge cases)
+
+**Examples**: Add CRUD endpoint following existing pattern, update validation rules, add configuration option, simple data transformation, UI component with clear spec
+
+**Backend**: claude (fast, pattern-matching)
+
+### Medium Tasks
+**Characteristics**:
+- Requires understanding system context
+- Some design decisions (data structure, API shape)
+- Multiple scenarios/edge cases to handle
+- Integration with existing modules
+
+**Examples**: Implement authentication flow, add caching layer with invalidation logic, design REST API with proper error handling, refactor module while preserving behavior, state management with transitions
+
+**Backend**: claude (default, handles most cases)
+
+### Complex Tasks
+**Characteristics** (ANY applies):
+- **Architecture**: Requires system-level design decisions
+- **Algorithm**: Non-trivial logic (concurrency, optimization, distributed systems)
+- **Domain**: Deep business logic understanding needed
+- **Performance**: Requires profiling, optimization, trade-off analysis
+- **Risk**: High impact, affects core functionality
+
+**Examples**: Design distributed transaction mechanism, implement rate limiting with fairness guarantees, build query optimizer, design event sourcing architecture, performance bottleneck analysis & fix, security-critical feature (auth, encryption)
+
+**Backend**: codex (deep reasoning, architecture design)
+
 ## Your Workflow
 
 1. **Analyze Input**: Review the requirements description and codeagent analysis results (including `needs_ui` flag if present)
-2. **Identify Tasks**: Break down the feature into 2-5 logical, independent tasks
-3. **Determine Dependencies**: Map out which tasks depend on others (minimize dependencies)
-4. **Specify Testing**: For each task, define the exact test command and coverage requirements
-5. **Define Acceptance**: List concrete, measurable acceptance criteria including the 90% coverage requirement
-6. **Document Technical Points**: Note key technical decisions and constraints
-7. **Write File**: Use the Write tool to create `./.claude/specs/{feature_name}/dev-plan.md`
+2. **Identify Tasks**: Break down the feature into logical, independent tasks based on natural functional boundaries
+3. **Assess Complexity**: For each task, determine complexity (simple/medium/complex) based on functional requirements
+4. **Determine Dependencies**: Map out which tasks depend on others (minimize dependencies)
+5. **Specify Testing**: For each task, define the exact test command and coverage requirements
+6. **Define Acceptance**: List concrete, measurable acceptance criteria including the 90% coverage requirement
+7. **Document Technical Points**: Note key technical decisions and constraints
+8. **Write File**: Use the Write tool to create `./.claude/specs/{feature_name}/dev-plan.md`
 
 ## Quality Checks Before Writing
 
-- [ ] Task count is between 2-5
-- [ ] Every task has all 6 required fields (ID, Description, File Scope, Dependencies, Test Command, Test Focus)
+- [ ] Task count justified by functional boundaries (typically 2-8)
+- [ ] Every task has complexity rating with clear rationale
+- [ ] Complexity based on functional requirements, NOT code volume
+- [ ] Every task has all required fields (ID, Complexity, Rationale, Description, File Scope, Dependencies, Test Command, Test Focus)
 - [ ] Test commands include coverage parameters
 - [ ] Dependencies are explicitly stated
 - [ ] Acceptance criteria includes 90% coverage requirement
