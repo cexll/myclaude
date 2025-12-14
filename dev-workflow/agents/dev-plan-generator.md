@@ -38,22 +38,26 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
 ### Task 2: [Task Name]
 ...
 
-(2-5 tasks)
+(2-8 tasks based on complexity)
 
 ## Acceptance Criteria
 - [ ] Feature point 1
 - [ ] Feature point 2
 - [ ] All unit tests pass
-- [ ] Code coverage ≥90%
+- [ ] Code coverage ≥{coverage_threshold}
 
 ## Technical Notes
 - [Key technical decisions]
 - [Constraints to be aware of]
+
+## Split Criteria Applied
+- [Why tasks were split this way]
+- [Parallelism opportunities identified]
 ```
 
 ## Generation Rules You Must Enforce
 
-1. **Task Count**: Generate 2-5 tasks (no more, no less unless the feature is extremely simple or complex)
+1. **Task Count**: Generate 2-8 tasks based on complexity
 2. **Task Requirements**: Each task MUST include:
    - Clear ID (task-1, task-2, etc.)
    - Specific description of what needs to be done
@@ -63,25 +67,56 @@ Your output is a single file: `./.claude/specs/{feature_name}/dev-plan.md`
    - Testing focus points (scenarios to cover)
 3. **Task Independence**: Design tasks to be as independent as possible to enable parallel execution
 4. **Test Commands**: Must include coverage parameters (e.g., `--cov=module --cov-report=term` for pytest, `--coverage` for npm)
-5. **Coverage Threshold**: Always require ≥90% code coverage in acceptance criteria
+5. **Coverage Threshold**: Use user-specified `{coverage_threshold}` (default 90%) in acceptance criteria
+
+## Split Criteria
+
+**Core Principle**: Split tasks like assigning work to different developers—each task should be simple enough for one agent to complete independently, enabling parallel execution for efficiency.
+
+**Split Goals** (in priority order):
+1. **Reduce Complexity**: Each task should have a single clear objective that one agent can fully understand and implement
+2. **Enable Parallelism**: Maximize tasks that can run concurrently without blocking each other
+3. **Minimize Coordination**: Clear interfaces between tasks, no shared file modifications
+
+**Interface-First Split Rule** (CRITICAL for parallelism):
+- When multiple implementations share an interface, ALWAYS split into:
+  1. **Interface Definition Task**: Define the interface/contract only (small, fast task)
+  2. **Implementation Tasks**: Each implementation as separate task, ALL can run in parallel after interface task
+- Pattern: Instead of "T1: Interface + Impl A → T2: Impl B" (serial), use "T1: Interface → (T2: Impl A || T3: Impl B)" (parallel)
+- Applies to: storage backends, output formatters, protocol handlers, auth providers, cache layers, notification channels, etc.
+
+**When to Split** (ANY condition triggers split):
+- Task has multiple distinct responsibilities (e.g., "setup + implement + test")
+- Task spans different tech layers (backend API + frontend UI + database)
+- Task scope exceeds 300 LOC or touches >5 files
+- Task requires context-switching between unrelated concerns
+- A junior developer would struggle to hold the full task in their head
+- **Task contains interface definition + implementation together** (split them!)
+
+**When NOT to Split**:
+- Splitting would create tight coupling requiring constant coordination
+- Subtasks would modify the same files (merge conflicts)
+- The overhead of defining interfaces exceeds the parallelism benefit
+- Task is already atomic (single file, single concern, <100 LOC)
+- Interface has only ONE implementation (no parallelism benefit)
 
 ## Your Workflow
 
 1. **Analyze Input**: Review the requirements description and codeagent analysis results (including `needs_ui` flag if present)
-2. **Identify Tasks**: Break down the feature into 2-5 logical, independent tasks
+2. **Identify Tasks**: Break down the feature into 2-8 logical, independent tasks based on complexity
 3. **Determine Dependencies**: Map out which tasks depend on others (minimize dependencies)
 4. **Specify Testing**: For each task, define the exact test command and coverage requirements
-5. **Define Acceptance**: List concrete, measurable acceptance criteria including the 90% coverage requirement
+5. **Define Acceptance**: List concrete, measurable acceptance criteria including the coverage requirement
 6. **Document Technical Points**: Note key technical decisions and constraints
 7. **Write File**: Use the Write tool to create `./.claude/specs/{feature_name}/dev-plan.md`
 
 ## Quality Checks Before Writing
 
-- [ ] Task count is between 2-5
+- [ ] Task count is between 2-8
 - [ ] Every task has all 6 required fields (ID, Description, File Scope, Dependencies, Test Command, Test Focus)
 - [ ] Test commands include coverage parameters
 - [ ] Dependencies are explicitly stated
-- [ ] Acceptance criteria includes 90% coverage requirement
+- [ ] Acceptance criteria includes coverage requirement with user-specified threshold
 - [ ] File scope is specific (not vague like "all files")
 - [ ] Testing focus is concrete (not generic like "test everything")
 

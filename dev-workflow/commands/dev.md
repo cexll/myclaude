@@ -1,5 +1,5 @@
 ---
-description: Extreme lightweight end-to-end development workflow with requirements clarification, parallel codeagent execution, and mandatory 90% test coverage
+description: Extreme lightweight end-to-end development workflow with requirements clarification, parallel codeagent execution, and flexible test coverage validation
 ---
 
 
@@ -11,7 +11,7 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   2. Technical analysis using codeagent
   3. Development documentation generation
   4. Parallel development execution
-  5. Coverage validation (≥90% requirement)
+  5. Coverage validation (≥{coverage_threshold} requirement)
   6. Completion summary
 
 **Workflow Execution**
@@ -39,7 +39,7 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   2. **Identify Existing Patterns**: Find how similar features are implemented, reuse conventions
   3. **Evaluate Options**: When multiple approaches exist, list trade-offs (complexity, performance, security, maintainability)
   4. **Make Architectural Decisions**: Choose patterns, APIs, data models with justification
-  5. **Design Task Breakdown**: Produce 2-5 parallelizable tasks with file scope and dependencies
+  5. **Design Task Breakdown**: Produce 2-8 parallelizable tasks based on complexity, with file scope and dependencies
 
   **Analysis Output Structure**:
   ```
@@ -56,7 +56,38 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   [API design, data models, architecture choices made]
 
   ## Task Breakdown
-  [2-5 tasks with: ID, description, file scope, dependencies, test command]
+  [2-8 tasks based on complexity, with: ID, description, file scope, dependencies, test command]
+
+  ## Split Criteria
+
+  **Core Principle**: Split tasks like assigning work to different developers—each task should be simple enough for one person (agent) to complete independently, enabling parallel execution for efficiency.
+
+  **Split Goals** (in priority order):
+  1. **Reduce Complexity**: Each task should have a single clear objective that one agent can fully understand and implement
+  2. **Enable Parallelism**: Maximize tasks that can run concurrently without blocking each other
+  3. **Minimize Coordination**: Clear interfaces between tasks, no shared file modifications
+
+  **Interface-First Split Rule** (CRITICAL for parallelism):
+  - When multiple implementations share an interface, ALWAYS split into:
+    1. **Interface Definition Task**: Define the interface/contract only (small, fast task)
+    2. **Implementation Tasks**: Each implementation as separate task, ALL can run in parallel after interface task
+  - Pattern: Instead of "T1: Interface + Impl A → T2: Impl B" (serial), use "T1: Interface → (T2: Impl A || T3: Impl B)" (parallel)
+  - Applies to: storage backends, output formatters, protocol handlers, auth providers, cache layers, notification channels, etc.
+
+  **When to Split** (ANY condition triggers split):
+  - Task has multiple distinct responsibilities (e.g., "setup + implement + test")
+  - Task spans different tech layers (backend API + frontend UI + database)
+  - Task scope exceeds 300 LOC or touches >5 files
+  - Task requires context-switching between unrelated concerns
+  - A junior developer would struggle to hold the full task in their head
+  - **Task contains interface definition + implementation together** (split them!)
+
+  **When NOT to Split**:
+  - Splitting would create tight coupling requiring constant coordination
+  - Subtasks would modify the same files (merge conflicts)
+  - The overhead of defining interfaces exceeds the parallelism benefit
+  - Task is already atomic (single file, single concern, <100 LOC)
+  - Interface has only ONE implementation (no parallelism benefit)
 
   ## UI Determination
   needs_ui: [true/false]
@@ -90,7 +121,7 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
     Reference: @.claude/specs/{feature_name}/dev-plan.md
     Scope: [task file scope]
     Test: [test command]
-    Deliverables: code + unit tests + coverage ≥90% + coverage summary
+    Deliverables: code + unit tests + coverage ≥{coverage_threshold} + coverage summary
     EOF
 
     # UI task (use gemini backend - enforced)
@@ -99,15 +130,15 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
     Reference: @.claude/specs/{feature_name}/dev-plan.md
     Scope: [task file scope]
     Test: [test command]
-    Deliverables: code + unit tests + coverage ≥90% + coverage summary
+    Deliverables: code + unit tests + coverage ≥{coverage_threshold} + coverage summary
     EOF
     ```
   - Execute independent tasks concurrently; serialize conflicting ones; track coverage reports
 
 - **Step 5: Coverage Validation**
-  - Validate each task’s coverage:
-    - All ≥90% → pass
-    - Any <90% → request more tests (max 2 rounds)
+  - Validate each task's coverage against user-specified `{coverage_threshold}` (default 90%):
+    - All ≥{coverage_threshold} → pass
+    - Any <{coverage_threshold} → request more tests (max 2 rounds)
 
 - **Step 6: Completion Summary**
   - Provide completed task list, coverage per task, key file changes
@@ -118,8 +149,8 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
 - Dependency conflicts: serialize automatically
 
 **Quality Standards**
-- Code coverage ≥90%
-- 2-5 genuinely parallelizable tasks
+- Code coverage ≥{coverage_threshold} (user-specified, default 90%)
+- 2-8 genuinely parallelizable tasks based on complexity
 - Documentation must be minimal yet actionable
 - No verbose implementations; only essential code
 
