@@ -1,129 +1,198 @@
 # Changelog
 
-## 5.2.0 - 2025-12-13
+All notable changes to this project will be documented in this file.
 
-### 🚀 Core Features
+## [5.2.3] - 2025-12-15
 
-#### Skills System Enhancements
-- **New Skills**: Added `codeagent`, `product-requirements`, `prototype-prompt-generator` to `skill-rules.json`
-- **Auto-Activation**: Skills automatically trigger based on keyword/pattern matching via hooks
-- **Backward Compatibility**: Retained `skills/codex/SKILL.md` for existing workflows
+### 🐛 Bug Fixes
 
-#### Multi-Backend Support (codeagent-wrapper)
-- **Renamed**: `codex-wrapper` → `codeagent-wrapper` with pluggable backend architecture
-- **Three Backends**: Codex (default), Claude, Gemini via `--backend` flag
-- **Smart Parser**: Auto-detects backend JSON stream formats
-- **Session Resume**: All backends support `-r <session_id>` cross-session resume
-- **Parallel Execution**: DAG task scheduling with global and per-task backend configuration
-- **Concurrency Control**: `CODEAGENT_MAX_PARALLEL_WORKERS` env var limits concurrent tasks (max 100)
-- **Test Coverage**: 93.4% (backend.go 100%, config.go 97.8%, executor.go 96.4%)
+- *(parser)* 修复 bufio.Scanner token too long 错误 (#64)
 
-#### Dev Workflow
-- **`/dev`**: 6-step minimal dev workflow with mandatory 90% test coverage
+### 🧪 Testing
 
-#### Hooks System
-- **UserPromptSubmit**: Auto-activate skills based on context
-- **PostToolUse**: Auto-validation/formatting after tool execution
-- **Stop**: Cleanup and reporting on session end
-- **Examples**: Skill auto-activation, pre-commit checks
+- 同步测试中的版本号至 5.2.3
 
-#### Skills System
-- **Auto-Activation**: `skill-rules.json` regex trigger rules
-- **codeagent skill**: Multi-backend wrapper integration
-- **Modular Design**: Easy to extend with custom skills
+## [5.2.2] - 2025-12-13
 
-#### Installation System Enhancements
-- **`merge_json` operation**: Auto-merge `settings.json` configuration
-- **Modular Installation**: `python3 install.py --module dev`
-- **Verbose Logging**: `--verbose/-v` enables terminal real-time output
-- **Streaming Output**: `op_run_command` streams bash script execution
-- **Configuration Cleanup**: Removed deprecated `gh` module from `config.json`
+### 🧪 Testing
+
+- Fix tests for ClaudeBackend default --dangerously-skip-permissions
+
+### ⚙️ Miscellaneous Tasks
+
+- *(v5.2.2)* Bump version and clean up documentation
+
+## [5.2.0] - 2025-12-13
+
+### 🚀 Features
+
+- *(dev-workflow)* 替换 Codex 为 codeagent 并添加 UI 自动检测
+- *(codeagent-wrapper)* 完整多后端支持与安全优化
+- *(install)* 添加终端日志输出和 verbose 模式
+- *(v5.2.0)* Improve release notes and installation scripts
+- *(v5.2.0)* Complete skills system integration and config cleanup
+
+### 🐛 Bug Fixes
+
+- *(merge)* 修复master合并后的编译和测试问题
+- *(parallel)* 修复并行执行启动横幅重复打印问题
+- *(ci)* 移除 .claude 配置文件验证步骤
+- *(codeagent-wrapper)* 重构信号处理逻辑避免重复 nil 检查
+- *(codeagent-wrapper)* 修复权限标志逻辑和版本号测试
+- *(install)* Op_run_command 实时流式输出
+- *(codeagent-wrapper)* 异常退出时显示最近错误信息
+- *(codeagent-wrapper)* Remove binary artifacts and improve error messages
+- *(codeagent-wrapper)* Use -r flag for claude backend resume
+- *(install)* Clarify module list shows default state not enabled
+- *(codeagent-wrapper)* Use -r flag for gemini backend resume
+- *(codeagent-wrapper)* Add worker limit cap and remove legacy alias
+- *(codeagent-wrapper)* Fix race condition in stdout parsing
+
+### 🚜 Refactor
+
+- *(pr-53)* 调整文件命名和技能定义
 
 ### 📚 Documentation
 
-- `docs/architecture.md` (21KB): Architecture overview with ASCII diagrams
-- `docs/CODEAGENT-WRAPPER.md` (9KB): Complete usage guide
-- `docs/HOOKS.md` (4KB): Customization guide
-- `README.md`: Added documentation index, corrected default backend description
+- *(changelog)* Remove GitHub workflow related content
 
-### 🔧 Important Fixes
+### 🧪 Testing
 
-#### codeagent-wrapper
-- Fixed Claude/Gemini backend `-C` (workdir) and `-r` (resume) parameter support (codeagent-wrapper/backend.go:80-120)
-- Corrected Claude backend permission flag logic `if cfg.SkipPermissions` (codeagent-wrapper/backend.go:95)
-- Fixed parallel mode startup banner duplication (codeagent-wrapper/main.go:184-194 removed)
-- Extract and display recent errors on abnormal exit `Logger.ExtractRecentErrors()` (codeagent-wrapper/logger.go:156)
-- Added task block index to parallel config error messages (codeagent-wrapper/config.go:245)
-- Refactored signal handling logic to avoid duplicate nil checks (codeagent-wrapper/main.go:290-305)
-- Removed binary artifacts from tracking (codeagent-wrapper, *.test, coverage.out)
+- *(codeagent-wrapper)* 添加 ExtractRecentErrors 单元测试
 
-#### Installation Scripts
-- Fixed issue #55: `op_run_command` uses Popen + selectors for real-time streaming output
-- Fixed issue #56: Display recent errors instead of entire log
-- Changed module list header from "Enabled" to "Default" to avoid ambiguity
+### ⚙️ Miscellaneous Tasks
 
-#### CI/CD
-- Removed `.claude/` config file validation step (.github/workflows/ci.yml:45)
-- Updated version test case from 5.1.0 → 5.2.0 (codeagent-wrapper/main_test.go:23)
+- *(v5.2.0)* Update CHANGELOG and remove deprecated test files
 
-#### Commands & Documentation
-- Reverted `skills/codex/SKILL.md` to `codex-wrapper` for backward compatibility
+## [5.1.4] - 2025-12-09
 
-#### dev-workflow
-- Replaced Codex skill → codeagent skill throughout
-- Added UI auto-detection: backend tasks use codex, UI tasks use gemini
-- Corrected agent name: `develop-doc-generator` → `dev-plan-generator`
+### 🐛 Bug Fixes
 
-### ⚙️ Configuration & Environment Variables
+- *(parallel)* 任务启动时立即返回日志文件路径以支持实时调试
 
-#### New Environment Variables
-- `CODEAGENT_SKIP_PERMISSIONS`: Control permission check behavior
-  - Claude backend defaults to `--dangerously-skip-permissions` enabled, set to `true` to disable
-  - Codex/Gemini backends default to permission checks enabled, set to `true` to skip
-- `CODEAGENT_MAX_PARALLEL_WORKERS`: Parallel task concurrency limit (default: unlimited, recommended: 8, max: 100)
+## [5.1.3] - 2025-12-08
 
-#### Configuration Files
-- `config.schema.json`: Added `op_merge_json` schema validation
+### 🐛 Bug Fixes
 
-### ⚠️ Breaking Changes
+- *(test)* Resolve CI timing race in TestFakeCmdInfra
 
-**codex-wrapper → codeagent-wrapper rename**
+## [5.1.2] - 2025-12-08
 
-**Migration**:
-```bash
-python3 install.py --module dev --force
-```
+### 🐛 Bug Fixes
 
-**Backward Compatibility**: `codex-wrapper/main.go` provides compatibility entry point
+- 修复channel同步竞态条件和死锁问题
 
-### 📦 Installation
+## [5.1.1] - 2025-12-08
 
-```bash
-# Install dev module
-python3 install.py --module dev
+### 🐛 Bug Fixes
 
-# List all modules
-python3 install.py --list-modules
+- *(test)* Resolve data race on forceKillDelay with atomic operations
+- 增强日志清理的安全性和可靠性
 
-# Verbose logging mode
-python3 install.py --module dev --verbose
-```
+### 💼 Other
 
-### 🧪 Test Results
+- Resolve signal handling conflict preserving testability and Windows support
 
-✅ **All tests passing**
-- Overall coverage: 93.4%
-- Security scan: 0 issues (gosec)
-- Linting: Pass
+### 🧪 Testing
 
-### 📄 Related PRs & Issues
+- 补充测试覆盖提升至 89.3%
 
-- PR #53: Enterprise Workflow with Multi-Backend Support
-- Issue #55: Installation script execution not visible
-- Issue #56: Unfriendly error logging on abnormal exit
+## [5.1.0] - 2025-12-07
 
-### 👥 Contributors
+### 🚀 Features
 
-- Claude Sonnet 4.5
-- Claude Opus 4.5
-- SWE-Agent-Bot
+- Implement enterprise workflow with multi-backend support
+- *(cleanup)* 添加启动时清理日志的功能和--cleanup标志支持
+
+## [5.0.0] - 2025-12-05
+
+### 🚀 Features
+
+- Implement modular installation system
+
+### 🐛 Bug Fixes
+
+- *(codex-wrapper)* Defer startup log until args parsed
+
+### 🚜 Refactor
+
+- Remove deprecated plugin modules
+
+### 📚 Documentation
+
+- Rewrite documentation for v5.0 modular architecture
+
+### ⚙️ Miscellaneous Tasks
+
+- Clarify unit-test coverage levels in requirement questions
+
+## [4.8.2] - 2025-12-02
+
+### 🐛 Bug Fixes
+
+- *(codex-wrapper)* Capture and include stderr in error messages
+- Correct Go version in go.mod from 1.25.3 to 1.21
+- Make forceKillDelay testable to prevent signal test timeout
+- Skip signal test in CI environment
+
+## [4.8.1] - 2025-12-01
+
+### 🐛 Bug Fixes
+
+- *(codex-wrapper)* Improve --parallel parameter validation and docs
+
+### 🎨 Styling
+
+- *(codex-skill)* Replace emoji with text labels
+
+## [4.7.3] - 2025-11-29
+
+### 🚀 Features
+
+- Add async logging to temp file with lifecycle management
+- Add parallel execution support to codex-wrapper
+- Add session resume support and improve output format
+
+### 🐛 Bug Fixes
+
+- *(logger)* 保留日志文件以便程序退出后调试并完善日志输出功能
+
+### 📚 Documentation
+
+- Improve codex skill parameter best practices
+
+## [4.7.2] - 2025-11-28
+
+### 🐛 Bug Fixes
+
+- *(main)* Improve buffer size and streamline message extraction
+
+### 🧪 Testing
+
+- *(ParseJSONStream)* 增加对超大单行文本和非字符串文本的处理测试
+
+## [4.7] - 2025-11-27
+
+### 🐛 Bug Fixes
+
+- Update repository URLs to cexll/myclaude
+
+## [4.4] - 2025-11-22
+
+### 🚀 Features
+
+- 支持通过环境变量配置 skills 模型
+
+## [4.1] - 2025-11-04
+
+### 📚 Documentation
+
+- 新增 /enhance-prompt 命令并更新所有 README 文档
+
+## [3.1] - 2025-09-17
+
+### 💼 Other
+
+- Sync READMEs with actual commands/agents; remove nonexistent commands; enhance requirements-pilot with testing decision gate and options.
+
+<!-- generated by git-cliff -->
