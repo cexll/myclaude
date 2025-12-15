@@ -78,6 +78,7 @@ type logWriter struct {
 	prefix string
 	maxLen int
 	buf    bytes.Buffer
+	dropped bool
 }
 
 func newLogWriter(prefix string, maxLen int) *logWriter {
@@ -94,12 +95,12 @@ func (lw *logWriter) Write(p []byte) (int, error) {
 	total := len(p)
 	for len(p) > 0 {
 		if idx := bytes.IndexByte(p, '\n'); idx >= 0 {
-			lw.buf.Write(p[:idx])
+			lw.writeLimited(p[:idx])
 			lw.logLine(true)
 			p = p[idx+1:]
 			continue
 		}
-		lw.buf.Write(p)
+		lw.writeLimited(p)
 		break
 	}
 	return total, nil
@@ -117,19 +118,51 @@ func (lw *logWriter) logLine(force bool) {
 		return
 	}
 	line := lw.buf.String()
+	dropped := lw.dropped
+	lw.dropped = false
 	lw.buf.Reset()
 	if line == "" && !force {
 		return
 	}
-	if lw.maxLen > 0 && len(line) > lw.maxLen {
-		cutoff := lw.maxLen
-		if cutoff > 3 {
-			line = line[:cutoff-3] + "..."
-		} else {
-			line = line[:cutoff]
+	if lw.maxLen > 0 {
+		if dropped {
+			if lw.maxLen > 3 {
+				line = line[:min(len(line), lw.maxLen-3)] + "..."
+			} else {
+				line = line[:min(len(line), lw.maxLen)]
+			}
+		} else if len(line) > lw.maxLen {
+			cutoff := lw.maxLen
+			if cutoff > 3 {
+				line = line[:cutoff-3] + "..."
+			} else {
+				line = line[:cutoff]
+			}
 		}
 	}
 	logInfo(lw.prefix + line)
+}
+
+func (lw *logWriter) writeLimited(p []byte) {
+	if lw == nil || len(p) == 0 {
+		return
+	}
+	if lw.maxLen <= 0 {
+		lw.buf.Write(p)
+		return
+	}
+
+	remaining := lw.maxLen - lw.buf.Len()
+	if remaining <= 0 {
+		lw.dropped = true
+		return
+	}
+	if len(p) <= remaining {
+		lw.buf.Write(p)
+		return
+	}
+	lw.buf.Write(p[:remaining])
+	lw.dropped = true
 }
 
 type tailBuffer struct {
