@@ -41,6 +41,7 @@ func resetTestHooks() {
 	closeLogger()
 	executablePathFn = os.Executable
 	runTaskFn = runCodexTask
+	runCodexTaskFn = defaultRunCodexTaskFn
 	exitFn = os.Exit
 }
 
