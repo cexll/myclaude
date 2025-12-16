@@ -97,6 +97,11 @@ jobs:
         with:
           path: artifacts
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Prepare release files
         run: |
           mkdir -p release
@@ -104,32 +109,20 @@ jobs:
           cp install.sh install.bat release/
           ls -la release/
 
-      - name: Extract release notes from CHANGELOG
-        id: extract_notes
+      - name: Generate release notes with git-cliff
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          # Install git-cliff via npx
+          npx git-cliff@latest --current --strip all -o release_notes.md
 
-          # Extract version section from CHANGELOG.md
-          awk -v ver="$VERSION" '
-            /^## [0-9]+\.[0-9]+\.[0-9]+ - / {
-              if (found) exit
-              if ($2 == ver) {
-                found = 1
-                next
-              }
-            }
-            found && /^## / { exit }
-            found { print }
-          ' CHANGELOG.md > release_notes.md
-
-          # Fallback to auto-generated if extraction failed
+          # Fallback if generation failed
           if [ ! -s release_notes.md ]; then
-            echo "⚠️ No release notes found in CHANGELOG.md for version $VERSION" > release_notes.md
+            echo "⚠️ Failed to generate release notes with git-cliff" > release_notes.md
             echo "" >> release_notes.md
             echo "## What's Changed" >> release_notes.md
             echo "See commits in this release for details." >> release_notes.md
           fi
 
+          echo "--- Generated Release Notes ---"
           cat release_notes.md
 
       - name: Create Release

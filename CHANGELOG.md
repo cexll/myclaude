@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.4] - 2025-12-16
+
+### 🐛 Bug Fixes
+
+- *(executor)* Isolate log files per task in parallel mode
+- *(codeagent)* 防止 Claude backend 无限递归调用
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump version to 5.2.4
+
 ## [5.2.3] - 2025-12-15
 
 ### 🐛 Bug Fixes
