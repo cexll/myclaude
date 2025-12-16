@@ -11,7 +11,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	t.Run("new mode uses workdir without skip by default", func(t *testing.T) {
 		cfg := &Config{Mode: "new", WorkDir: "/repo"}
 		got := backend.BuildArgs(cfg, "todo")
-		want := []string{"-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "todo"}
+		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -20,7 +20,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	t.Run("new mode opt-in skip permissions with default workdir", func(t *testing.T) {
 		cfg := &Config{Mode: "new", SkipPermissions: true}
 		got := backend.BuildArgs(cfg, "-")
-		want := []string{"-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-"}
+		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "-"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -29,7 +29,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	t.Run("resume mode uses session id and omits workdir", func(t *testing.T) {
 		cfg := &Config{Mode: "resume", SessionID: "sid-123", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "resume-task")
-		want := []string{"-p", "--dangerously-skip-permissions", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
+		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -38,7 +38,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	t.Run("resume mode without session still returns base flags", func(t *testing.T) {
 		cfg := &Config{Mode: "resume", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "follow-up")
-		want := []string{"-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "follow-up"}
+		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "follow-up"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
