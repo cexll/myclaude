@@ -49,6 +49,7 @@ type TaskResult struct {
 	SessionID string `json:"session_id"`
 	Error     string `json:"error"`
 	LogPath   string `json:"log_path"`
+	sharedLog bool
 }
 
 var backendRegistry = map[string]Backend{

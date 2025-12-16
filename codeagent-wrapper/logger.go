@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -59,6 +60,10 @@ var (
 	evalSymlinksFn      = filepath.EvalSymlinks
 )
 
+const maxLogSuffixLen = 64
+
+var logSuffixCounter atomic.Uint64
+
 // NewLogger creates the async logger and starts the worker goroutine.
 // The log file is created under os.TempDir() using the required naming scheme.
 func NewLogger() (*Logger, error) {
@@ -70,12 +75,20 @@ func NewLogger() (*Logger, error) {
 func NewLoggerWithSuffix(suffix string) (*Logger, error) {
 	pid := os.Getpid()
 	filename := fmt.Sprintf("%s-%d", primaryLogPrefix(), pid)
+	var safeSuffix string
 	if suffix != "" {
-		filename += "-" + suffix
+		safeSuffix = sanitizeLogSuffix(suffix)
+	}
+	if safeSuffix != "" {
+		filename += "-" + safeSuffix
 	}
 	filename += ".log"
 
 	path := filepath.Clean(filepath.Join(os.TempDir(), filename))
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
@@ -96,6 +109,70 @@ func NewLoggerWithSuffix(suffix string) (*Logger, error) {
 	go l.run()
 
 	return l, nil
+}
+
+func sanitizeLogSuffix(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return fallbackLogSuffix()
+	}
+
+	var b strings.Builder
+	changed := false
+	for _, r := range trimmed {
+		if isSafeLogRune(r) {
+			b.WriteRune(r)
+		} else {
+			changed = true
+			b.WriteByte('-')
+		}
+		if b.Len() >= maxLogSuffixLen {
+			changed = true
+			break
+		}
+	}
+
+	sanitized := strings.Trim(b.String(), "-.")
+	if sanitized == "" {
+		return fallbackLogSuffix()
+	}
+
+	if changed || len(sanitized) > maxLogSuffixLen {
+		hash := crc32.ChecksumIEEE([]byte(trimmed))
+		hashStr := fmt.Sprintf("%x", hash)
+
+		maxPrefix := maxLogSuffixLen - len(hashStr) - 1
+		if maxPrefix < 1 {
+			maxPrefix = 1
+		}
+		if len(sanitized) > maxPrefix {
+			sanitized = sanitized[:maxPrefix]
+		}
+
+		sanitized = fmt.Sprintf("%s-%s", sanitized, hashStr)
+	}
+
+	return sanitized
+}
+
+func fallbackLogSuffix() string {
+	next := logSuffixCounter.Add(1)
+	return fmt.Sprintf("task-%d", next)
+}
+
+func isSafeLogRune(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z':
+		return true
+	case r >= 'A' && r <= 'Z':
+		return true
+	case r >= '0' && r <= '9':
+		return true
+	case r == '-', r == '_', r == '.':
+		return true
+	default:
+		return false
+	}
 }
 
 // Path returns the underlying log file path (useful for tests/inspection).
@@ -132,6 +209,13 @@ func (l *Logger) Close() error {
 	l.closeOnce.Do(func() {
 		l.closed.Store(true)
 		close(l.done)
+
+		// Wait for pending entries to be processed before closing channel
+		l.flushMu.Lock()
+		l.pendingWG.Wait()
+		l.flushMu.Unlock()
+
+		// Now safe to close the channel
 		close(l.ch)
 
 		// Wait for worker with timeout

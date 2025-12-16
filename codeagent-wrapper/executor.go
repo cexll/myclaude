@@ -139,6 +139,38 @@ func taskLoggerFromContext(ctx context.Context) *Logger {
 	return logger
 }
 
+type taskLoggerHandle struct {
+	logger  *Logger
+	path    string
+	shared  bool
+	closeFn func()
+}
+
+func newTaskLoggerHandle(taskID string) taskLoggerHandle {
+	taskLogger, err := NewLoggerWithSuffix(taskID)
+	if err == nil {
+		return taskLoggerHandle{
+			logger:  taskLogger,
+			path:    taskLogger.Path(),
+			closeFn: func() { _ = taskLogger.Close() },
+		}
+	}
+
+	msg := fmt.Sprintf("Failed to create task logger for %s: %v, using main logger", taskID, err)
+	mainLogger := activeLogger()
+	if mainLogger != nil {
+		logWarn(msg)
+		return taskLoggerHandle{
+			logger: mainLogger,
+			path:   mainLogger.Path(),
+			shared: true,
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, msg)
+	return taskLoggerHandle{}
+}
+
 // defaultRunCodexTaskFn is the default implementation of runCodexTaskFn (exposed for test reset)
 func defaultRunCodexTaskFn(task TaskSpec, timeout int) TaskResult {
 	if task.WorkDir == "" {
@@ -255,7 +287,7 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 	var startPrintMu sync.Mutex
 	bannerPrinted := false
 
-	printTaskStart := func(taskID, logPath string) {
+	printTaskStart := func(taskID, logPath string, shared bool) {
 		if logPath == "" {
 			return
 		}
@@ -264,7 +296,11 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 			fmt.Fprintln(os.Stderr, "=== Starting Parallel Execution ===")
 			bannerPrinted = true
 		}
-		fmt.Fprintf(os.Stderr, "Task %s: Log: %s\n", taskID, logPath)
+		label := "Log"
+		if shared {
+			label = "Log (shared)"
+		}
+		fmt.Fprintf(os.Stderr, "Task %s: %s: %s\n", taskID, label, logPath)
 		startPrintMu.Unlock()
 	}
 
@@ -334,11 +370,11 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 			wg.Add(1)
 			go func(ts TaskSpec) {
 				defer wg.Done()
-				var taskLogger *Logger
 				var taskLogPath string
+				handle := taskLoggerHandle{}
 				defer func() {
 					if r := recover(); r != nil {
-						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r), LogPath: taskLogPath}
+						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r), LogPath: taskLogPath, sharedLog: handle.shared}
 					}
 				}()
 
@@ -355,25 +391,28 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 					logConcurrencyState("done", ts.ID, int(after), workerLimit)
 				}()
 
-				taskLogger, err := NewLoggerWithSuffix(ts.ID)
-				if err != nil {
-					logWarn(fmt.Sprintf("Failed to create task logger for %s: %v, using main logger", ts.ID, err))
-					taskLogger = activeLogger() // Fallback to main logger
-				}
-				if taskLogger != nil {
-					taskLogPath = taskLogger.Path()
-					// Only close if it's a task-specific logger, not the main logger
-					if err == nil {
-						defer func() { _ = taskLogger.Close() }()
-					}
+				handle = newTaskLoggerHandle(ts.ID)
+				taskLogPath = handle.path
+				if handle.closeFn != nil {
+					defer handle.closeFn()
 				}
 
-				ts.Context = withTaskLogger(ctx, taskLogger)
-				printTaskStart(ts.ID, taskLogPath)
+				taskCtx := ctx
+				if handle.logger != nil {
+					taskCtx = withTaskLogger(ctx, handle.logger)
+				}
+				ts.Context = taskCtx
+
+				printTaskStart(ts.ID, taskLogPath, handle.shared)
 
 				res := runCodexTaskFn(ts, timeout)
-				if res.LogPath == "" && taskLogPath != "" {
-					res.LogPath = taskLogPath
+				if taskLogPath != "" {
+					if res.LogPath == "" || (handle.shared && handle.logger != nil && res.LogPath == handle.logger.Path()) {
+						res.LogPath = taskLogPath
+					}
+				}
+				if handle.shared {
+					res.sharedLog = true
 				}
 				resultsCh <- res
 			}(task)
@@ -451,7 +490,11 @@ func generateFinalOutput(results []TaskResult) string {
 			sb.WriteString(fmt.Sprintf("Session: %s\n", res.SessionID))
 		}
 		if res.LogPath != "" {
-			sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+			if res.sharedLog {
+				sb.WriteString(fmt.Sprintf("Log: %s (shared)\n", res.LogPath))
+			} else {
+				sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+			}
 		}
 		if res.Message != "" {
 			sb.WriteString(fmt.Sprintf("\n%s\n", res.Message))
