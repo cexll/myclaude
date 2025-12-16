@@ -18,22 +18,26 @@ import (
 // It is intentionally minimal: a buffered channel + single worker goroutine
 // to avoid contention while keeping ordering guarantees.
 type Logger struct {
-	path      string
-	file      *os.File
-	writer    *bufio.Writer
-	ch        chan logEntry
-	flushReq  chan chan struct{}
-	done      chan struct{}
-	closed    atomic.Bool
-	closeOnce sync.Once
-	workerWG  sync.WaitGroup
-	pendingWG sync.WaitGroup
-	flushMu   sync.Mutex
+	path         string
+	file         *os.File
+	writer       *bufio.Writer
+	pid          int
+	ch           chan logEntry
+	flushReq     chan chan struct{}
+	done         chan struct{}
+	closed       atomic.Bool
+	closeOnce    sync.Once
+	workerWG     sync.WaitGroup
+	pendingWG    sync.WaitGroup
+	flushMu      sync.Mutex
+	errorEntries []string // Cache of recent ERROR/WARN entries
+	errorMu      sync.Mutex
 }
 
 type logEntry struct {
-	level string
-	msg   string
+	level   string
+	msg     string
+	isError bool // true for ERROR or WARN levels
 }
 
 // CleanupStats captures the outcome of a cleanupOldLogs run.
@@ -64,7 +68,8 @@ func NewLogger() (*Logger, error) {
 // NewLoggerWithSuffix creates a logger with an optional suffix in the filename.
 // Useful for tests that need isolated log files within the same process.
 func NewLoggerWithSuffix(suffix string) (*Logger, error) {
-	filename := fmt.Sprintf("%s-%d", primaryLogPrefix(), os.Getpid())
+	pid := os.Getpid()
+	filename := fmt.Sprintf("%s-%d", primaryLogPrefix(), pid)
 	if suffix != "" {
 		filename += "-" + suffix
 	}
@@ -81,6 +86,7 @@ func NewLoggerWithSuffix(suffix string) (*Logger, error) {
 		path:     path,
 		file:     f,
 		writer:   bufio.NewWriterSize(f, 4096),
+		pid:      pid,
 		ch:       make(chan logEntry, 1000),
 		flushReq: make(chan chan struct{}, 1),
 		done:     make(chan struct{}),
@@ -170,34 +176,29 @@ func (l *Logger) RemoveLogFile() error {
 	return os.Remove(l.path)
 }
 
-// ExtractRecentErrors reads the log file and returns the most recent ERROR and WARN entries.
+// ExtractRecentErrors returns the most recent ERROR and WARN entries from memory cache.
 // Returns up to maxEntries entries in chronological order.
 func (l *Logger) ExtractRecentErrors(maxEntries int) []string {
-	if l == nil || l.path == "" {
+	if l == nil {
 		return nil
 	}
 
-	f, err := os.Open(l.path)
-	if err != nil {
+	l.errorMu.Lock()
+	defer l.errorMu.Unlock()
+
+	if len(l.errorEntries) == 0 {
 		return nil
 	}
-	defer f.Close()
 
-	var entries []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.Contains(line, "] ERROR:") || strings.Contains(line, "] WARN:") {
-			entries = append(entries, line)
-		}
+	// Return last N entries
+	start := 0
+	if len(l.errorEntries) > maxEntries {
+		start = len(l.errorEntries) - maxEntries
 	}
 
-	// Keep only the last maxEntries
-	if len(entries) > maxEntries {
-		entries = entries[len(entries)-maxEntries:]
-	}
-
-	return entries
+	result := make([]string, len(l.errorEntries)-start)
+	copy(result, l.errorEntries[start:])
+	return result
 }
 
 // Flush waits for all pending log entries to be written. Primarily for tests.
@@ -254,7 +255,8 @@ func (l *Logger) log(level, msg string) {
 		return
 	}
 
-	entry := logEntry{level: level, msg: msg}
+	isError := level == "WARN" || level == "ERROR"
+	entry := logEntry{level: level, msg: msg, isError: isError}
 	l.flushMu.Lock()
 	l.pendingWG.Add(1)
 	l.flushMu.Unlock()
@@ -283,9 +285,18 @@ func (l *Logger) run() {
 				_ = l.writer.Flush()
 				return
 			}
-			timestamp := time.Now().Format("2006-01-02 15:04:05.000")
-			pid := os.Getpid()
-			fmt.Fprintf(l.writer, "[%s] [PID:%d] %s: %s\n", timestamp, pid, entry.level, entry.msg)
+			fmt.Fprintf(l.writer, "%s\n", entry.msg)
+
+			// Cache error/warn entries in memory for fast extraction
+			if entry.isError {
+				l.errorMu.Lock()
+				l.errorEntries = append(l.errorEntries, entry.msg)
+				if len(l.errorEntries) > 100 { // Keep last 100
+					l.errorEntries = l.errorEntries[1:]
+				}
+				l.errorMu.Unlock()
+			}
+
 			l.pendingWG.Done()
 
 		case <-ticker.C:

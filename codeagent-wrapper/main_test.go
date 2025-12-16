@@ -1784,13 +1784,13 @@ func TestRunLogFunctions(t *testing.T) {
 	}
 
 	output := string(data)
-	if !strings.Contains(output, "INFO: info message") {
+	if !strings.Contains(output, "info message") {
 		t.Errorf("logInfo output missing, got: %s", output)
 	}
-	if !strings.Contains(output, "WARN: warn message") {
+	if !strings.Contains(output, "warn message") {
 		t.Errorf("logWarn output missing, got: %s", output)
 	}
-	if !strings.Contains(output, "ERROR: error message") {
+	if !strings.Contains(output, "error message") {
 		t.Errorf("logError output missing, got: %s", output)
 	}
 }
@@ -3300,7 +3300,7 @@ func TestRun_PipedTaskReadError(t *testing.T) {
 	if exitCode != 1 {
 		t.Fatalf("exit=%d, want 1", exitCode)
 	}
-	if !strings.Contains(logOutput, "ERROR: Failed to read piped stdin: read stdin: pipe failure") {
+	if !strings.Contains(logOutput, "Failed to read piped stdin: read stdin: pipe failure") {
 		t.Fatalf("log missing piped read error, got %q", logOutput)
 	}
 	// Log file is always removed after completion (new behavior)

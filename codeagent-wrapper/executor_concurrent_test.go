@@ -472,6 +472,43 @@ func TestExecutorRunCodexTaskWithContext(t *testing.T) {
 		}
 	})
 
+	t.Run("contextLoggerWithoutParent", func(t *testing.T) {
+		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+			return &execFakeRunner{
+				stdout:  newReasonReadCloser(`{"type":"item.completed","item":{"type":"agent_message","text":"ctx"}}`),
+				process: &execFakeProcess{pid: 14},
+			}
+		}
+		_ = closeLogger()
+
+		taskLogger, err := NewLoggerWithSuffix("executor-taskctx")
+		if err != nil {
+			t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+		}
+		t.Cleanup(func() {
+			_ = taskLogger.Close()
+			_ = os.Remove(taskLogger.Path())
+		})
+
+		ctx := withTaskLogger(context.Background(), taskLogger)
+		res := runCodexTaskWithContext(nil, TaskSpec{ID: "task-context", Task: "payload", WorkDir: ".", Context: ctx}, nil, nil, false, true, 1)
+		if res.ExitCode != 0 || res.LogPath != taskLogger.Path() {
+			t.Fatalf("expected task logger to be reused from spec context, got %+v", res)
+		}
+		if activeLogger() != nil {
+			t.Fatalf("expected no global logger to be created when task context provides one")
+		}
+
+		taskLogger.Flush()
+		data, err := os.ReadFile(taskLogger.Path())
+		if err != nil {
+			t.Fatalf("failed to read task log: %v", err)
+		}
+		if !strings.Contains(string(data), "task-context") {
+			t.Fatalf("task log missing task id, content: %s", string(data))
+		}
+	})
+
 	t.Run("backendSetsDirAndNilContext", func(t *testing.T) {
 		var rc *execFakeRunner
 		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {

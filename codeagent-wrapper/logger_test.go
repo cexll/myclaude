@@ -69,7 +69,7 @@ func TestLoggerWritesLevels(t *testing.T) {
 	}
 
 	content := string(data)
-	checks := []string{"INFO: info message", "WARN: warn message", "DEBUG: debug message", "ERROR: error message"}
+	checks := []string{"info message", "warn message", "debug message", "error message"}
 	for _, c := range checks {
 		if !strings.Contains(content, c) {
 			t.Fatalf("log file missing entry %q, content: %s", c, content)
@@ -894,66 +894,90 @@ func (f fakeFileInfo) Sys() interface{}   { return nil }
 func TestLoggerExtractRecentErrors(t *testing.T) {
 	tests := []struct {
 		name       string
-		content    string
+		logs       []struct{ level, msg string }
 		maxEntries int
 		want       []string
 	}{
 		{
 			name:       "empty log",
-			content:    "",
+			logs:       nil,
 			maxEntries: 10,
 			want:       nil,
 		},
 		{
 			name: "no errors",
-			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
-[2025-01-01 12:00:01.000] [PID:123] DEBUG: processing`,
+			logs: []struct{ level, msg string }{
+				{"INFO", "started"},
+				{"DEBUG", "processing"},
+			},
 			maxEntries: 10,
 			want:       nil,
 		},
 		{
 			name: "single error",
-			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
-[2025-01-01 12:00:01.000] [PID:123] ERROR: something failed`,
+			logs: []struct{ level, msg string }{
+				{"INFO", "started"},
+				{"ERROR", "something failed"},
+			},
 			maxEntries: 10,
-			want:       []string{"[2025-01-01 12:00:01.000] [PID:123] ERROR: something failed"},
+			want:       []string{"something failed"},
 		},
 		{
 			name: "error and warn",
-			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
-[2025-01-01 12:00:01.000] [PID:123] WARN: warning message
-[2025-01-01 12:00:02.000] [PID:123] ERROR: error message`,
+			logs: []struct{ level, msg string }{
+				{"INFO", "started"},
+				{"WARN", "warning message"},
+				{"ERROR", "error message"},
+			},
 			maxEntries: 10,
 			want: []string{
-				"[2025-01-01 12:00:01.000] [PID:123] WARN: warning message",
-				"[2025-01-01 12:00:02.000] [PID:123] ERROR: error message",
+				"warning message",
+				"error message",
 			},
 		},
 		{
 			name: "truncate to max",
-			content: `[2025-01-01 12:00:00.000] [PID:123] ERROR: error 1
-[2025-01-01 12:00:01.000] [PID:123] ERROR: error 2
-[2025-01-01 12:00:02.000] [PID:123] ERROR: error 3
-[2025-01-01 12:00:03.000] [PID:123] ERROR: error 4
-[2025-01-01 12:00:04.000] [PID:123] ERROR: error 5`,
+			logs: []struct{ level, msg string }{
+				{"ERROR", "error 1"},
+				{"ERROR", "error 2"},
+				{"ERROR", "error 3"},
+				{"ERROR", "error 4"},
+				{"ERROR", "error 5"},
+			},
 			maxEntries: 3,
 			want: []string{
-				"[2025-01-01 12:00:02.000] [PID:123] ERROR: error 3",
-				"[2025-01-01 12:00:03.000] [PID:123] ERROR: error 4",
-				"[2025-01-01 12:00:04.000] [PID:123] ERROR: error 5",
+				"error 3",
+				"error 4",
+				"error 5",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tempDir := t.TempDir()
-			logPath := filepath.Join(tempDir, "test.log")
-			if err := os.WriteFile(logPath, []byte(tt.content), 0o644); err != nil {
-				t.Fatalf("failed to write test log: %v", err)
+			logger, err := NewLoggerWithSuffix("extract-test")
+			if err != nil {
+				t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+			}
+			defer logger.Close()
+			defer logger.RemoveLogFile()
+
+			// Write logs using logger methods
+			for _, entry := range tt.logs {
+				switch entry.level {
+				case "INFO":
+					logger.Info(entry.msg)
+				case "WARN":
+					logger.Warn(entry.msg)
+				case "ERROR":
+					logger.Error(entry.msg)
+				case "DEBUG":
+					logger.Debug(entry.msg)
+				}
 			}
 
-			logger := &Logger{path: logPath}
+			logger.Flush()
+
 			got := logger.ExtractRecentErrors(tt.maxEntries)
 
 			if len(got) != len(tt.want) {

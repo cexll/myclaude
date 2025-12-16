@@ -355,10 +355,17 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 					logConcurrencyState("done", ts.ID, int(after), workerLimit)
 				}()
 
-				if l, err := NewLoggerWithSuffix(ts.ID); err == nil {
-					taskLogger = l
-					taskLogPath = l.Path()
-					defer func() { _ = taskLogger.Close() }()
+				taskLogger, err := NewLoggerWithSuffix(ts.ID)
+				if err != nil {
+					logWarn(fmt.Sprintf("Failed to create task logger for %s: %v, using main logger", ts.ID, err))
+					taskLogger = activeLogger() // Fallback to main logger
+				}
+				if taskLogger != nil {
+					taskLogPath = taskLogger.Path()
+					// Only close if it's a task-specific logger, not the main logger
+					if err == nil {
+						defer func() { _ = taskLogger.Close() }()
+					}
 				}
 
 				ts.Context = withTaskLogger(ctx, taskLogger)
@@ -485,6 +492,13 @@ func runCodexProcess(parentCtx context.Context, codexArgs []string, taskText str
 }
 
 func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backend Backend, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) TaskResult {
+	if parentCtx == nil {
+		parentCtx = taskSpec.Context
+	}
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+
 	result := TaskResult{TaskID: taskSpec.ID}
 	injectedLogger := taskLoggerFromContext(parentCtx)
 	logger := injectedLogger
@@ -600,10 +614,6 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	ctx := parentCtx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
