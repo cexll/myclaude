@@ -41,6 +41,7 @@ func resetTestHooks() {
 	closeLogger()
 	executablePathFn = os.Executable
 	runTaskFn = runCodexTask
+	runCodexTaskFn = defaultRunCodexTaskFn
 	exitFn = os.Exit
 }
 
@@ -2690,7 +2691,7 @@ func TestVersionFlag(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codeagent-wrapper version 5.2.3\n"
+	want := "codeagent-wrapper version 5.2.4\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
@@ -2704,7 +2705,7 @@ func TestVersionShortFlag(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codeagent-wrapper version 5.2.3\n"
+	want := "codeagent-wrapper version 5.2.4\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
@@ -2718,7 +2719,7 @@ func TestVersionLegacyAlias(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codex-wrapper version 5.2.3\n"
+	want := "codex-wrapper version 5.2.4\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}

@@ -26,7 +26,7 @@ func compareCleanupStats(got, want CleanupStats) bool {
 	return true
 }
 
-func TestRunLoggerCreatesFileWithPID(t *testing.T) {
+func TestLoggerCreatesFileWithPID(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)
 
@@ -46,7 +46,7 @@ func TestRunLoggerCreatesFileWithPID(t *testing.T) {
 	}
 }
 
-func TestRunLoggerWritesLevels(t *testing.T) {
+func TestLoggerWritesLevels(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)
 
@@ -77,7 +77,31 @@ func TestRunLoggerWritesLevels(t *testing.T) {
 	}
 }
 
-func TestRunLoggerCloseRemovesFileAndStopsWorker(t *testing.T) {
+func TestLoggerDefaultIsTerminalCoverage(t *testing.T) {
+	oldStdin := os.Stdin
+	t.Cleanup(func() { os.Stdin = oldStdin })
+
+	f, err := os.CreateTemp(t.TempDir(), "stdin-*")
+	if err != nil {
+		t.Fatalf("os.CreateTemp() error = %v", err)
+	}
+	defer os.Remove(f.Name())
+
+	os.Stdin = f
+	if got := defaultIsTerminal(); got {
+		t.Fatalf("defaultIsTerminal() = %v, want false for regular file", got)
+	}
+
+	if err := f.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	os.Stdin = f
+	if got := defaultIsTerminal(); !got {
+		t.Fatalf("defaultIsTerminal() = %v, want true when Stat fails", got)
+	}
+}
+
+func TestLoggerCloseStopsWorkerAndKeepsFile(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)
 
@@ -93,6 +117,11 @@ func TestRunLoggerCloseRemovesFileAndStopsWorker(t *testing.T) {
 
 	if err := logger.Close(); err != nil {
 		t.Fatalf("Close() returned error: %v", err)
+	}
+	if logger.file != nil {
+		if _, err := logger.file.Write([]byte("x")); err == nil {
+			t.Fatalf("expected file to be closed after Close()")
+		}
 	}
 
 	// After recent changes, log file is kept for debugging - NOT removed
@@ -116,7 +145,7 @@ func TestRunLoggerCloseRemovesFileAndStopsWorker(t *testing.T) {
 	}
 }
 
-func TestRunLoggerConcurrentWritesSafe(t *testing.T) {
+func TestLoggerConcurrentWritesSafe(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)
 
@@ -165,7 +194,7 @@ func TestRunLoggerConcurrentWritesSafe(t *testing.T) {
 	}
 }
 
-func TestRunLoggerTerminateProcessActive(t *testing.T) {
+func TestLoggerTerminateProcessActive(t *testing.T) {
 	cmd := exec.Command("sleep", "5")
 	if err := cmd.Start(); err != nil {
 		t.Skipf("cannot start sleep command: %v", err)
@@ -193,7 +222,7 @@ func TestRunLoggerTerminateProcessActive(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 }
 
-func TestRunTerminateProcessNil(t *testing.T) {
+func TestLoggerTerminateProcessNil(t *testing.T) {
 	if timer := terminateProcess(nil); timer != nil {
 		t.Fatalf("terminateProcess(nil) should return nil timer")
 	}
@@ -202,7 +231,7 @@ func TestRunTerminateProcessNil(t *testing.T) {
 	}
 }
 
-func TestRunCleanupOldLogsRemovesOrphans(t *testing.T) {
+func TestLoggerCleanupOldLogsRemovesOrphans(t *testing.T) {
 	tempDir := setTempDirEnv(t, t.TempDir())
 
 	orphan1 := createTempLog(t, tempDir, "codex-wrapper-111.log")
@@ -252,7 +281,7 @@ func TestRunCleanupOldLogsRemovesOrphans(t *testing.T) {
 	}
 }
 
-func TestRunCleanupOldLogsHandlesInvalidNamesAndErrors(t *testing.T) {
+func TestLoggerCleanupOldLogsHandlesInvalidNamesAndErrors(t *testing.T) {
 	tempDir := setTempDirEnv(t, t.TempDir())
 
 	invalid := []string{
@@ -310,7 +339,7 @@ func TestRunCleanupOldLogsHandlesInvalidNamesAndErrors(t *testing.T) {
 	}
 }
 
-func TestRunCleanupOldLogsHandlesGlobFailures(t *testing.T) {
+func TestLoggerCleanupOldLogsHandlesGlobFailures(t *testing.T) {
 	stubProcessRunning(t, func(pid int) bool {
 		t.Fatalf("process check should not run when glob fails")
 		return false
@@ -336,7 +365,7 @@ func TestRunCleanupOldLogsHandlesGlobFailures(t *testing.T) {
 	}
 }
 
-func TestRunCleanupOldLogsEmptyDirectoryStats(t *testing.T) {
+func TestLoggerCleanupOldLogsEmptyDirectoryStats(t *testing.T) {
 	setTempDirEnv(t, t.TempDir())
 
 	stubProcessRunning(t, func(int) bool {
@@ -356,7 +385,7 @@ func TestRunCleanupOldLogsEmptyDirectoryStats(t *testing.T) {
 	}
 }
 
-func TestRunCleanupOldLogsHandlesTempDirPermissionErrors(t *testing.T) {
+func TestLoggerCleanupOldLogsHandlesTempDirPermissionErrors(t *testing.T) {
 	tempDir := setTempDirEnv(t, t.TempDir())
 
 	paths := []string{
@@ -396,7 +425,7 @@ func TestRunCleanupOldLogsHandlesTempDirPermissionErrors(t *testing.T) {
 	}
 }
 
-func TestRunCleanupOldLogsHandlesPermissionDeniedFile(t *testing.T) {
+func TestLoggerCleanupOldLogsHandlesPermissionDeniedFile(t *testing.T) {
 	tempDir := setTempDirEnv(t, t.TempDir())
 
 	protected := createTempLog(t, tempDir, "codex-wrapper-6200.log")
@@ -433,7 +462,7 @@ func TestRunCleanupOldLogsHandlesPermissionDeniedFile(t *testing.T) {
 	}
 }
 
-func TestRunCleanupOldLogsPerformanceBound(t *testing.T) {
+func TestLoggerCleanupOldLogsPerformanceBound(t *testing.T) {
 	tempDir := setTempDirEnv(t, t.TempDir())
 
 	const fileCount = 400
@@ -476,17 +505,98 @@ func TestRunCleanupOldLogsPerformanceBound(t *testing.T) {
 	}
 }
 
-func TestRunCleanupOldLogsCoverageSuite(t *testing.T) {
+func TestLoggerCleanupOldLogsCoverageSuite(t *testing.T) {
 	TestBackendParseJSONStream_CoverageSuite(t)
 }
 
 // Reuse the existing coverage suite so the focused TestLogger run still exercises
 // the rest of the codebase and keeps coverage high.
-func TestRunLoggerCoverageSuite(t *testing.T) {
-	TestBackendParseJSONStream_CoverageSuite(t)
+func TestLoggerCoverageSuite(t *testing.T) {
+	suite := []struct {
+		name string
+		fn   func(*testing.T)
+	}{
+		{"TestBackendParseJSONStream_CoverageSuite", TestBackendParseJSONStream_CoverageSuite},
+		{"TestVersionCoverageFullRun", TestVersionCoverageFullRun},
+		{"TestVersionMainWrapper", TestVersionMainWrapper},
+
+		{"TestExecutorHelperCoverage", TestExecutorHelperCoverage},
+		{"TestExecutorRunCodexTaskWithContext", TestExecutorRunCodexTaskWithContext},
+		{"TestExecutorParallelLogIsolation", TestExecutorParallelLogIsolation},
+		{"TestExecutorTaskLoggerContext", TestExecutorTaskLoggerContext},
+		{"TestExecutorExecuteConcurrentWithContextBranches", TestExecutorExecuteConcurrentWithContextBranches},
+		{"TestExecutorSignalAndTermination", TestExecutorSignalAndTermination},
+		{"TestExecutorCancelReasonAndCloseWithReason", TestExecutorCancelReasonAndCloseWithReason},
+		{"TestExecutorForceKillTimerStop", TestExecutorForceKillTimerStop},
+		{"TestExecutorForwardSignalsDefaults", TestExecutorForwardSignalsDefaults},
+
+		{"TestBackendParseArgs_NewMode", TestBackendParseArgs_NewMode},
+		{"TestBackendParseArgs_ResumeMode", TestBackendParseArgs_ResumeMode},
+		{"TestBackendParseArgs_BackendFlag", TestBackendParseArgs_BackendFlag},
+		{"TestBackendParseArgs_SkipPermissions", TestBackendParseArgs_SkipPermissions},
+		{"TestBackendParseBoolFlag", TestBackendParseBoolFlag},
+		{"TestBackendEnvFlagEnabled", TestBackendEnvFlagEnabled},
+		{"TestRunResolveTimeout", TestRunResolveTimeout},
+		{"TestRunIsTerminal", TestRunIsTerminal},
+		{"TestRunReadPipedTask", TestRunReadPipedTask},
+		{"TestTailBufferWrite", TestTailBufferWrite},
+		{"TestLogWriterWriteLimitsBuffer", TestLogWriterWriteLimitsBuffer},
+		{"TestLogWriterLogLine", TestLogWriterLogLine},
+		{"TestNewLogWriterDefaultMaxLen", TestNewLogWriterDefaultMaxLen},
+		{"TestNewLogWriterDefaultLimit", TestNewLogWriterDefaultLimit},
+		{"TestRunHello", TestRunHello},
+		{"TestRunGreet", TestRunGreet},
+		{"TestRunFarewell", TestRunFarewell},
+		{"TestRunFarewellEmpty", TestRunFarewellEmpty},
+
+		{"TestParallelParseConfig_Success", TestParallelParseConfig_Success},
+		{"TestParallelParseConfig_Backend", TestParallelParseConfig_Backend},
+		{"TestParallelParseConfig_InvalidFormat", TestParallelParseConfig_InvalidFormat},
+		{"TestParallelParseConfig_EmptyTasks", TestParallelParseConfig_EmptyTasks},
+		{"TestParallelParseConfig_MissingID", TestParallelParseConfig_MissingID},
+		{"TestParallelParseConfig_MissingTask", TestParallelParseConfig_MissingTask},
+		{"TestParallelParseConfig_DuplicateID", TestParallelParseConfig_DuplicateID},
+		{"TestParallelParseConfig_DelimiterFormat", TestParallelParseConfig_DelimiterFormat},
+
+		{"TestBackendSelectBackend", TestBackendSelectBackend},
+		{"TestBackendSelectBackend_Invalid", TestBackendSelectBackend_Invalid},
+		{"TestBackendSelectBackend_DefaultOnEmpty", TestBackendSelectBackend_DefaultOnEmpty},
+		{"TestBackendBuildArgs_CodexBackend", TestBackendBuildArgs_CodexBackend},
+		{"TestBackendBuildArgs_ClaudeBackend", TestBackendBuildArgs_ClaudeBackend},
+		{"TestClaudeBackendBuildArgs_OutputValidation", TestClaudeBackendBuildArgs_OutputValidation},
+		{"TestBackendBuildArgs_GeminiBackend", TestBackendBuildArgs_GeminiBackend},
+		{"TestGeminiBackendBuildArgs_OutputValidation", TestGeminiBackendBuildArgs_OutputValidation},
+		{"TestBackendNamesAndCommands", TestBackendNamesAndCommands},
+
+		{"TestBackendParseJSONStream", TestBackendParseJSONStream},
+		{"TestBackendParseJSONStream_ClaudeEvents", TestBackendParseJSONStream_ClaudeEvents},
+		{"TestBackendParseJSONStream_GeminiEvents", TestBackendParseJSONStream_GeminiEvents},
+		{"TestBackendParseJSONStreamWithWarn_InvalidLine", TestBackendParseJSONStreamWithWarn_InvalidLine},
+		{"TestBackendParseJSONStream_OnMessage", TestBackendParseJSONStream_OnMessage},
+		{"TestBackendParseJSONStream_ScannerError", TestBackendParseJSONStream_ScannerError},
+		{"TestBackendDiscardInvalidJSON", TestBackendDiscardInvalidJSON},
+		{"TestBackendDiscardInvalidJSONBuffer", TestBackendDiscardInvalidJSONBuffer},
+
+		{"TestCurrentWrapperNameFallsBackToExecutable", TestCurrentWrapperNameFallsBackToExecutable},
+		{"TestCurrentWrapperNameDetectsLegacyAliasSymlink", TestCurrentWrapperNameDetectsLegacyAliasSymlink},
+
+		{"TestIsProcessRunning", TestIsProcessRunning},
+		{"TestGetProcessStartTimeReadsProcStat", TestGetProcessStartTimeReadsProcStat},
+		{"TestGetProcessStartTimeInvalidData", TestGetProcessStartTimeInvalidData},
+		{"TestGetBootTimeParsesBtime", TestGetBootTimeParsesBtime},
+		{"TestGetBootTimeInvalidData", TestGetBootTimeInvalidData},
+
+		{"TestClaudeBuildArgs_ModesAndPermissions", TestClaudeBuildArgs_ModesAndPermissions},
+		{"TestClaudeBuildArgs_GeminiAndCodexModes", TestClaudeBuildArgs_GeminiAndCodexModes},
+		{"TestClaudeBuildArgs_BackendMetadata", TestClaudeBuildArgs_BackendMetadata},
+	}
+
+	for _, tc := range suite {
+		t.Run(tc.name, tc.fn)
+	}
 }
 
-func TestRunCleanupOldLogsKeepsCurrentProcessLog(t *testing.T) {
+func TestLoggerCleanupOldLogsKeepsCurrentProcessLog(t *testing.T) {
 	tempDir := setTempDirEnv(t, t.TempDir())
 
 	currentPID := os.Getpid()
@@ -518,7 +628,7 @@ func TestRunCleanupOldLogsKeepsCurrentProcessLog(t *testing.T) {
 	}
 }
 
-func TestIsPIDReusedScenarios(t *testing.T) {
+func TestLoggerIsPIDReusedScenarios(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
 		name      string
@@ -552,7 +662,7 @@ func TestIsPIDReusedScenarios(t *testing.T) {
 	}
 }
 
-func TestIsUnsafeFileSecurityChecks(t *testing.T) {
+func TestLoggerIsUnsafeFileSecurityChecks(t *testing.T) {
 	tempDir := t.TempDir()
 	absTempDir, err := filepath.Abs(tempDir)
 	if err != nil {
@@ -601,7 +711,7 @@ func TestIsUnsafeFileSecurityChecks(t *testing.T) {
 	})
 }
 
-func TestRunLoggerPathAndRemove(t *testing.T) {
+func TestLoggerPathAndRemove(t *testing.T) {
 	tempDir := t.TempDir()
 	path := filepath.Join(tempDir, "sample.log")
 	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
@@ -628,7 +738,19 @@ func TestRunLoggerPathAndRemove(t *testing.T) {
 	}
 }
 
-func TestRunLoggerInternalLog(t *testing.T) {
+func TestLoggerTruncateBytesCoverage(t *testing.T) {
+	if got := truncateBytes([]byte("abc"), 3); got != "abc" {
+		t.Fatalf("truncateBytes() = %q, want %q", got, "abc")
+	}
+	if got := truncateBytes([]byte("abcd"), 3); got != "abc..." {
+		t.Fatalf("truncateBytes() = %q, want %q", got, "abc...")
+	}
+	if got := truncateBytes([]byte("abcd"), -1); got != "" {
+		t.Fatalf("truncateBytes() = %q, want empty string", got)
+	}
+}
+
+func TestLoggerInternalLog(t *testing.T) {
 	logger := &Logger{
 		ch:        make(chan logEntry, 1),
 		done:      make(chan struct{}),
@@ -653,7 +775,7 @@ func TestRunLoggerInternalLog(t *testing.T) {
 	close(logger.done)
 }
 
-func TestRunParsePIDFromLog(t *testing.T) {
+func TestLoggerParsePIDFromLog(t *testing.T) {
 	hugePID := strconv.FormatInt(math.MaxInt64, 10) + "0"
 	tests := []struct {
 		name string
@@ -769,7 +891,7 @@ func (f fakeFileInfo) ModTime() time.Time { return f.modTime }
 func (f fakeFileInfo) IsDir() bool        { return false }
 func (f fakeFileInfo) Sys() interface{}   { return nil }
 
-func TestExtractRecentErrors(t *testing.T) {
+func TestLoggerExtractRecentErrors(t *testing.T) {
 	tests := []struct {
 		name       string
 		content    string
@@ -846,21 +968,21 @@ func TestExtractRecentErrors(t *testing.T) {
 	}
 }
 
-func TestExtractRecentErrorsNilLogger(t *testing.T) {
+func TestLoggerExtractRecentErrorsNilLogger(t *testing.T) {
 	var logger *Logger
 	if got := logger.ExtractRecentErrors(10); got != nil {
 		t.Fatalf("nil logger ExtractRecentErrors() should return nil, got %v", got)
 	}
 }
 
-func TestExtractRecentErrorsEmptyPath(t *testing.T) {
+func TestLoggerExtractRecentErrorsEmptyPath(t *testing.T) {
 	logger := &Logger{path: ""}
 	if got := logger.ExtractRecentErrors(10); got != nil {
 		t.Fatalf("empty path ExtractRecentErrors() should return nil, got %v", got)
 	}
 }
 
-func TestExtractRecentErrorsFileNotExist(t *testing.T) {
+func TestLoggerExtractRecentErrorsFileNotExist(t *testing.T) {
 	logger := &Logger{path: "/nonexistent/path/to/log.log"}
 	if got := logger.ExtractRecentErrors(10); got != nil {
 		t.Fatalf("nonexistent file ExtractRecentErrors() should return nil, got %v", got)

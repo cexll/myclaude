@@ -426,10 +426,11 @@ ok-d`
 		t.Fatalf("expected startup banner in stderr, got:\n%s", stderrOut)
 	}
 
+	// After parallel log isolation fix, each task has its own log file
 	expectedLines := map[string]struct{}{
-		fmt.Sprintf("Task a: Log: %s", expectedLog): {},
-		fmt.Sprintf("Task b: Log: %s", expectedLog): {},
-		fmt.Sprintf("Task d: Log: %s", expectedLog): {},
+		fmt.Sprintf("Task a: Log: %s", filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d-a.log", os.Getpid()))): {},
+		fmt.Sprintf("Task b: Log: %s", filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d-b.log", os.Getpid()))): {},
+		fmt.Sprintf("Task d: Log: %s", filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d-d.log", os.Getpid()))): {},
 	}
 
 	if len(taskLines) != len(expectedLines) {

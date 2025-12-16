@@ -122,7 +122,25 @@ type parseResult struct {
 	threadID string
 }
 
-var runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+type taskLoggerContextKey struct{}
+
+func withTaskLogger(ctx context.Context, logger *Logger) context.Context {
+	if ctx == nil || logger == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, taskLoggerContextKey{}, logger)
+}
+
+func taskLoggerFromContext(ctx context.Context) *Logger {
+	if ctx == nil {
+		return nil
+	}
+	logger, _ := ctx.Value(taskLoggerContextKey{}).(*Logger)
+	return logger
+}
+
+// defaultRunCodexTaskFn is the default implementation of runCodexTaskFn (exposed for test reset)
+func defaultRunCodexTaskFn(task TaskSpec, timeout int) TaskResult {
 	if task.WorkDir == "" {
 		task.WorkDir = defaultWorkdir
 	}
@@ -150,6 +168,8 @@ var runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
 	}
 	return runCodexTaskWithContext(parentCtx, task, backend, nil, false, true, timeout)
 }
+
+var runCodexTaskFn = defaultRunCodexTaskFn
 
 func topologicalSort(tasks []TaskSpec) ([][]TaskSpec, error) {
 	idToTask := make(map[string]TaskSpec, len(tasks))
@@ -235,13 +255,8 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 	var startPrintMu sync.Mutex
 	bannerPrinted := false
 
-	printTaskStart := func(taskID string) {
-		logger := activeLogger()
-		if logger == nil {
-			return
-		}
-		path := logger.Path()
-		if path == "" {
+	printTaskStart := func(taskID, logPath string) {
+		if logPath == "" {
 			return
 		}
 		startPrintMu.Lock()
@@ -249,7 +264,7 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 			fmt.Fprintln(os.Stderr, "=== Starting Parallel Execution ===")
 			bannerPrinted = true
 		}
-		fmt.Fprintf(os.Stderr, "Task %s: Log: %s\n", taskID, path)
+		fmt.Fprintf(os.Stderr, "Task %s: Log: %s\n", taskID, logPath)
 		startPrintMu.Unlock()
 	}
 
@@ -319,9 +334,11 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 			wg.Add(1)
 			go func(ts TaskSpec) {
 				defer wg.Done()
+				var taskLogger *Logger
+				var taskLogPath string
 				defer func() {
 					if r := recover(); r != nil {
-						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r)}
+						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r), LogPath: taskLogPath}
 					}
 				}()
 
@@ -338,9 +355,20 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 					logConcurrencyState("done", ts.ID, int(after), workerLimit)
 				}()
 
-				ts.Context = ctx
-				printTaskStart(ts.ID)
-				resultsCh <- runCodexTaskFn(ts, timeout)
+				if l, err := NewLoggerWithSuffix(ts.ID); err == nil {
+					taskLogger = l
+					taskLogPath = l.Path()
+					defer func() { _ = taskLogger.Close() }()
+				}
+
+				ts.Context = withTaskLogger(ctx, taskLogger)
+				printTaskStart(ts.ID, taskLogPath)
+
+				res := runCodexTaskFn(ts, timeout)
+				if res.LogPath == "" && taskLogPath != "" {
+					res.LogPath = taskLogPath
+				}
+				resultsCh <- res
 			}(task)
 		}
 
@@ -458,14 +486,8 @@ func runCodexProcess(parentCtx context.Context, codexArgs []string, taskText str
 
 func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backend Backend, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) TaskResult {
 	result := TaskResult{TaskID: taskSpec.ID}
-	setLogPath := func() {
-		if result.LogPath != "" {
-			return
-		}
-		if logger := activeLogger(); logger != nil {
-			result.LogPath = logger.Path()
-		}
-	}
+	injectedLogger := taskLoggerFromContext(parentCtx)
+	logger := injectedLogger
 
 	cfg := &Config{
 		Mode:      taskSpec.Mode,
@@ -521,17 +543,17 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	if silent {
 		// Silent mode: only persist to file when available; avoid stderr noise.
 		logInfoFn = func(msg string) {
-			if logger := activeLogger(); logger != nil {
+			if logger != nil {
 				logger.Info(prefixMsg(msg))
 			}
 		}
 		logWarnFn = func(msg string) {
-			if logger := activeLogger(); logger != nil {
+			if logger != nil {
 				logger.Warn(prefixMsg(msg))
 			}
 		}
 		logErrorFn = func(msg string) {
-			if logger := activeLogger(); logger != nil {
+			if logger != nil {
 				logger.Error(prefixMsg(msg))
 			}
 		}
@@ -547,10 +569,11 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	var stderrLogger *logWriter
 
 	var tempLogger *Logger
-	if silent && activeLogger() == nil {
+	if logger == nil && silent && activeLogger() == nil {
 		if l, err := NewLogger(); err == nil {
 			setLogger(l)
 			tempLogger = l
+			logger = l
 		}
 	}
 	defer func() {
@@ -558,8 +581,16 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 			_ = closeLogger()
 		}
 	}()
-	defer setLogPath()
-	if logger := activeLogger(); logger != nil {
+	defer func() {
+		if result.LogPath != "" || logger == nil {
+			return
+		}
+		result.LogPath = logger.Path()
+	}()
+	if logger == nil {
+		logger = activeLogger()
+	}
+	if logger != nil {
 		result.LogPath = logger.Path()
 	}
 
@@ -659,7 +690,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	logInfoFn(fmt.Sprintf("Starting %s with PID: %d", commandName, cmd.Process().Pid()))
-	if logger := activeLogger(); logger != nil {
+	if logger != nil {
 		logInfoFn(fmt.Sprintf("Log capturing to: %s", logger.Path()))
 	}
 
@@ -756,8 +787,8 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	result.ExitCode = 0
 	result.Message = message
 	result.SessionID = threadID
-	if logger := activeLogger(); logger != nil {
-		result.LogPath = logger.Path()
+	if result.LogPath == "" && injectedLogger != nil {
+		result.LogPath = injectedLogger.Path()
 	}
 
 	return result
