@@ -39,11 +39,35 @@ codeagent-wrapper --backend gemini "simple task"
 
 ## Backends
 
-| Backend | Command | Description |
-|---------|---------|-------------|
-| codex | `--backend codex` | OpenAI Codex (default) |
-| claude | `--backend claude` | Anthropic Claude |
-| gemini | `--backend gemini` | Google Gemini |
+| Backend | Command | Description | Best For |
+|---------|---------|-------------|----------|
+| codex | `--backend codex` | OpenAI Codex (default) | Code analysis, complex development |
+| claude | `--backend claude` | Anthropic Claude | Simple tasks, documentation, prompts |
+| gemini | `--backend gemini` | Google Gemini | UI/UX prototyping |
+
+### Backend Selection Guide
+
+**Codex** (default):
+- Deep code understanding and complex logic implementation
+- Large-scale refactoring with precise dependency tracking
+- Algorithm optimization and performance tuning
+- Example: "Analyze the call graph of @src/core and refactor the module dependency structure"
+
+**Claude**:
+- Quick feature implementation with clear requirements
+- Technical documentation, API specs, README generation
+- Professional prompt engineering (e.g., product requirements, design specs)
+- Example: "Generate a comprehensive README for @package.json with installation, usage, and API docs"
+
+**Gemini**:
+- UI component scaffolding and layout prototyping
+- Design system implementation with style consistency
+- Interactive element generation with accessibility support
+- Example: "Create a responsive dashboard layout with sidebar navigation and data visualization cards"
+
+**Backend Switching**:
+- Start with Codex for analysis, switch to Claude for documentation, then Gemini for UI implementation
+- Use per-task backend selection in parallel mode to optimize for each task's strengths
 
 ## Parameters
 
