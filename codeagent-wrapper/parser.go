@@ -31,6 +31,15 @@ type ClaudeEvent struct {
 	Result    string `json:"result,omitempty"`
 }
 
+// ClaudeMessageEvent 兼容 Claude Code 新版 stream-json 输出（2.x 观察到的格式之一）。
+// 典型形态：{"type":"assistant","message":{"id":"...","role":"assistant","content":[{"type":"text","text":"..."}]}, "session_id":"..."}
+// 注意：字段可能随版本演进，因此这里尽量宽松解析，仅提取可用的文本内容。
+type ClaudeMessageEvent struct {
+	Type      string      `json:"type"`
+	SessionID string      `json:"session_id,omitempty"`
+	Message   interface{} `json:"message,omitempty"`
+}
+
 // GeminiEvent for Gemini stream-json format
 type GeminiEvent struct {
 	Type      string `json:"type"`
@@ -170,6 +179,34 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 		}
 
 		switch {
+		case hasKey(raw, "message"):
+			var event ClaudeMessageEvent
+			if err := json.Unmarshal(line, &event); err != nil {
+				warnFn(fmt.Sprintf("Failed to parse Claude message event: %s", truncateBytes(line, 100)))
+				continue
+			}
+
+			if event.SessionID != "" && threadID == "" {
+				threadID = event.SessionID
+			}
+
+			role := event.Type
+			if m, ok := event.Message.(map[string]interface{}); ok {
+				if sid, ok := m["session_id"].(string); ok && sid != "" && threadID == "" {
+					threadID = sid
+				}
+				if r, ok := m["role"].(string); ok && r != "" {
+					role = r
+				}
+			}
+
+			text := extractClaudeText(event.Message)
+			infoFn(fmt.Sprintf("Parsed Claude message event #%d role=%s text_len=%d", totalEvents, role, len(text)))
+			if role == "assistant" && text != "" {
+				claudeMessage = text
+				notifyMessage()
+			}
+
 		case hasKey(raw, "subtype") || hasKey(raw, "result"):
 			var event ClaudeEvent
 			if err := json.Unmarshal(line, &event); err != nil {
@@ -340,6 +377,36 @@ func normalizeText(text interface{}) string {
 			}
 		}
 		return sb.String()
+	default:
+		return ""
+	}
+}
+
+func extractClaudeText(v interface{}) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	case []interface{}:
+		var sb strings.Builder
+		for _, item := range t {
+			sb.WriteString(extractClaudeText(item))
+		}
+		return sb.String()
+	case map[string]interface{}:
+		if text, ok := t["text"].(string); ok && text != "" {
+			return text
+		}
+		// 常见结构：{"content":[{"type":"text","text":"..."}]}
+		if content, ok := t["content"]; ok {
+			return extractClaudeText(content)
+		}
+		// 兜底：把 message 本身继续递归（某些实现可能嵌套）
+		if msg, ok := t["message"]; ok {
+			return extractClaudeText(msg)
+		}
+		return ""
 	default:
 		return ""
 	}

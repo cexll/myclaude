@@ -37,8 +37,9 @@ func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	// }
 
 	// Prevent infinite recursion: disable all setting sources (user, project, local)
-	// This ensures a clean execution environment without CLAUDE.md or skills that would trigger codeagent
-	args = append(args, "--setting-sources", "")
+	// 但需要保留 user 设置以读取登录态/凭据；否则会导致 `Invalid API key · Please run /login`。
+	// 因此这里仅禁用 project/local，保留 user。
+	args = append(args, "--setting-sources", "user")
 
 	if cfg.Mode == "resume" {
 		if cfg.SessionID != "" {

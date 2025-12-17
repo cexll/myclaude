@@ -15,6 +15,10 @@ func resolveTimeout() int {
 		return defaultTimeout
 	}
 
+	// 环境变量在 Windows 上容易被复制粘贴出不可见空白（例如 NBSP, U+00A0），
+	// 这里统一做一次 Trim，避免 strconv.Atoi 解析失败。
+	raw = strings.TrimSpace(raw)
+
 	parsed, err := strconv.Atoi(raw)
 	if err != nil || parsed <= 0 {
 		logWarn(fmt.Sprintf("Invalid CODEX_TIMEOUT '%s', falling back to %ds", raw, defaultTimeout))
@@ -75,9 +79,9 @@ func getEnv(key, defaultValue string) string {
 }
 
 type logWriter struct {
-	prefix string
-	maxLen int
-	buf    bytes.Buffer
+	prefix  string
+	maxLen  int
+	buf     bytes.Buffer
 	dropped bool
 }
 

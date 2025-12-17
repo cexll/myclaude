@@ -1378,7 +1378,7 @@ func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
 	backend := ClaudeBackend{}
 	cfg := &Config{Mode: "new", WorkDir: defaultWorkdir}
 	got := backend.BuildArgs(cfg, "todo")
-	want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
+	want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "user", "--output-format", "stream-json", "--verbose", "todo"}
 	if len(got) != len(want) {
 		t.Fatalf("length mismatch")
 	}
@@ -1399,7 +1399,7 @@ func TestClaudeBackendBuildArgs_OutputValidation(t *testing.T) {
 	target := "ensure-flags"
 
 	args := backend.BuildArgs(cfg, target)
-	expectedPrefix := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose"}
+	expectedPrefix := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "user", "--output-format", "stream-json", "--verbose"}
 
 	if len(args) != len(expectedPrefix)+1 {
 		t.Fatalf("args length=%d, want %d", len(args), len(expectedPrefix)+1)
@@ -1483,7 +1483,9 @@ func TestRunResolveTimeout(t *testing.T) {
 	}{
 		{"empty env", "", 7200},
 		{"milliseconds", "7200000", 7200},
+		{"milliseconds with whitespace", "7200000 \u00a0", 7200},
 		{"seconds", "3600", 3600},
+		{"seconds with whitespace", "3600\t", 3600},
 		{"invalid", "invalid", 7200},
 		{"negative", "-100", 7200},
 		{"zero", "0", 7200},
@@ -1571,6 +1573,20 @@ func TestBackendParseJSONStream(t *testing.T) {
 func TestBackendParseJSONStream_ClaudeEvents(t *testing.T) {
 	input := `{"type":"system","subtype":"init","session_id":"abc123"}
 {"type":"result","subtype":"success","result":"Hello!","session_id":"abc123"}`
+
+	message, threadID := parseJSONStream(strings.NewReader(input))
+
+	if message != "Hello!" {
+		t.Fatalf("message=%q, want %q", message, "Hello!")
+	}
+	if threadID != "abc123" {
+		t.Fatalf("threadID=%q, want %q", threadID, "abc123")
+	}
+}
+
+func TestBackendParseJSONStream_ClaudeMessageEvents(t *testing.T) {
+	input := `{"type":"system","subtype":"init","session_id":"abc123"}
+{"type":"assistant","session_id":"abc123","message":{"id":"m1","role":"assistant","content":[{"type":"text","text":"Hello"},{"type":"text","text":"!"}]}}`
 
 	message, threadID := parseJSONStream(strings.NewReader(input))
 
