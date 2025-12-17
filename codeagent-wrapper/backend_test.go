@@ -56,7 +56,7 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 		backend := GeminiBackend{}
 		cfg := &Config{Mode: "new", WorkDir: "/workspace"}
 		got := backend.BuildArgs(cfg, "task")
-		want := []string{"-o", "stream-json", "-y", "-p", "task"}
+		want := []string{"-y", "-p", "task"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -66,7 +66,7 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 		backend := GeminiBackend{}
 		cfg := &Config{Mode: "resume", SessionID: "sid-999"}
 		got := backend.BuildArgs(cfg, "resume")
-		want := []string{"-o", "stream-json", "-y", "-r", "sid-999", "-p", "resume"}
+		want := []string{"-y", "-r", "sid-999", "-p", "resume"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -76,7 +76,7 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 		backend := GeminiBackend{}
 		cfg := &Config{Mode: "resume"}
 		got := backend.BuildArgs(cfg, "resume")
-		want := []string{"-o", "stream-json", "-y", "-p", "resume"}
+		want := []string{"-y", "-p", "resume"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
