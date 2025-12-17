@@ -22,7 +22,6 @@ type Logger struct {
 	path         string
 	file         *os.File
 	writer       *bufio.Writer
-	pid          int
 	ch           chan logEntry
 	flushReq     chan chan struct{}
 	done         chan struct{}
@@ -31,12 +30,12 @@ type Logger struct {
 	workerWG     sync.WaitGroup
 	pendingWG    sync.WaitGroup
 	flushMu      sync.Mutex
+	workerErr    error
 	errorEntries []string // Cache of recent ERROR/WARN entries
 	errorMu      sync.Mutex
 }
 
 type logEntry struct {
-	level   string
 	msg     string
 	isError bool // true for ERROR or WARN levels
 }
@@ -99,7 +98,6 @@ func NewLoggerWithSuffix(suffix string) (*Logger, error) {
 		path:     path,
 		file:     f,
 		writer:   bufio.NewWriterSize(f, 4096),
-		pid:      pid,
 		ch:       make(chan logEntry, 1000),
 		flushReq: make(chan chan struct{}, 1),
 		done:     make(chan struct{}),
@@ -133,6 +131,9 @@ func sanitizeLogSuffix(raw string) string {
 	}
 
 	sanitized := strings.Trim(b.String(), "-.")
+	if sanitized != b.String() {
+		changed = true // Mark if trim removed any characters
+	}
 	if sanitized == "" {
 		return fallbackLogSuffix()
 	}
@@ -195,10 +196,11 @@ func (l *Logger) Debug(msg string) { l.log("DEBUG", msg) }
 // Error logs at ERROR level.
 func (l *Logger) Error(msg string) { l.log("ERROR", msg) }
 
-// Close stops the worker and syncs the log file.
+// Close signals the worker to flush and close the log file.
 // The log file is NOT removed, allowing inspection after program exit.
 // It is safe to call multiple times.
-// Returns after a 5-second timeout if worker doesn't stop gracefully.
+// Waits up to CODEAGENT_LOGGER_CLOSE_TIMEOUT_MS (default: 5000) for shutdown; set to 0 to wait indefinitely.
+// Returns an error if shutdown doesn't complete within the timeout.
 func (l *Logger) Close() error {
 	if l == nil {
 		return nil
@@ -210,46 +212,48 @@ func (l *Logger) Close() error {
 		l.closed.Store(true)
 		close(l.done)
 
-		// Wait for pending entries to be processed before closing channel
-		l.flushMu.Lock()
-		l.pendingWG.Wait()
-		l.flushMu.Unlock()
-
-		// Now safe to close the channel
-		close(l.ch)
-
-		// Wait for worker with timeout
+		timeout := loggerCloseTimeout()
 		workerDone := make(chan struct{})
 		go func() {
 			l.workerWG.Wait()
 			close(workerDone)
 		}()
 
-		select {
-		case <-workerDone:
-			// Worker stopped gracefully
-		case <-time.After(5 * time.Second):
-			// Worker timeout - proceed with cleanup anyway
-			closeErr = fmt.Errorf("logger worker timeout during close")
+		if timeout > 0 {
+			select {
+			case <-workerDone:
+				// Worker stopped gracefully
+			case <-time.After(timeout):
+				closeErr = fmt.Errorf("logger worker timeout during close")
+				return
+			}
+		} else {
+			<-workerDone
 		}
 
-		if err := l.writer.Flush(); err != nil && closeErr == nil {
-			closeErr = err
+		if l.workerErr != nil && closeErr == nil {
+			closeErr = l.workerErr
 		}
-
-		if err := l.file.Sync(); err != nil && closeErr == nil {
-			closeErr = err
-		}
-
-		if err := l.file.Close(); err != nil && closeErr == nil {
-			closeErr = err
-		}
-
-		// Log file is kept for debugging - NOT removed
-		// Users can manually clean up /tmp/<wrapper>-*.log files
 	})
 
 	return closeErr
+}
+
+func loggerCloseTimeout() time.Duration {
+	const defaultTimeout = 5 * time.Second
+
+	raw := strings.TrimSpace(os.Getenv("CODEAGENT_LOGGER_CLOSE_TIMEOUT_MS"))
+	if raw == "" {
+		return defaultTimeout
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil {
+		return defaultTimeout
+	}
+	if ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 // RemoveLogFile removes the log file. Should only be called after Close().
@@ -263,7 +267,7 @@ func (l *Logger) RemoveLogFile() error {
 // ExtractRecentErrors returns the most recent ERROR and WARN entries from memory cache.
 // Returns up to maxEntries entries in chronological order.
 func (l *Logger) ExtractRecentErrors(maxEntries int) []string {
-	if l == nil {
+	if l == nil || maxEntries <= 0 {
 		return nil
 	}
 
@@ -340,7 +344,7 @@ func (l *Logger) log(level, msg string) {
 	}
 
 	isError := level == "WARN" || level == "ERROR"
-	entry := logEntry{level: level, msg: msg, isError: isError}
+	entry := logEntry{msg: msg, isError: isError}
 	l.flushMu.Lock()
 	l.pendingWG.Add(1)
 	l.flushMu.Unlock()
@@ -361,27 +365,42 @@ func (l *Logger) run() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
+	writeEntry := func(entry logEntry) {
+		fmt.Fprintf(l.writer, "%s\n", entry.msg)
+
+		// Cache error/warn entries in memory for fast extraction
+		if entry.isError {
+			l.errorMu.Lock()
+			l.errorEntries = append(l.errorEntries, entry.msg)
+			if len(l.errorEntries) > 100 { // Keep last 100
+				l.errorEntries = l.errorEntries[1:]
+			}
+			l.errorMu.Unlock()
+		}
+
+		l.pendingWG.Done()
+	}
+
+	finalize := func() {
+		if err := l.writer.Flush(); err != nil && l.workerErr == nil {
+			l.workerErr = err
+		}
+		if err := l.file.Sync(); err != nil && l.workerErr == nil {
+			l.workerErr = err
+		}
+		if err := l.file.Close(); err != nil && l.workerErr == nil {
+			l.workerErr = err
+		}
+	}
+
 	for {
 		select {
 		case entry, ok := <-l.ch:
 			if !ok {
-				// Channel closed, final flush
-				_ = l.writer.Flush()
+				finalize()
 				return
 			}
-			fmt.Fprintf(l.writer, "%s\n", entry.msg)
-
-			// Cache error/warn entries in memory for fast extraction
-			if entry.isError {
-				l.errorMu.Lock()
-				l.errorEntries = append(l.errorEntries, entry.msg)
-				if len(l.errorEntries) > 100 { // Keep last 100
-					l.errorEntries = l.errorEntries[1:]
-				}
-				l.errorMu.Unlock()
-			}
-
-			l.pendingWG.Done()
+			writeEntry(entry)
 
 		case <-ticker.C:
 			_ = l.writer.Flush()
@@ -391,6 +410,21 @@ func (l *Logger) run() {
 			_ = l.writer.Flush()
 			_ = l.file.Sync()
 			close(flushDone)
+
+		case <-l.done:
+			for {
+				select {
+				case entry, ok := <-l.ch:
+					if !ok {
+						finalize()
+						return
+					}
+					writeEntry(entry)
+				default:
+					finalize()
+					return
+				}
+			}
 		}
 	}
 }

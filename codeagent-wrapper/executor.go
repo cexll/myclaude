@@ -411,7 +411,8 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 						res.LogPath = taskLogPath
 					}
 				}
-				if handle.shared {
+				// 只有当最终的 LogPath 确实是共享 logger 的路径时才标记为 shared
+				if handle.shared && handle.logger != nil && res.LogPath == handle.logger.Path() {
 					res.sharedLog = true
 				}
 				resultsCh <- res
@@ -652,8 +653,12 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	if !silent {
-		stdoutLogger = newLogWriter("CODEX_STDOUT: ", codexLogLineLimit)
-		stderrLogger = newLogWriter("CODEX_STDERR: ", codexLogLineLimit)
+		// Note: Empty prefix ensures backend output is logged as-is without any wrapper format.
+		// This preserves the original stdout/stderr content from codex/claude/gemini backends.
+		// Trade-off: Reduces distinguishability between stdout/stderr in logs, but maintains
+		// output fidelity which is critical for debugging backend-specific issues.
+		stdoutLogger = newLogWriter("", codexLogLineLimit)
+		stderrLogger = newLogWriter("", codexLogLineLimit)
 	}
 
 	ctx := parentCtx

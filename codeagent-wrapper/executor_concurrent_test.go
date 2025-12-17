@@ -1290,3 +1290,70 @@ func TestExecutorForwardSignalsDefaults(t *testing.T) {
 	forwardSignals(ctx, &execFakeRunner{process: &execFakeProcess{pid: 80}}, func(string) {})
 	time.Sleep(10 * time.Millisecond)
 }
+
+func TestExecutorSharedLogFalseWhenCustomLogPath(t *testing.T) {
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("failed to open %s: %v", os.DevNull, err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = devNull
+	t.Cleanup(func() {
+		os.Stderr = oldStderr
+		_ = devNull.Close()
+	})
+
+	tempDir := t.TempDir()
+	t.Setenv("TMPDIR", tempDir)
+
+	// Setup: 创建主 logger
+	mainLogger, err := NewLoggerWithSuffix("shared-main")
+	if err != nil {
+		t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+	}
+	setLogger(mainLogger)
+	defer func() {
+		_ = closeLogger()
+		_ = os.Remove(mainLogger.Path())
+	}()
+
+	// 模拟场景：task logger 创建失败（通过设置只读的 TMPDIR），
+	// 回退到主 logger（handle.shared=true），
+	// 但 runCodexTaskFn 返回自定义的 LogPath（不等于主 logger 的路径）
+	roDir := filepath.Join(tempDir, "ro")
+	if err := os.Mkdir(roDir, 0o500); err != nil {
+		t.Fatalf("failed to create read-only dir: %v", err)
+	}
+	t.Setenv("TMPDIR", roDir)
+
+	orig := runCodexTaskFn
+	customLogPath := "/custom/path/to.log"
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		// 返回自定义 LogPath，不等于主 logger 的路径
+		return TaskResult{
+			TaskID:   task.ID,
+			ExitCode: 0,
+			LogPath:  customLogPath,
+		}
+	}
+	defer func() { runCodexTaskFn = orig }()
+
+	// 执行任务
+	results := executeConcurrentWithContext(context.Background(), [][]TaskSpec{{{ID: "task1"}}}, 1, 0)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	res := results[0]
+	// 关键断言：即使 handle.shared=true（因为 task logger 创建失败），
+	// 但因为 LogPath 不等于主 logger 的路径，sharedLog 应为 false
+	if res.sharedLog {
+		t.Fatalf("expected sharedLog=false when LogPath differs from shared logger, got true")
+	}
+
+	// 验证 LogPath 确实是自定义的
+	if res.LogPath != customLogPath {
+		t.Fatalf("expected custom LogPath %s, got %s", customLogPath, res.LogPath)
+	}
+}
