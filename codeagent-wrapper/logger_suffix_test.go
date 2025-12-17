@@ -68,13 +68,48 @@ func TestLoggerWithSuffixNamingAndIsolation(t *testing.T) {
 	}
 }
 
-func TestLoggerWithSuffixReturnsErrorWhenTempDirMissing(t *testing.T) {
-	missingTempDir := filepath.Join(t.TempDir(), "does-not-exist")
-	setTempDirEnv(t, missingTempDir)
+func TestLoggerWithSuffixReturnsErrorWhenTempDirNotWritable(t *testing.T) {
+	base := t.TempDir()
+	noWrite := filepath.Join(base, "ro")
+	if err := os.Mkdir(noWrite, 0o500); err != nil {
+		t.Fatalf("failed to create read-only temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(noWrite, 0o700) })
+	setTempDirEnv(t, noWrite)
 
 	logger, err := NewLoggerWithSuffix("task-err")
 	if err == nil {
 		_ = logger.Close()
-		t.Fatalf("expected error, got nil")
+		t.Fatalf("expected error when temp dir is not writable")
+	}
+}
+
+func TestLoggerWithSuffixSanitizesUnsafeSuffix(t *testing.T) {
+	tempDir := setTempDirEnv(t, t.TempDir())
+
+	raw := "../bad id/with?chars"
+	safe := sanitizeLogSuffix(raw)
+	if safe == "" {
+		t.Fatalf("sanitizeLogSuffix returned empty string")
+	}
+	if strings.ContainsAny(safe, "/\\") {
+		t.Fatalf("sanitized suffix should not contain path separators, got %q", safe)
+	}
+
+	logger, err := NewLoggerWithSuffix(raw)
+	if err != nil {
+		t.Fatalf("NewLoggerWithSuffix(%q) error = %v", raw, err)
+	}
+	t.Cleanup(func() {
+		_ = logger.Close()
+		_ = os.Remove(logger.Path())
+	})
+
+	wantBase := fmt.Sprintf("%s-%d-%s.log", primaryLogPrefix(), os.Getpid(), safe)
+	if gotBase := filepath.Base(logger.Path()); gotBase != wantBase {
+		t.Fatalf("log filename = %q, want %q", gotBase, wantBase)
+	}
+	if dir := filepath.Dir(logger.Path()); dir != tempDir {
+		t.Fatalf("logger path dir = %q, want %q", dir, tempDir)
 	}
 }

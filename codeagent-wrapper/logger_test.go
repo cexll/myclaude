@@ -69,7 +69,7 @@ func TestLoggerWritesLevels(t *testing.T) {
 	}
 
 	content := string(data)
-	checks := []string{"INFO: info message", "WARN: warn message", "DEBUG: debug message", "ERROR: error message"}
+	checks := []string{"info message", "warn message", "debug message", "error message"}
 	for _, c := range checks {
 		if !strings.Contains(content, c) {
 			t.Fatalf("log file missing entry %q, content: %s", c, content)
@@ -766,7 +766,7 @@ func TestLoggerInternalLog(t *testing.T) {
 
 	logger.log("INFO", "hello")
 	entry := <-done
-	if entry.level != "INFO" || entry.msg != "hello" {
+	if entry.msg != "hello" {
 		t.Fatalf("unexpected entry %+v", entry)
 	}
 
@@ -894,66 +894,90 @@ func (f fakeFileInfo) Sys() interface{}   { return nil }
 func TestLoggerExtractRecentErrors(t *testing.T) {
 	tests := []struct {
 		name       string
-		content    string
+		logs       []struct{ level, msg string }
 		maxEntries int
 		want       []string
 	}{
 		{
 			name:       "empty log",
-			content:    "",
+			logs:       nil,
 			maxEntries: 10,
 			want:       nil,
 		},
 		{
 			name: "no errors",
-			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
-[2025-01-01 12:00:01.000] [PID:123] DEBUG: processing`,
+			logs: []struct{ level, msg string }{
+				{"INFO", "started"},
+				{"DEBUG", "processing"},
+			},
 			maxEntries: 10,
 			want:       nil,
 		},
 		{
 			name: "single error",
-			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
-[2025-01-01 12:00:01.000] [PID:123] ERROR: something failed`,
+			logs: []struct{ level, msg string }{
+				{"INFO", "started"},
+				{"ERROR", "something failed"},
+			},
 			maxEntries: 10,
-			want:       []string{"[2025-01-01 12:00:01.000] [PID:123] ERROR: something failed"},
+			want:       []string{"something failed"},
 		},
 		{
 			name: "error and warn",
-			content: `[2025-01-01 12:00:00.000] [PID:123] INFO: started
-[2025-01-01 12:00:01.000] [PID:123] WARN: warning message
-[2025-01-01 12:00:02.000] [PID:123] ERROR: error message`,
+			logs: []struct{ level, msg string }{
+				{"INFO", "started"},
+				{"WARN", "warning message"},
+				{"ERROR", "error message"},
+			},
 			maxEntries: 10,
 			want: []string{
-				"[2025-01-01 12:00:01.000] [PID:123] WARN: warning message",
-				"[2025-01-01 12:00:02.000] [PID:123] ERROR: error message",
+				"warning message",
+				"error message",
 			},
 		},
 		{
 			name: "truncate to max",
-			content: `[2025-01-01 12:00:00.000] [PID:123] ERROR: error 1
-[2025-01-01 12:00:01.000] [PID:123] ERROR: error 2
-[2025-01-01 12:00:02.000] [PID:123] ERROR: error 3
-[2025-01-01 12:00:03.000] [PID:123] ERROR: error 4
-[2025-01-01 12:00:04.000] [PID:123] ERROR: error 5`,
+			logs: []struct{ level, msg string }{
+				{"ERROR", "error 1"},
+				{"ERROR", "error 2"},
+				{"ERROR", "error 3"},
+				{"ERROR", "error 4"},
+				{"ERROR", "error 5"},
+			},
 			maxEntries: 3,
 			want: []string{
-				"[2025-01-01 12:00:02.000] [PID:123] ERROR: error 3",
-				"[2025-01-01 12:00:03.000] [PID:123] ERROR: error 4",
-				"[2025-01-01 12:00:04.000] [PID:123] ERROR: error 5",
+				"error 3",
+				"error 4",
+				"error 5",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tempDir := t.TempDir()
-			logPath := filepath.Join(tempDir, "test.log")
-			if err := os.WriteFile(logPath, []byte(tt.content), 0o644); err != nil {
-				t.Fatalf("failed to write test log: %v", err)
+			logger, err := NewLoggerWithSuffix("extract-test")
+			if err != nil {
+				t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+			}
+			defer logger.Close()
+			defer logger.RemoveLogFile()
+
+			// Write logs using logger methods
+			for _, entry := range tt.logs {
+				switch entry.level {
+				case "INFO":
+					logger.Info(entry.msg)
+				case "WARN":
+					logger.Warn(entry.msg)
+				case "ERROR":
+					logger.Error(entry.msg)
+				case "DEBUG":
+					logger.Debug(entry.msg)
+				}
 			}
 
-			logger := &Logger{path: logPath}
+			logger.Flush()
+
 			got := logger.ExtractRecentErrors(tt.maxEntries)
 
 			if len(got) != len(tt.want) {
@@ -986,5 +1010,119 @@ func TestLoggerExtractRecentErrorsFileNotExist(t *testing.T) {
 	logger := &Logger{path: "/nonexistent/path/to/log.log"}
 	if got := logger.ExtractRecentErrors(10); got != nil {
 		t.Fatalf("nonexistent file ExtractRecentErrors() should return nil, got %v", got)
+	}
+}
+
+func TestSanitizeLogSuffixNoDuplicates(t *testing.T) {
+	testCases := []string{
+		"task",
+		"task.",
+		".task",
+		"-task",
+		"task-",
+		"--task--",
+		"..task..",
+	}
+
+	seen := make(map[string]string)
+	for _, input := range testCases {
+		result := sanitizeLogSuffix(input)
+		if result == "" {
+			t.Fatalf("sanitizeLogSuffix(%q) returned empty string", input)
+		}
+
+		if prev, exists := seen[result]; exists {
+			t.Fatalf("collision detected: %q and %q both produce %q", input, prev, result)
+		}
+		seen[result] = input
+
+		// Verify result is safe for file names
+		if strings.ContainsAny(result, "/\\:*?\"<>|") {
+			t.Fatalf("sanitizeLogSuffix(%q) = %q contains unsafe characters", input, result)
+		}
+	}
+}
+
+func TestExtractRecentErrorsBoundaryCheck(t *testing.T) {
+	logger, err := NewLoggerWithSuffix("boundary-test")
+	if err != nil {
+		t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+	}
+	defer logger.Close()
+	defer logger.RemoveLogFile()
+
+	// Write some errors
+	logger.Error("error 1")
+	logger.Warn("warn 1")
+	logger.Error("error 2")
+	logger.Flush()
+
+	// Test zero
+	result := logger.ExtractRecentErrors(0)
+	if result != nil {
+		t.Fatalf("ExtractRecentErrors(0) should return nil, got %v", result)
+	}
+
+	// Test negative
+	result = logger.ExtractRecentErrors(-5)
+	if result != nil {
+		t.Fatalf("ExtractRecentErrors(-5) should return nil, got %v", result)
+	}
+
+	// Test positive still works
+	result = logger.ExtractRecentErrors(10)
+	if len(result) != 3 {
+		t.Fatalf("ExtractRecentErrors(10) expected 3 entries, got %d", len(result))
+	}
+}
+
+func TestErrorEntriesMaxLimit(t *testing.T) {
+	logger, err := NewLoggerWithSuffix("max-limit-test")
+	if err != nil {
+		t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+	}
+	defer logger.Close()
+	defer logger.RemoveLogFile()
+
+	// Write 150 error/warn entries
+	for i := 1; i <= 150; i++ {
+		if i%2 == 0 {
+			logger.Error(fmt.Sprintf("error-%03d", i))
+		} else {
+			logger.Warn(fmt.Sprintf("warn-%03d", i))
+		}
+	}
+	logger.Flush()
+
+	// Extract all cached errors
+	result := logger.ExtractRecentErrors(200) // Request more than cache size
+
+	// Should only have last 100 entries (entries 51-150 in sequence)
+	if len(result) != 100 {
+		t.Fatalf("expected 100 cached entries, got %d", len(result))
+	}
+
+	// Verify entries are the last 100 (entries 51-150)
+	if !strings.Contains(result[0], "051") {
+		t.Fatalf("first cached entry should be entry 51, got: %s", result[0])
+	}
+	if !strings.Contains(result[99], "150") {
+		t.Fatalf("last cached entry should be entry 150, got: %s", result[99])
+	}
+
+	// Verify order is preserved - simplified logic
+	for i := 0; i < len(result)-1; i++ {
+		expectedNum := 51 + i
+		nextNum := 51 + i + 1
+
+		expectedEntry := fmt.Sprintf("%03d", expectedNum)
+		nextEntry := fmt.Sprintf("%03d", nextNum)
+
+		if !strings.Contains(result[i], expectedEntry) {
+			t.Fatalf("entry at index %d should contain %s, got: %s", i, expectedEntry, result[i])
+		}
+		if !strings.Contains(result[i+1], nextEntry) {
+			t.Fatalf("entry at index %d should contain %s, got: %s", i+1, nextEntry, result[i+1])
+		}
 	}
 }

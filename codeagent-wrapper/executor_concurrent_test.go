@@ -472,6 +472,43 @@ func TestExecutorRunCodexTaskWithContext(t *testing.T) {
 		}
 	})
 
+	t.Run("contextLoggerWithoutParent", func(t *testing.T) {
+		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+			return &execFakeRunner{
+				stdout:  newReasonReadCloser(`{"type":"item.completed","item":{"type":"agent_message","text":"ctx"}}`),
+				process: &execFakeProcess{pid: 14},
+			}
+		}
+		_ = closeLogger()
+
+		taskLogger, err := NewLoggerWithSuffix("executor-taskctx")
+		if err != nil {
+			t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+		}
+		t.Cleanup(func() {
+			_ = taskLogger.Close()
+			_ = os.Remove(taskLogger.Path())
+		})
+
+		ctx := withTaskLogger(context.Background(), taskLogger)
+		res := runCodexTaskWithContext(nil, TaskSpec{ID: "task-context", Task: "payload", WorkDir: ".", Context: ctx}, nil, nil, false, true, 1)
+		if res.ExitCode != 0 || res.LogPath != taskLogger.Path() {
+			t.Fatalf("expected task logger to be reused from spec context, got %+v", res)
+		}
+		if activeLogger() != nil {
+			t.Fatalf("expected no global logger to be created when task context provides one")
+		}
+
+		taskLogger.Flush()
+		data, err := os.ReadFile(taskLogger.Path())
+		if err != nil {
+			t.Fatalf("failed to read task log: %v", err)
+		}
+		if !strings.Contains(string(data), "task-context") {
+			t.Fatalf("task log missing task id, content: %s", string(data))
+		}
+	})
+
 	t.Run("backendSetsDirAndNilContext", func(t *testing.T) {
 		var rc *execFakeRunner
 		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
@@ -974,6 +1011,143 @@ func TestExecutorExecuteConcurrentWithContextBranches(t *testing.T) {
 			t.Fatalf("unexpected results: %+v", results)
 		}
 	})
+
+	t.Run("TestConcurrentTaskLoggerFailure", func(t *testing.T) {
+		// Create a writable temp dir for the main logger, then flip TMPDIR to a read-only
+		// location so task-specific loggers fail to open.
+		writable := t.TempDir()
+		t.Setenv("TMPDIR", writable)
+
+		mainLogger, err := NewLoggerWithSuffix("shared-main")
+		if err != nil {
+			t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+		}
+		setLogger(mainLogger)
+		t.Cleanup(func() {
+			mainLogger.Flush()
+			_ = closeLogger()
+			_ = os.Remove(mainLogger.Path())
+		})
+
+		noWrite := filepath.Join(writable, "ro")
+		if err := os.Mkdir(noWrite, 0o500); err != nil {
+			t.Fatalf("failed to create read-only temp dir: %v", err)
+		}
+		t.Setenv("TMPDIR", noWrite)
+
+		taskA := nextExecutorTestTaskID("shared-a")
+		taskB := nextExecutorTestTaskID("shared-b")
+
+		orig := runCodexTaskFn
+		runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+			logger := taskLoggerFromContext(task.Context)
+			if logger != mainLogger {
+				return TaskResult{TaskID: task.ID, ExitCode: 1, Error: "unexpected logger"}
+			}
+			logger.Info("TASK=" + task.ID)
+			return TaskResult{TaskID: task.ID, ExitCode: 0}
+		}
+		t.Cleanup(func() { runCodexTaskFn = orig })
+
+		stderrR, stderrW, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("os.Pipe() error = %v", err)
+		}
+		oldStderr := os.Stderr
+		os.Stderr = stderrW
+
+		results := executeConcurrentWithContext(context.Background(), [][]TaskSpec{{{ID: taskA}, {ID: taskB}}}, 1, 0)
+
+		_ = stderrW.Close()
+		os.Stderr = oldStderr
+		stderrData, _ := io.ReadAll(stderrR)
+		_ = stderrR.Close()
+		stderrOut := string(stderrData)
+
+		if len(results) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(results))
+		}
+		for _, res := range results {
+			if res.ExitCode != 0 || res.Error != "" {
+				t.Fatalf("task failed unexpectedly: %+v", res)
+			}
+			if res.LogPath != mainLogger.Path() {
+				t.Fatalf("shared log path mismatch: got %q want %q", res.LogPath, mainLogger.Path())
+			}
+			if !res.sharedLog {
+				t.Fatalf("expected sharedLog flag for %+v", res)
+			}
+			if !strings.Contains(stderrOut, "Log (shared)") {
+				t.Fatalf("stderr missing shared marker: %s", stderrOut)
+			}
+		}
+
+		summary := generateFinalOutput(results)
+		if !strings.Contains(summary, "(shared)") {
+			t.Fatalf("summary missing shared marker: %s", summary)
+		}
+
+		mainLogger.Flush()
+		data, err := os.ReadFile(mainLogger.Path())
+		if err != nil {
+			t.Fatalf("failed to read main log: %v", err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "TASK="+taskA) || !strings.Contains(content, "TASK="+taskB) {
+			t.Fatalf("expected shared log to contain both tasks, got: %s", content)
+		}
+	})
+
+	t.Run("TestSanitizeTaskID", func(t *testing.T) {
+		tempDir := t.TempDir()
+		t.Setenv("TMPDIR", tempDir)
+
+		orig := runCodexTaskFn
+		runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+			logger := taskLoggerFromContext(task.Context)
+			if logger == nil {
+				return TaskResult{TaskID: task.ID, ExitCode: 1, Error: "missing logger"}
+			}
+			logger.Info("TASK=" + task.ID)
+			return TaskResult{TaskID: task.ID, ExitCode: 0}
+		}
+		t.Cleanup(func() { runCodexTaskFn = orig })
+
+		idA := "../bad id"
+		idB := "tab\tid"
+		results := executeConcurrentWithContext(context.Background(), [][]TaskSpec{{{ID: idA}, {ID: idB}}}, 1, 0)
+
+		if len(results) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(results))
+		}
+
+		expected := map[string]string{
+			idA: sanitizeLogSuffix(idA),
+			idB: sanitizeLogSuffix(idB),
+		}
+
+		for _, res := range results {
+			if res.ExitCode != 0 || res.Error != "" {
+				t.Fatalf("unexpected failure: %+v", res)
+			}
+			safe, ok := expected[res.TaskID]
+			if !ok {
+				t.Fatalf("unexpected task id %q in results", res.TaskID)
+			}
+			wantBase := fmt.Sprintf("%s-%d-%s.log", primaryLogPrefix(), os.Getpid(), safe)
+			if filepath.Base(res.LogPath) != wantBase {
+				t.Fatalf("log filename for %q = %q, want %q", res.TaskID, filepath.Base(res.LogPath), wantBase)
+			}
+			data, err := os.ReadFile(res.LogPath)
+			if err != nil {
+				t.Fatalf("failed to read log %q: %v", res.LogPath, err)
+			}
+			if !strings.Contains(string(data), "TASK="+res.TaskID) {
+				t.Fatalf("log for %q missing task marker, content: %s", res.TaskID, string(data))
+			}
+			_ = os.Remove(res.LogPath)
+		}
+	})
 }
 
 func TestExecutorSignalAndTermination(t *testing.T) {
@@ -1115,4 +1289,71 @@ func TestExecutorForwardSignalsDefaults(t *testing.T) {
 	cancel()
 	forwardSignals(ctx, &execFakeRunner{process: &execFakeProcess{pid: 80}}, func(string) {})
 	time.Sleep(10 * time.Millisecond)
+}
+
+func TestExecutorSharedLogFalseWhenCustomLogPath(t *testing.T) {
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("failed to open %s: %v", os.DevNull, err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = devNull
+	t.Cleanup(func() {
+		os.Stderr = oldStderr
+		_ = devNull.Close()
+	})
+
+	tempDir := t.TempDir()
+	t.Setenv("TMPDIR", tempDir)
+
+	// Setup: 创建主 logger
+	mainLogger, err := NewLoggerWithSuffix("shared-main")
+	if err != nil {
+		t.Fatalf("NewLoggerWithSuffix() error = %v", err)
+	}
+	setLogger(mainLogger)
+	defer func() {
+		_ = closeLogger()
+		_ = os.Remove(mainLogger.Path())
+	}()
+
+	// 模拟场景：task logger 创建失败（通过设置只读的 TMPDIR），
+	// 回退到主 logger（handle.shared=true），
+	// 但 runCodexTaskFn 返回自定义的 LogPath（不等于主 logger 的路径）
+	roDir := filepath.Join(tempDir, "ro")
+	if err := os.Mkdir(roDir, 0o500); err != nil {
+		t.Fatalf("failed to create read-only dir: %v", err)
+	}
+	t.Setenv("TMPDIR", roDir)
+
+	orig := runCodexTaskFn
+	customLogPath := "/custom/path/to.log"
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		// 返回自定义 LogPath，不等于主 logger 的路径
+		return TaskResult{
+			TaskID:   task.ID,
+			ExitCode: 0,
+			LogPath:  customLogPath,
+		}
+	}
+	defer func() { runCodexTaskFn = orig }()
+
+	// 执行任务
+	results := executeConcurrentWithContext(context.Background(), [][]TaskSpec{{{ID: "task1"}}}, 1, 0)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	res := results[0]
+	// 关键断言：即使 handle.shared=true（因为 task logger 创建失败），
+	// 但因为 LogPath 不等于主 logger 的路径，sharedLog 应为 false
+	if res.sharedLog {
+		t.Fatalf("expected sharedLog=false when LogPath differs from shared logger, got true")
+	}
+
+	// 验证 LogPath 确实是自定义的
+	if res.LogPath != customLogPath {
+		t.Fatalf("expected custom LogPath %s, got %s", customLogPath, res.LogPath)
+	}
 }
