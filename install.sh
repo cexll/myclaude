@@ -1,12 +1,15 @@
 #!/bin/bash
 set -e
 
-echo "⚠️  WARNING: install.sh is LEGACY and will be removed in future versions."
-echo "Please use the new installation method:"
-echo "  python3 install.py --install-dir ~/.claude"
-echo ""
-echo "Continuing with legacy installation in 5 seconds..."
-sleep 5
+if [ -z "${SKIP_WARNING:-}" ]; then
+  echo "⚠️  WARNING: install.sh is LEGACY and will be removed in future versions."
+  echo "Please use the new installation method:"
+  echo "  python3 install.py --install-dir ~/.claude"
+  echo ""
+  echo "Set SKIP_WARNING=1 to bypass this message"
+  echo "Continuing with legacy installation in 5 seconds..."
+  sleep 5
+fi
 
 # Detect platform
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
