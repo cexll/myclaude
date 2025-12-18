@@ -478,6 +478,10 @@ module.exports = {
 
 ## Important Testing Rules
 
+### Language Rules:
+- **Language Matching**: Output language matches user input (Chinese input → Chinese doc, English input → English doc). When language is ambiguous, default to Chinese.
+- **Technical Terms**: Keep technical terms (API, E2E, CI/CD, Mock, etc.) in English; translate explanatory text only.
+
 ### DO:
 - Test all acceptance criteria from PRD
 - Cover happy path, edge cases, and error scenarios
