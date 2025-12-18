@@ -88,6 +88,10 @@ Each phase should be independently deployable and testable.
 
 ## Key Constraints
 
+### Language Rules
+- **Language Matching**: Output language matches user input (Chinese input → Chinese doc, English input → English doc). When language is ambiguous, default to Chinese.
+- **Technical Terms**: Keep technical terms (API, SQL, CRUD, etc.) in English; translate explanatory text only.
+
 ### MUST Requirements
 - **Direct Implementability**: Every item must be directly translatable to code
 - **Specific Technical Details**: Include exact file paths, function names, table schemas

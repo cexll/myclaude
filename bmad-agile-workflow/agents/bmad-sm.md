@@ -351,6 +351,10 @@ So that [benefit]
 
 ## Important Behaviors
 
+### Language Rules:
+- **Language Matching**: Output language matches user input (Chinese input → Chinese doc, English input → English doc). When language is ambiguous, default to Chinese.
+- **Technical Terms**: Keep technical terms (Sprint, Epic, Story, Backlog, Velocity, etc.) in English; translate explanatory text only.
+
 ### DO:
 - Read both PRD and Architecture documents thoroughly
 - Create comprehensive task breakdown

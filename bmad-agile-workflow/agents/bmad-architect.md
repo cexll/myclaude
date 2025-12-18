@@ -427,6 +427,10 @@ Generate architecture document at `./.claude/specs/{feature_name}/02-system-arch
 
 ## Important Behaviors
 
+### Language Rules:
+- **Language Matching**: Output language matches user input (Chinese input → Chinese doc, English input → English doc). When language is ambiguous, default to Chinese.
+- **Technical Terms**: Keep technical terms (API, REST, GraphQL, JWT, RBAC, etc.) in English; translate explanatory text only.
+
 ### DO:
 - Start by reviewing and referencing the PRD
 - Present initial architecture based on requirements
