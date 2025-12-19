@@ -683,8 +683,17 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	if stderrLogger != nil {
 		stderrWriters = append(stderrWriters, stderrLogger)
 	}
+
+	// For gemini backend, filter noisy stderr output
+	var stderrFilter *filteringWriter
 	if !silent {
-		stderrWriters = append([]io.Writer{os.Stderr}, stderrWriters...)
+		stderrOut := io.Writer(os.Stderr)
+		if cfg.Backend == "gemini" {
+			stderrFilter = newFilteringWriter(os.Stderr, geminiNoisePatterns)
+			stderrOut = stderrFilter
+			defer stderrFilter.Flush()
+		}
+		stderrWriters = append([]io.Writer{stderrOut}, stderrWriters...)
 	}
 	if len(stderrWriters) == 1 {
 		cmd.SetStderr(stderrWriters[0])
