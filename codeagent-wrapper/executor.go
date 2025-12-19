@@ -691,6 +691,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		if cfg.Backend == "gemini" {
 			stderrFilter = newFilteringWriter(os.Stderr, geminiNoisePatterns)
 			stderrOut = stderrFilter
+			defer stderrFilter.Flush()
 		}
 		stderrWriters = append([]io.Writer{stderrOut}, stderrWriters...)
 	}
@@ -848,9 +849,6 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 	if stderrLogger != nil {
 		stderrLogger.Flush()
-	}
-	if stderrFilter != nil {
-		stderrFilter.Flush()
 	}
 
 	result.ExitCode = 0
