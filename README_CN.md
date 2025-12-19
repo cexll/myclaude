@@ -2,7 +2,7 @@
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-5.2.2-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
 
 > AI 驱动的开发自动化 - 多后端执行架构 (Codex/Claude/Gemini)
 
