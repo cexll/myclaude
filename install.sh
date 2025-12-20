@@ -34,23 +34,25 @@ if ! curl -fsSL "$URL" -o /tmp/codeagent-wrapper; then
     exit 1
 fi
 
-mkdir -p "$HOME/bin"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.claude}"
+BIN_DIR="${INSTALL_DIR}/bin"
+mkdir -p "$BIN_DIR"
 
-mv /tmp/codeagent-wrapper "$HOME/bin/codeagent-wrapper"
-chmod +x "$HOME/bin/codeagent-wrapper"
+mv /tmp/codeagent-wrapper "${BIN_DIR}/codeagent-wrapper"
+chmod +x "${BIN_DIR}/codeagent-wrapper"
 
-if "$HOME/bin/codeagent-wrapper" --version >/dev/null 2>&1; then
-    echo "codeagent-wrapper installed successfully to ~/bin/codeagent-wrapper"
+if "${BIN_DIR}/codeagent-wrapper" --version >/dev/null 2>&1; then
+    echo "codeagent-wrapper installed successfully to ${BIN_DIR}/codeagent-wrapper"
 else
     echo "ERROR: installation verification failed" >&2
     exit 1
 fi
 
-if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
+if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
     echo ""
-    echo "WARNING: ~/bin is not in your PATH"
-    echo "Add this line to your ~/.bashrc or ~/.zshrc:"
+    echo "WARNING: ${BIN_DIR} is not in your PATH"
+    echo "Add this line to your ~/.bashrc or ~/.zshrc (then restart your shell):"
     echo ""
-    echo "    export PATH=\"\$HOME/bin:\$PATH\""
+    echo "    export PATH=\"${BIN_DIR}:\$PATH\""
     echo ""
 fi
