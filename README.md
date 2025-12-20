@@ -295,7 +295,7 @@ setx PATH "%USERPROFILE%\bin;%PATH%"
 **Codex wrapper not found:**
 ```bash
 # Check PATH
-echo $PATH | grep -q "$HOME/bin" || echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+echo $PATH | grep -q "$HOME/.claude/bin" || echo 'export PATH="$HOME/.claude/bin:$PATH"' >> ~/.zshrc
 
 # Reinstall
 bash install.sh
