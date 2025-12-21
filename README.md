@@ -132,6 +132,59 @@ Requirements → Architecture → Sprint Plan → Development → Review → QA
 
 ---
 
+## Version Requirements
+
+### Codex CLI
+**Minimum version:** Check compatibility with your installation
+
+The codeagent-wrapper uses these Codex CLI features:
+- `codex e` - Execute commands (shorthand for `codex exec`)
+- `--skip-git-repo-check` - Skip git repository validation
+- `--json` - JSON stream output format
+- `-C <workdir>` - Set working directory
+- `resume <session_id>` - Resume previous sessions
+
+**Verify Codex CLI is installed:**
+```bash
+which codex
+codex --version
+```
+
+### Claude CLI
+**Minimum version:** Check compatibility with your installation
+
+Required features:
+- `--output-format stream-json` - Streaming JSON output format
+- `--setting-sources` - Control setting sources (prevents infinite recursion)
+- `--dangerously-skip-permissions` - Skip permission prompts (use with caution)
+- `-p` - Prompt input flag
+- `-r <session_id>` - Resume sessions
+
+**Security Note:** The wrapper only adds `--dangerously-skip-permissions` for Claude when explicitly enabled (e.g. `--skip-permissions` / `CODEAGENT_SKIP_PERMISSIONS=true`). Keep it disabled unless you understand the risk.
+
+**Verify Claude CLI is installed:**
+```bash
+which claude
+claude --version
+```
+
+### Gemini CLI
+**Minimum version:** Check compatibility with your installation
+
+Required features:
+- `-o stream-json` - JSON stream output format
+- `-y` - Auto-approve prompts (non-interactive mode)
+- `-r <session_id>` - Resume sessions
+- `-p` - Prompt input flag
+
+**Verify Gemini CLI is installed:**
+```bash
+which gemini
+gemini --version
+```
+
+---
+
 ## Installation
 
 ### Modular Installation (Recommended)
@@ -163,14 +216,38 @@ python3 install.py --force
 
 ```
 ~/.claude/
-├── CLAUDE.md              # Core instructions and role definition
-├── commands/              # Slash commands (/dev, /code, etc.)
-├── agents/                # Agent definitions
+├── bin/
+│   └── codeagent-wrapper    # Main executable
+├── CLAUDE.md                # Core instructions and role definition
+├── commands/                # Slash commands (/dev, /code, etc.)
+├── agents/                  # Agent definitions
 ├── skills/
 │   └── codex/
-│       └── SKILL.md       # Codex integration skill
-└── installed_modules.json # Installation status
+│       └── SKILL.md         # Codex integration skill
+├── config.json              # Configuration
+└── installed_modules.json   # Installation status
 ```
+
+### Customizing Installation Directory
+
+By default, myclaude installs to `~/.claude`. You can customize this using the `INSTALL_DIR` environment variable:
+
+```bash
+# Install to custom directory
+INSTALL_DIR=/opt/myclaude bash install.sh
+
+# Update your PATH accordingly
+export PATH="/opt/myclaude/bin:$PATH"
+```
+
+**Directory Structure:**
+- `$INSTALL_DIR/bin/` - codeagent-wrapper binary
+- `$INSTALL_DIR/skills/` - Skill definitions
+- `$INSTALL_DIR/config.json` - Configuration file
+- `$INSTALL_DIR/commands/` - Slash command definitions
+- `$INSTALL_DIR/agents/` - Agent definitions
+
+**Note:** When using a custom installation directory, ensure that `$INSTALL_DIR/bin` is added to your `PATH` environment variable.
 
 ### Configuration
 
@@ -313,6 +390,71 @@ cat ~/.claude/installed_modules.json
 
 # Reinstall specific module
 python3 install.py --module dev --force
+```
+
+### Version Compatibility Issues
+
+**Backend CLI not found:**
+```bash
+# Check if backend CLIs are installed
+which codex
+which claude
+which gemini
+
+# Install missing backends
+# Codex: Follow installation instructions at https://codex.docs
+# Claude: Follow installation instructions at https://claude.ai/docs
+# Gemini: Follow installation instructions at https://ai.google.dev/docs
+```
+
+**Unsupported CLI flags:**
+```bash
+# If you see errors like "unknown flag" or "invalid option"
+
+# Check backend CLI version
+codex --version
+claude --version
+gemini --version
+
+# For Codex: Ensure it supports `e`, `--skip-git-repo-check`, `--json`, `-C`, and `resume`
+# For Claude: Ensure it supports `--output-format stream-json`, `--setting-sources`, `-r`
+# For Gemini: Ensure it supports `-o stream-json`, `-y`, `-r`, `-p`
+
+# Update your backend CLI to the latest version if needed
+```
+
+**JSON parsing errors:**
+```bash
+# If you see "failed to parse JSON output" errors
+
+# Verify the backend outputs stream-json format
+codex e --json "test task"  # Should output newline-delimited JSON
+claude --output-format stream-json -p "test"  # Should output stream JSON
+
+# If not, your backend CLI version may be too old or incompatible
+```
+
+**Infinite recursion with Claude backend:**
+```bash
+# The wrapper prevents this with `--setting-sources ""` flag
+# If you still see recursion, ensure your Claude CLI supports this flag
+
+claude --help | grep "setting-sources"
+
+# If flag is not supported, upgrade Claude CLI
+```
+
+**Session resume failures:**
+```bash
+# Check if session ID is valid
+codex history  # List recent sessions
+claude history
+
+# Ensure backend CLI supports session resumption
+codex resume <session_id> "test"  # Should continue from previous session
+claude -r <session_id> "test"
+
+# If not supported, use new sessions instead of resume mode
 ```
 
 ---

@@ -152,14 +152,38 @@ python3 install.py --force
 
 ```
 ~/.claude/
-├── CLAUDE.md              # 核心指令和角色定义
-├── commands/              # 斜杠命令 (/dev, /code 等)
-├── agents/                # 智能体定义
+├── bin/
+│   └── codeagent-wrapper    # 主可执行文件
+├── CLAUDE.md                # 核心指令和角色定义
+├── commands/                # 斜杠命令 (/dev, /code 等)
+├── agents/                  # 智能体定义
 ├── skills/
 │   └── codex/
-│       └── SKILL.md       # Codex 集成技能
-└── installed_modules.json # 安装状态
+│       └── SKILL.md         # Codex 集成技能
+├── config.json              # 配置文件
+└── installed_modules.json   # 安装状态
 ```
+
+### 自定义安装目录
+
+默认情况下，myclaude 安装到 `~/.claude`。您可以使用 `INSTALL_DIR` 环境变量自定义安装目录：
+
+```bash
+# 安装到自定义目录
+INSTALL_DIR=/opt/myclaude bash install.sh
+
+# 相应更新您的 PATH
+export PATH="/opt/myclaude/bin:$PATH"
+```
+
+**目录结构：**
+- `$INSTALL_DIR/bin/` - codeagent-wrapper 可执行文件
+- `$INSTALL_DIR/skills/` - 技能定义
+- `$INSTALL_DIR/config.json` - 配置文件
+- `$INSTALL_DIR/commands/` - 斜杠命令定义
+- `$INSTALL_DIR/agents/` - 智能体定义
+
+**注意：** 使用自定义安装目录时，请确保将 `$INSTALL_DIR/bin` 添加到您的 `PATH` 环境变量中。
 
 ### 配置
 

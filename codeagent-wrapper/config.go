@@ -164,6 +164,9 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 		if content == "" {
 			return nil, fmt.Errorf("task block #%d (%q) missing content", taskIndex, task.ID)
 		}
+		if task.Mode == "resume" && strings.TrimSpace(task.SessionID) == "" {
+			return nil, fmt.Errorf("task block #%d (%q) has empty session_id", taskIndex, task.ID)
+		}
 		if _, exists := seen[task.ID]; exists {
 			return nil, fmt.Errorf("task block #%d has duplicate id: %s", taskIndex, task.ID)
 		}
@@ -232,7 +235,10 @@ func parseArgs() (*Config, error) {
 			return nil, fmt.Errorf("resume mode requires: resume <session_id> <task>")
 		}
 		cfg.Mode = "resume"
-		cfg.SessionID = args[1]
+		cfg.SessionID = strings.TrimSpace(args[1])
+		if cfg.SessionID == "" {
+			return nil, fmt.Errorf("resume mode requires non-empty session_id")
+		}
 		cfg.Task = args[2]
 		cfg.ExplicitStdin = (args[2] == "-")
 		if len(args) > 3 {

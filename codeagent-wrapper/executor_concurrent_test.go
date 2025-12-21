@@ -245,6 +245,10 @@ func TestExecutorHelperCoverage(t *testing.T) {
 	})
 
 	t.Run("generateFinalOutputAndArgs", func(t *testing.T) {
+		const key = "CODEX_BYPASS_SANDBOX"
+		t.Cleanup(func() { os.Unsetenv(key) })
+		os.Unsetenv(key)
+
 		out := generateFinalOutput([]TaskResult{
 			{TaskID: "ok", ExitCode: 0},
 			{TaskID: "fail", ExitCode: 1, Error: "boom"},
@@ -303,6 +307,18 @@ func TestExecutorHelperCoverage(t *testing.T) {
 func TestExecutorRunCodexTaskWithContext(t *testing.T) {
 	origRunner := newCommandRunner
 	defer func() { newCommandRunner = origRunner }()
+
+	t.Run("resumeMissingSessionID", func(t *testing.T) {
+		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+			t.Fatalf("unexpected command execution for invalid resume config")
+			return nil
+		}
+
+		res := runCodexTaskWithContext(context.Background(), TaskSpec{Task: "payload", WorkDir: ".", Mode: "resume"}, nil, nil, false, false, 1)
+		if res.ExitCode == 0 || !strings.Contains(res.Error, "session_id") {
+			t.Fatalf("expected validation error, got %+v", res)
+		}
+	})
 
 	t.Run("success", func(t *testing.T) {
 		var firstStdout *reasonReadCloser

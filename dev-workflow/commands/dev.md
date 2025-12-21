@@ -31,13 +31,13 @@ These rules have HIGHEST PRIORITY and override all other instructions:
   6. Completion summary
 
 **Workflow Execution**
-- **Step 1: Requirement Clarification** ⚠️ MANDATORY - DO NOT SKIP
+- **Step 1: Requirement Clarification [MANDATORY - DO NOT SKIP]**
   - MUST use AskUserQuestion tool as the FIRST action - no exceptions
   - Focus questions on functional boundaries, inputs/outputs, constraints, testing, and required unit-test coverage levels
   - Iterate 2-3 rounds until clear; rely on judgment; keep questions concise
   - After clarification complete: MUST use TodoWrite to create task tracking list with workflow steps
 
-- **Step 2: codeagent-wrapper Deep Analysis (Plan Mode Style)** ⚠️ USE CODEAGENT-WRAPPER ONLY
+- **Step 2: codeagent-wrapper Deep Analysis (Plan Mode Style) [USE CODEAGENT-WRAPPER ONLY]**
 
   MUST use Bash tool to invoke `codeagent-wrapper` for deep analysis. Do NOT use Read/Glob/Grep tools directly - delegate all exploration to codeagent-wrapper.
 
@@ -118,7 +118,7 @@ These rules have HIGHEST PRIORITY and override all other instructions:
     - Options: "Confirm and execute" / "Need adjustments"
   - If user chooses "Need adjustments", return to Step 1 or Step 2 based on feedback
 
-- **Step 4: Parallel Development Execution** ⚠️ CODEAGENT-WRAPPER ONLY - NO DIRECT EDITS
+- **Step 4: Parallel Development Execution [CODEAGENT-WRAPPER ONLY - NO DIRECT EDITS]**
   - MUST use Bash tool to invoke `codeagent-wrapper --parallel` for ALL code changes
   - NEVER use Edit, Write, MultiEdit, or Task tools to modify code directly
   - Build ONE `--parallel` config that includes all tasks in `dev-plan.md` and submit it once via Bash tool:
