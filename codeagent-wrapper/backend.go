@@ -1,5 +1,11 @@
 package main
 
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
 // Backend defines the contract for invoking different AI CLI backends.
 // Each backend is responsible for supplying the executable command and
 // building the argument list based on the wrapper config.
@@ -29,6 +35,34 @@ func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	return buildClaudeArgs(cfg, targetArg)
 }
 
+// loadMinimalEnvSettings 从 ~/.claude/setting.json 只提取 env 配置
+// 返回 JSON 字符串格式的最小配置，如果失败返回空字符串
+func loadMinimalEnvSettings() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return ""
+	}
+
+	settingPath := filepath.Join(home, ".claude", "setting.json")
+	data, err := os.ReadFile(settingPath)
+	if err != nil {
+		return ""
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return ""
+	}
+
+	if env, ok := config["env"].(map[string]interface{}); ok && len(env) > 0 {
+		minimal := map[string]interface{}{"env": env}
+		jsonBytes, _ := json.Marshal(minimal)
+		return string(jsonBytes)
+	}
+
+	return ""
+}
+
 func buildClaudeArgs(cfg *Config, targetArg string) []string {
 	if cfg == nil {
 		return nil
@@ -41,6 +75,10 @@ func buildClaudeArgs(cfg *Config, targetArg string) []string {
 	// Prevent infinite recursion: disable all setting sources (user, project, local)
 	// This ensures a clean execution environment without CLAUDE.md or skills that would trigger codeagent
 	args = append(args, "--setting-sources", "")
+
+	if envSettings := loadMinimalEnvSettings(); envSettings != "" {
+		args = append(args, "--settings", envSettings)
+	}
 
 	if cfg.Mode == "resume" {
 		if cfg.SessionID != "" {

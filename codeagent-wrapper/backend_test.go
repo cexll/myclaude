@@ -12,46 +12,41 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	t.Run("new mode omits skip-permissions by default", func(t *testing.T) {
 		cfg := &Config{Mode: "new", WorkDir: "/repo"}
 		got := backend.BuildArgs(cfg, "todo")
-		want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %v, want %v", got, want)
-		}
+		wantPrefix := []string{"-p", "--setting-sources", ""}
+		wantSuffix := []string{"--output-format", "stream-json", "--verbose", "todo"}
+		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
 	})
 
 	t.Run("new mode can opt-in skip-permissions", func(t *testing.T) {
 		cfg := &Config{Mode: "new", SkipPermissions: true}
 		got := backend.BuildArgs(cfg, "-")
-		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "-"}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %v, want %v", got, want)
-		}
+		wantPrefix := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", ""}
+		wantSuffix := []string{"--output-format", "stream-json", "--verbose", "-"}
+		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
 	})
 
 	t.Run("resume mode includes session id", func(t *testing.T) {
 		cfg := &Config{Mode: "resume", SessionID: "sid-123", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "resume-task")
-		want := []string{"-p", "--setting-sources", "", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %v, want %v", got, want)
-		}
+		wantPrefix := []string{"-p", "--setting-sources", ""}
+		wantSuffix := []string{"-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
+		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
 	})
 
 	t.Run("resume mode without session still returns base flags", func(t *testing.T) {
 		cfg := &Config{Mode: "resume", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "follow-up")
-		want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "follow-up"}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %v, want %v", got, want)
-		}
+		wantPrefix := []string{"-p", "--setting-sources", ""}
+		wantSuffix := []string{"--output-format", "stream-json", "--verbose", "follow-up"}
+		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
 	})
 
 	t.Run("resume mode can opt-in skip permissions", func(t *testing.T) {
 		cfg := &Config{Mode: "resume", SessionID: "sid-123", SkipPermissions: true}
 		got := backend.BuildArgs(cfg, "resume-task")
-		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %v, want %v", got, want)
-		}
+		wantPrefix := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", ""}
+		wantSuffix := []string{"-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
+		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
 	})
 
 	t.Run("nil config returns nil", func(t *testing.T) {
@@ -147,4 +142,65 @@ func TestClaudeBuildArgs_BackendMetadata(t *testing.T) {
 			t.Fatalf("Command() = %s, want %s", got, tt.command)
 		}
 	}
+}
+
+func assertArgsWithOptionalSettings(t *testing.T, got, wantPrefix, wantSuffix []string) {
+	t.Helper()
+	if len(got) < len(wantPrefix)+len(wantSuffix) {
+		t.Fatalf("args too short: got %v", got)
+	}
+	if !hasPrefix(got, wantPrefix) {
+		t.Fatalf("args prefix mismatch\ngot:  %v\nwant: %v", got, wantPrefix)
+	}
+	if !hasSuffix(got, wantSuffix) {
+		t.Fatalf("args suffix mismatch\ngot:  %v\nwant: %v", got, wantSuffix)
+	}
+
+	settingsIdx := findArg(got, "--settings")
+	if settingsIdx != -1 {
+		if settingsIdx+1 >= len(got) {
+			t.Fatalf("--settings missing value in %v", got)
+		}
+		if settingsIdx < len(wantPrefix) {
+			t.Fatalf("--settings at wrong position %d in %v", settingsIdx, got)
+		}
+		suffixStart := len(got) - len(wantSuffix)
+		if settingsIdx >= suffixStart {
+			t.Fatalf("--settings placed inside suffix at %d in %v", settingsIdx, got)
+		}
+	}
+}
+
+func hasPrefix(args, prefix []string) bool {
+	if len(args) < len(prefix) {
+		return false
+	}
+	for i := range prefix {
+		if args[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func hasSuffix(args, suffix []string) bool {
+	if len(args) < len(suffix) {
+		return false
+	}
+	offset := len(args) - len(suffix)
+	for i := range suffix {
+		if args[offset+i] != suffix[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func findArg(args []string, target string) int {
+	for i, a := range args {
+		if a == target {
+			return i
+		}
+	}
+	return -1
 }

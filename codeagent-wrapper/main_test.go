@@ -1547,15 +1547,9 @@ func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
 	backend := ClaudeBackend{}
 	cfg := &Config{Mode: "new", WorkDir: defaultWorkdir}
 	got := backend.BuildArgs(cfg, "todo")
-	want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
-	if len(got) != len(want) {
-		t.Fatalf("length mismatch")
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("index %d got %s want %s", i, got[i], want[i])
-		}
-	}
+	wantPrefix := []string{"-p", "--setting-sources", ""}
+	wantSuffix := []string{"--output-format", "stream-json", "--verbose", "todo"}
+	assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
 
 	if backend.BuildArgs(nil, "ignored") != nil {
 		t.Fatalf("nil config should return nil args")
@@ -1568,19 +1562,9 @@ func TestClaudeBackendBuildArgs_OutputValidation(t *testing.T) {
 	target := "ensure-flags"
 
 	args := backend.BuildArgs(cfg, target)
-	expectedPrefix := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose"}
-
-	if len(args) != len(expectedPrefix)+1 {
-		t.Fatalf("args length=%d, want %d", len(args), len(expectedPrefix)+1)
-	}
-	for i, val := range expectedPrefix {
-		if args[i] != val {
-			t.Fatalf("args[%d]=%q, want %q", i, args[i], val)
-		}
-	}
-	if args[len(args)-1] != target {
-		t.Fatalf("last arg=%q, want target %q", args[len(args)-1], target)
-	}
+	wantPrefix := []string{"-p", "--setting-sources", ""}
+	wantSuffix := []string{"--output-format", "stream-json", "--verbose", target}
+	assertArgsWithOptionalSettings(t, args, wantPrefix, wantSuffix)
 }
 
 func TestBackendBuildArgs_GeminiBackend(t *testing.T) {
