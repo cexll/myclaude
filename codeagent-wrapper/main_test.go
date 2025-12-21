@@ -1582,6 +1582,34 @@ func TestBackendParseJSONStream_ClaudeEvents(t *testing.T) {
 	}
 }
 
+func TestBackendParseJSONStream_ClaudeEvents_ItemDoesNotForceCodex(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "null item",
+			input: `{"type":"result","result":"OK","session_id":"abc123","item":null}`,
+		},
+		{
+			name:  "empty object item",
+			input: `{"type":"result","subtype":"x","result":"OK","session_id":"abc123","item":{}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			message, threadID := parseJSONStream(strings.NewReader(tt.input))
+			if message != "OK" {
+				t.Fatalf("message=%q, want %q", message, "OK")
+			}
+			if threadID != "abc123" {
+				t.Fatalf("threadID=%q, want %q", threadID, "abc123")
+			}
+		})
+	}
+}
+
 func TestBackendParseJSONStream_GeminiEvents(t *testing.T) {
 	input := `{"type":"init","session_id":"xyz789"}
 {"type":"message","role":"assistant","content":"Hi","delta":true,"session_id":"xyz789"}
@@ -1595,6 +1623,43 @@ func TestBackendParseJSONStream_GeminiEvents(t *testing.T) {
 	}
 	if threadID != "xyz789" {
 		t.Fatalf("threadID=%q, want %q", threadID, "xyz789")
+	}
+}
+
+func TestBackendParseJSONStream_GeminiEvents_DeltaFalseStillDetected(t *testing.T) {
+	input := `{"type":"init","session_id":"xyz789"}
+{"type":"message","content":"Hi","delta":false,"session_id":"xyz789"}
+{"type":"result","status":"success","session_id":"xyz789"}`
+
+	message, threadID := parseJSONStream(strings.NewReader(input))
+
+	if message != "Hi" {
+		t.Fatalf("message=%q, want %q", message, "Hi")
+	}
+	if threadID != "xyz789" {
+		t.Fatalf("threadID=%q, want %q", threadID, "xyz789")
+	}
+}
+
+func TestBackendParseJSONStream_GeminiEvents_OnMessageTriggeredOnStatus(t *testing.T) {
+	input := `{"type":"init","session_id":"xyz789"}
+{"type":"message","role":"assistant","content":"Hi","delta":true,"session_id":"xyz789"}
+{"type":"message","content":" there","delta":true}
+{"type":"result","status":"success","session_id":"xyz789"}`
+
+	var called int
+	message, threadID := parseJSONStreamInternal(strings.NewReader(input), nil, nil, func() {
+		called++
+	})
+
+	if message != "Hi there" {
+		t.Fatalf("message=%q, want %q", message, "Hi there")
+	}
+	if threadID != "xyz789" {
+		t.Fatalf("threadID=%q, want %q", threadID, "xyz789")
+	}
+	if called != 1 {
+		t.Fatalf("onMessage called=%d, want %d", called, 1)
 	}
 }
 
