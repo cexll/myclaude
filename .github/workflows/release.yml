@@ -97,11 +97,6 @@ jobs:
         with:
           path: artifacts
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Prepare release files
         run: |
           mkdir -p release
@@ -109,26 +104,10 @@ jobs:
           cp install.sh install.bat release/
           ls -la release/
 
-      - name: Generate release notes with git-cliff
-        run: |
-          # Install git-cliff via npx
-          npx git-cliff@latest --current --strip all -o release_notes.md
-
-          # Fallback if generation failed
-          if [ ! -s release_notes.md ]; then
-            echo "⚠️ Failed to generate release notes with git-cliff" > release_notes.md
-            echo "" >> release_notes.md
-            echo "## What's Changed" >> release_notes.md
-            echo "See commits in this release for details." >> release_notes.md
-          fi
-
-          echo "--- Generated Release Notes ---"
-          cat release_notes.md
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
-          body_path: release_notes.md
+          generate_release_notes: true
           draft: false
           prerelease: false
