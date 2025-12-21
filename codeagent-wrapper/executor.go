@@ -509,23 +509,43 @@ func generateFinalOutput(results []TaskResult) string {
 }
 
 func buildCodexArgs(cfg *Config, targetArg string) []string {
-	if cfg.Mode == "resume" {
-		return []string{
-			"e",
-			"--skip-git-repo-check",
-			"--json",
-			"resume",
-			cfg.SessionID,
-			targetArg,
+	if cfg == nil {
+		panic("buildCodexArgs: nil config")
+	}
+
+	var resumeSessionID string
+	isResume := cfg.Mode == "resume"
+	if isResume {
+		resumeSessionID = strings.TrimSpace(cfg.SessionID)
+		if resumeSessionID == "" {
+			logError("invalid config: resume mode requires non-empty session_id")
+			isResume = false
 		}
 	}
-	return []string{
-		"e",
-		"--skip-git-repo-check",
+
+	args := []string{"e"}
+
+	if envFlagEnabled("CODEX_BYPASS_SANDBOX") {
+		logWarn("CODEX_BYPASS_SANDBOX=true: running without approval/sandbox protection")
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	}
+
+	args = append(args, "--skip-git-repo-check")
+
+	if isResume {
+		return append(args,
+			"--json",
+			"resume",
+			resumeSessionID,
+			targetArg,
+		)
+	}
+
+	return append(args,
 		"-C", cfg.WorkDir,
 		"--json",
 		targetArg,
-	}
+	)
 }
 
 func runCodexTask(taskSpec TaskSpec, silent bool, timeoutSec int) TaskResult {
@@ -574,6 +594,12 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 	if cfg.WorkDir == "" {
 		cfg.WorkDir = defaultWorkdir
+	}
+
+	if cfg.Mode == "resume" && strings.TrimSpace(cfg.SessionID) == "" {
+		result.ExitCode = 1
+		result.Error = "resume mode requires non-empty session_id"
+		return result
 	}
 
 	useStdin := taskSpec.UseStdin
@@ -745,6 +771,10 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 			default:
 			}
 		})
+		select {
+		case completeSeen <- struct{}{}:
+		default:
+		}
 		parseCh <- parseResult{message: msg, threadID: tid}
 	}()
 

@@ -1038,6 +1038,8 @@ func TestBackendParseArgs_ResumeMode(t *testing.T) {
 		},
 		{name: "resume missing session_id", args: []string{"codeagent-wrapper", "resume"}, wantErr: true},
 		{name: "resume missing task", args: []string{"codeagent-wrapper", "resume", "session-123"}, wantErr: true},
+		{name: "resume empty session_id", args: []string{"codeagent-wrapper", "resume", "", "task"}, wantErr: true},
+		{name: "resume whitespace session_id", args: []string{"codeagent-wrapper", "resume", "   ", "task"}, wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -1254,6 +1256,18 @@ do something`
 	}
 }
 
+func TestParallelParseConfig_EmptySessionID(t *testing.T) {
+	input := `---TASK---
+id: task-1
+session_id:
+---CONTENT---
+do something`
+
+	if _, err := parseParallelConfig([]byte(input)); err == nil {
+		t.Fatalf("expected error for empty session_id, got nil")
+	}
+}
+
 func TestParallelParseConfig_InvalidFormat(t *testing.T) {
 	if _, err := parseParallelConfig([]byte("invalid format")); err == nil {
 		t.Fatalf("expected error for invalid format, got nil")
@@ -1354,9 +1368,19 @@ func TestRunShouldUseStdin(t *testing.T) {
 }
 
 func TestRunBuildCodexArgs_NewMode(t *testing.T) {
+	const key = "CODEX_BYPASS_SANDBOX"
+	t.Cleanup(func() { os.Unsetenv(key) })
+	os.Unsetenv(key)
+
 	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
 	args := buildCodexArgs(cfg, "my task")
-	expected := []string{"e", "--skip-git-repo-check", "-C", "/test/dir", "--json", "my task"}
+	expected := []string{
+		"e",
+		"--skip-git-repo-check",
+		"-C", "/test/dir",
+		"--json",
+		"my task",
+	}
 	if len(args) != len(expected) {
 		t.Fatalf("len mismatch")
 	}
@@ -1368,9 +1392,20 @@ func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 }
 
 func TestRunBuildCodexArgs_ResumeMode(t *testing.T) {
+	const key = "CODEX_BYPASS_SANDBOX"
+	t.Cleanup(func() { os.Unsetenv(key) })
+	os.Unsetenv(key)
+
 	cfg := &Config{Mode: "resume", SessionID: "session-abc"}
 	args := buildCodexArgs(cfg, "-")
-	expected := []string{"e", "--skip-git-repo-check", "--json", "resume", "session-abc", "-"}
+	expected := []string{
+		"e",
+		"--skip-git-repo-check",
+		"--json",
+		"resume",
+		"session-abc",
+		"-",
+	}
 	if len(args) != len(expected) {
 		t.Fatalf("len mismatch")
 	}
@@ -1378,6 +1413,61 @@ func TestRunBuildCodexArgs_ResumeMode(t *testing.T) {
 		if args[i] != expected[i] {
 			t.Fatalf("args[%d]=%s, want %s", i, args[i], expected[i])
 		}
+	}
+}
+
+func TestRunBuildCodexArgs_ResumeMode_EmptySessionHandledGracefully(t *testing.T) {
+	const key = "CODEX_BYPASS_SANDBOX"
+	t.Cleanup(func() { os.Unsetenv(key) })
+	os.Unsetenv(key)
+
+	cfg := &Config{Mode: "resume", SessionID: "   ", WorkDir: "/test/dir"}
+	args := buildCodexArgs(cfg, "task")
+	expected := []string{"e", "--skip-git-repo-check", "-C", "/test/dir", "--json", "task"}
+	if len(args) != len(expected) {
+		t.Fatalf("len mismatch")
+	}
+	for i := range args {
+		if args[i] != expected[i] {
+			t.Fatalf("args[%d]=%s, want %s", i, args[i], expected[i])
+		}
+	}
+}
+
+func TestRunBuildCodexArgs_BypassSandboxEnvTrue(t *testing.T) {
+	defer resetTestHooks()
+	tempDir := t.TempDir()
+	t.Setenv("TMPDIR", tempDir)
+
+	logger, err := NewLogger()
+	if err != nil {
+		t.Fatalf("NewLogger() error = %v", err)
+	}
+	setLogger(logger)
+	defer closeLogger()
+
+	t.Setenv("CODEX_BYPASS_SANDBOX", "true")
+
+	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
+	args := buildCodexArgs(cfg, "my task")
+	found := false
+	for _, arg := range args {
+		if arg == "--dangerously-bypass-approvals-and-sandbox" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected bypass flag in args, got %v", args)
+	}
+
+	logger.Flush()
+	data, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatalf("failed to read log file: %v", err)
+	}
+	if !strings.Contains(string(data), "CODEX_BYPASS_SANDBOX=true") {
+		t.Fatalf("expected bypass warning log, got: %s", string(data))
 	}
 }
 
@@ -1436,7 +1526,13 @@ func TestBackendBuildArgs_CodexBackend(t *testing.T) {
 	backend := CodexBackend{}
 	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
 	got := backend.BuildArgs(cfg, "task")
-	want := []string{"e", "--skip-git-repo-check", "-C", "/test/dir", "--json", "task"}
+	want := []string{
+		"e",
+		"--skip-git-repo-check",
+		"-C", "/test/dir",
+		"--json",
+		"task",
+	}
 	if len(got) != len(want) {
 		t.Fatalf("length mismatch")
 	}
@@ -1451,7 +1547,7 @@ func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
 	backend := ClaudeBackend{}
 	cfg := &Config{Mode: "new", WorkDir: defaultWorkdir}
 	got := backend.BuildArgs(cfg, "todo")
-	want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
+	want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
 	if len(got) != len(want) {
 		t.Fatalf("length mismatch")
 	}
@@ -1472,7 +1568,7 @@ func TestClaudeBackendBuildArgs_OutputValidation(t *testing.T) {
 	target := "ensure-flags"
 
 	args := backend.BuildArgs(cfg, target)
-	expectedPrefix := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose"}
+	expectedPrefix := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose"}
 
 	if len(args) != len(expectedPrefix)+1 {
 		t.Fatalf("args length=%d, want %d", len(args), len(expectedPrefix)+1)

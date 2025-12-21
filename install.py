@@ -17,7 +17,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-import jsonschema
+try:
+    import jsonschema
+except ImportError:  # pragma: no cover
+    jsonschema = None
 
 DEFAULT_INSTALL_DIR = "~/.claude"
 
@@ -86,6 +89,32 @@ def load_config(path: str) -> Dict[str, Any]:
 
     config_path = Path(path).expanduser().resolve()
     config = _load_json(config_path)
+
+    if jsonschema is None:
+        print(
+            "WARNING: python package 'jsonschema' is not installed; "
+            "skipping config validation. To enable validation run:\n"
+            "  python3 -m pip install jsonschema\n",
+            file=sys.stderr,
+        )
+
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"Config must be a dict, got {type(config).__name__}. "
+                "Check your config.json syntax."
+            )
+
+        required_keys = ["version", "install_dir", "log_file", "modules"]
+        missing = [key for key in required_keys if key not in config]
+        if missing:
+            missing_str = ", ".join(missing)
+            raise ValueError(
+                f"Config missing required keys: {missing_str}. "
+                "Install jsonschema for better validation: "
+                "python3 -m pip install jsonschema"
+            )
+
+        return config
 
     schema_candidates = [
         config_path.parent / "config.schema.json",

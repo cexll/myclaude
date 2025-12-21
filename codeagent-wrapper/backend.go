@@ -26,15 +26,17 @@ func (ClaudeBackend) Command() string {
 	return "claude"
 }
 func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
+	return buildClaudeArgs(cfg, targetArg)
+}
+
+func buildClaudeArgs(cfg *Config, targetArg string) []string {
 	if cfg == nil {
 		return nil
 	}
-	args := []string{"-p", "--dangerously-skip-permissions"}
-
-	// Only skip permissions when explicitly requested
-	// if cfg.SkipPermissions {
-	// 	args = append(args, "--dangerously-skip-permissions")
-	// }
+	args := []string{"-p"}
+	if cfg.SkipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
+	}
 
 	// Prevent infinite recursion: disable all setting sources (user, project, local)
 	// This ensures a clean execution environment without CLAUDE.md or skills that would trigger codeagent
@@ -60,6 +62,10 @@ func (GeminiBackend) Command() string {
 	return "gemini"
 }
 func (GeminiBackend) BuildArgs(cfg *Config, targetArg string) []string {
+	return buildGeminiArgs(cfg, targetArg)
+}
+
+func buildGeminiArgs(cfg *Config, targetArg string) []string {
 	if cfg == nil {
 		return nil
 	}
