@@ -366,7 +366,8 @@ func (l *Logger) run() {
 	defer ticker.Stop()
 
 	writeEntry := func(entry logEntry) {
-		fmt.Fprintf(l.writer, "%s\n", entry.msg)
+		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+		fmt.Fprintf(l.writer, "[%s] %s\n", timestamp, entry.msg)
 
 		// Cache error/warn entries in memory for fast extraction
 		if entry.isError {
