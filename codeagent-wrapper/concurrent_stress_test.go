@@ -13,6 +13,16 @@ import (
 	"time"
 )
 
+func stripTimestampPrefix(line string) string {
+	if !strings.HasPrefix(line, "[") {
+		return line
+	}
+	if idx := strings.Index(line, "] "); idx >= 0 {
+		return line[idx+2:]
+	}
+	return line
+}
+
 // TestConcurrentStressLogger 高并发压力测试
 func TestConcurrentStressLogger(t *testing.T) {
 	if testing.Short() {
@@ -79,7 +89,8 @@ func TestConcurrentStressLogger(t *testing.T) {
 	// 验证日志格式（纯文本，无前缀）
 	formatRE := regexp.MustCompile(`^goroutine-\d+-msg-\d+$`)
 	for i, line := range lines[:min(10, len(lines))] {
-		if !formatRE.MatchString(line) {
+		msg := stripTimestampPrefix(line)
+		if !formatRE.MatchString(msg) {
 			t.Errorf("line %d has invalid format: %s", i, line)
 		}
 	}
@@ -291,7 +302,7 @@ func TestLoggerOrderPreservation(t *testing.T) {
 	sequences := make(map[int][]int) // goroutine ID -> sequence numbers
 
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := stripTimestampPrefix(scanner.Text())
 		var gid, seq int
 		// Parse format: G0-SEQ0001 (without INFO: prefix)
 		_, err := fmt.Sscanf(line, "G%d-SEQ%04d", &gid, &seq)
