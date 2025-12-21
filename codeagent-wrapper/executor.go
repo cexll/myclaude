@@ -765,12 +765,11 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 			case messageSeen <- struct{}{}:
 			default:
 			}
-		}, func() {
-			select {
-			case completeSeen <- struct{}{}:
-			default:
-			}
 		})
+		select {
+		case completeSeen <- struct{}{}:
+		default:
+		}
 		parseCh <- parseResult{message: msg, threadID: tid}
 	}()
 

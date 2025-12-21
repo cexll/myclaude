@@ -1302,11 +1302,7 @@ func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
 	args := buildCodexArgs(cfg, "my task")
 	expected := []string{
-		"exec",
-		"--dangerously-bypass-approvals-and-sandbox",
-		"-m", "gpt-5.2-codex",
-		"-c", "model_reasoning_effort=low",
-		"-c", "enable_compaction=true",
+		"e",
 		"--skip-git-repo-check",
 		"-C", "/test/dir",
 		"--json",
@@ -1330,11 +1326,7 @@ func TestRunBuildCodexArgs_ResumeMode(t *testing.T) {
 	cfg := &Config{Mode: "resume", SessionID: "session-abc"}
 	args := buildCodexArgs(cfg, "-")
 	expected := []string{
-		"exec",
-		"--dangerously-bypass-approvals-and-sandbox",
-		"-m", "gpt-5.2-codex",
-		"-c", "model_reasoning_effort=low",
-		"-c", "enable_compaction=true",
+		"e",
 		"--skip-git-repo-check",
 		"--json",
 		"resume",
@@ -1462,11 +1454,7 @@ func TestBackendBuildArgs_CodexBackend(t *testing.T) {
 	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
 	got := backend.BuildArgs(cfg, "task")
 	want := []string{
-		"exec",
-		"--dangerously-bypass-approvals-and-sandbox",
-		"-m", "gpt-5.2-codex",
-		"-c", "model_reasoning_effort=low",
-		"-c", "enable_compaction=true",
+		"e",
 		"--skip-git-repo-check",
 		"-C", "/test/dir",
 		"--json",
