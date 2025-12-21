@@ -879,6 +879,41 @@ func TestRunCodexTask_ContextTimeout(t *testing.T) {
 	}
 }
 
+func TestRunCodexTask_ForcesStopAfterMessage(t *testing.T) {
+	defer resetTestHooks()
+	forceKillDelay.Store(0)
+
+	fake := newFakeCmd(fakeCmdConfig{
+		StdoutPlan: []fakeStdoutEvent{
+			{Data: `{"type":"item.completed","item":{"type":"agent_message","text":"done"}}` + "\n"},
+		},
+		KeepStdoutOpen:      true,
+		BlockWait:           true,
+		ReleaseWaitOnSignal: true,
+		ReleaseWaitOnKill:   true,
+	})
+
+	newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+		return fake
+	}
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+	codexCommand = "fake-cmd"
+
+	start := time.Now()
+	result := runCodexTaskWithContext(context.Background(), TaskSpec{Task: "done", WorkDir: defaultWorkdir}, nil, nil, false, false, 60)
+	duration := time.Since(start)
+
+	if result.ExitCode != 0 || result.Message != "done" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if duration > 2*time.Second {
+		t.Fatalf("runCodexTaskWithContext took too long: %v", duration)
+	}
+	if fake.process.SignalCount() == 0 {
+		t.Fatalf("expected SIGTERM to be sent, got %d", fake.process.SignalCount())
+	}
+}
+
 func TestBackendParseArgs_NewMode(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1481,12 +1516,12 @@ func TestRunResolveTimeout(t *testing.T) {
 		envVal string
 		want   int
 	}{
-		{"empty env", "", 7200},
-		{"milliseconds", "7200000", 7200},
+		{"empty env", "", 86400},
+		{"milliseconds", "86400000", 86400},
 		{"seconds", "3600", 3600},
-		{"invalid", "invalid", 7200},
-		{"negative", "-100", 7200},
-		{"zero", "0", 7200},
+		{"invalid", "invalid", 86400},
+		{"negative", "-100", 86400},
+		{"zero", "0", 86400},
 		{"small milliseconds", "5000", 5000},
 		{"boundary", "10000", 10000},
 		{"above boundary", "10001", 10},
@@ -2756,7 +2791,7 @@ func TestVersionFlag(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codeagent-wrapper version 5.2.5\n"
+	want := "codeagent-wrapper version 5.2.6\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
@@ -2770,7 +2805,7 @@ func TestVersionShortFlag(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codeagent-wrapper version 5.2.5\n"
+	want := "codeagent-wrapper version 5.2.6\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
@@ -2784,7 +2819,7 @@ func TestVersionLegacyAlias(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codex-wrapper version 5.2.5\n"
+	want := "codex-wrapper version 5.2.6\n"
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
