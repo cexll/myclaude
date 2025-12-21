@@ -26,6 +26,7 @@ type commandRunner interface {
 	StdinPipe() (io.WriteCloser, error)
 	SetStderr(io.Writer)
 	SetDir(string)
+	SetEnv(env map[string]string)
 	Process() processHandle
 }
 
@@ -79,6 +80,52 @@ func (r *realCmd) SetDir(dir string) {
 	if r.cmd != nil {
 		r.cmd.Dir = dir
 	}
+}
+
+func (r *realCmd) SetEnv(env map[string]string) {
+	if r == nil || r.cmd == nil || len(env) == 0 {
+		return
+	}
+
+	merged := make(map[string]string, len(env)+len(os.Environ()))
+	for _, kv := range os.Environ() {
+		if kv == "" {
+			continue
+		}
+		idx := strings.IndexByte(kv, '=')
+		if idx <= 0 {
+			continue
+		}
+		merged[kv[:idx]] = kv[idx+1:]
+	}
+	for _, kv := range r.cmd.Env {
+		if kv == "" {
+			continue
+		}
+		idx := strings.IndexByte(kv, '=')
+		if idx <= 0 {
+			continue
+		}
+		merged[kv[:idx]] = kv[idx+1:]
+	}
+	for k, v := range env {
+		if strings.TrimSpace(k) == "" {
+			continue
+		}
+		merged[k] = v
+	}
+
+	keys := make([]string, 0, len(merged))
+	for k := range merged {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+merged[k])
+	}
+	r.cmd.Env = out
 }
 
 func (r *realCmd) Process() processHandle {
@@ -700,6 +747,12 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	cmd := newCommandRunner(ctx, commandName, codexArgs...)
+
+	if cfg.Backend == "claude" {
+		if env := loadMinimalEnvSettings(); len(env) > 0 {
+			cmd.SetEnv(env)
+		}
+	}
 
 	// For backends that don't support -C flag (claude, gemini), set working directory via cmd.Dir
 	// Codex passes workdir via -C flag, so we skip setting Dir for it to avoid conflicts

@@ -255,6 +255,10 @@ func (d *drainBlockingCmd) SetDir(dir string) {
 	d.inner.SetDir(dir)
 }
 
+func (d *drainBlockingCmd) SetEnv(env map[string]string) {
+	d.inner.SetEnv(env)
+}
+
 func (d *drainBlockingCmd) Process() processHandle {
 	return d.inner.Process()
 }
@@ -387,6 +391,8 @@ type fakeCmd struct {
 
 	stderr io.Writer
 
+	env map[string]string
+
 	waitDelay time.Duration
 	waitErr   error
 	startErr  error
@@ -510,6 +516,20 @@ func (f *fakeCmd) SetStderr(w io.Writer) {
 }
 
 func (f *fakeCmd) SetDir(string) {}
+
+func (f *fakeCmd) SetEnv(env map[string]string) {
+	if len(env) == 0 {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.env == nil {
+		f.env = make(map[string]string, len(env))
+	}
+	for k, v := range env {
+		f.env[k] = v
+	}
+}
 
 func (f *fakeCmd) Process() processHandle {
 	if f == nil {
@@ -1547,9 +1567,15 @@ func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
 	backend := ClaudeBackend{}
 	cfg := &Config{Mode: "new", WorkDir: defaultWorkdir}
 	got := backend.BuildArgs(cfg, "todo")
-	wantPrefix := []string{"-p", "--setting-sources", ""}
-	wantSuffix := []string{"--output-format", "stream-json", "--verbose", "todo"}
-	assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
+	want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
+	if len(got) != len(want) {
+		t.Fatalf("args length=%d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("index %d got %q want %q (args=%v)", i, got[i], want[i], got)
+		}
+	}
 
 	if backend.BuildArgs(nil, "ignored") != nil {
 		t.Fatalf("nil config should return nil args")
@@ -1562,9 +1588,15 @@ func TestClaudeBackendBuildArgs_OutputValidation(t *testing.T) {
 	target := "ensure-flags"
 
 	args := backend.BuildArgs(cfg, target)
-	wantPrefix := []string{"-p", "--setting-sources", ""}
-	wantSuffix := []string{"--output-format", "stream-json", "--verbose", target}
-	assertArgsWithOptionalSettings(t, args, wantPrefix, wantSuffix)
+	want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", target}
+	if len(args) != len(want) {
+		t.Fatalf("args length=%d, want %d: %v", len(args), len(want), args)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("index %d got %q want %q (args=%v)", i, args[i], want[i], args)
+		}
+	}
 }
 
 func TestBackendBuildArgs_GeminiBackend(t *testing.T) {

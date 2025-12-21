@@ -87,6 +87,7 @@ type execFakeRunner struct {
 	process         processHandle
 	stdin           io.WriteCloser
 	dir             string
+	env             map[string]string
 	waitErr         error
 	waitDelay       time.Duration
 	startErr        error
@@ -129,6 +130,17 @@ func (f *execFakeRunner) StdinPipe() (io.WriteCloser, error) {
 }
 func (f *execFakeRunner) SetStderr(io.Writer) {}
 func (f *execFakeRunner) SetDir(dir string)   { f.dir = dir }
+func (f *execFakeRunner) SetEnv(env map[string]string) {
+	if len(env) == 0 {
+		return
+	}
+	if f.env == nil {
+		f.env = make(map[string]string, len(env))
+	}
+	for k, v := range env {
+		f.env[k] = v
+	}
+}
 func (f *execFakeRunner) Process() processHandle {
 	if f.process != nil {
 		return f.process

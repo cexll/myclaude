@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -12,41 +14,46 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	t.Run("new mode omits skip-permissions by default", func(t *testing.T) {
 		cfg := &Config{Mode: "new", WorkDir: "/repo"}
 		got := backend.BuildArgs(cfg, "todo")
-		wantPrefix := []string{"-p", "--setting-sources", ""}
-		wantSuffix := []string{"--output-format", "stream-json", "--verbose", "todo"}
-		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
+		want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
 	})
 
 	t.Run("new mode can opt-in skip-permissions", func(t *testing.T) {
 		cfg := &Config{Mode: "new", SkipPermissions: true}
 		got := backend.BuildArgs(cfg, "-")
-		wantPrefix := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", ""}
-		wantSuffix := []string{"--output-format", "stream-json", "--verbose", "-"}
-		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
+		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "-"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
 	})
 
 	t.Run("resume mode includes session id", func(t *testing.T) {
 		cfg := &Config{Mode: "resume", SessionID: "sid-123", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "resume-task")
-		wantPrefix := []string{"-p", "--setting-sources", ""}
-		wantSuffix := []string{"-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
-		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
+		want := []string{"-p", "--setting-sources", "", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
 	})
 
 	t.Run("resume mode without session still returns base flags", func(t *testing.T) {
 		cfg := &Config{Mode: "resume", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "follow-up")
-		wantPrefix := []string{"-p", "--setting-sources", ""}
-		wantSuffix := []string{"--output-format", "stream-json", "--verbose", "follow-up"}
-		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
+		want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "follow-up"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
 	})
 
 	t.Run("resume mode can opt-in skip permissions", func(t *testing.T) {
 		cfg := &Config{Mode: "resume", SessionID: "sid-123", SkipPermissions: true}
 		got := backend.BuildArgs(cfg, "resume-task")
-		wantPrefix := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", ""}
-		wantSuffix := []string{"-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
-		assertArgsWithOptionalSettings(t, got, wantPrefix, wantSuffix)
+		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
 	})
 
 	t.Run("nil config returns nil", func(t *testing.T) {
@@ -144,63 +151,63 @@ func TestClaudeBuildArgs_BackendMetadata(t *testing.T) {
 	}
 }
 
-func assertArgsWithOptionalSettings(t *testing.T, got, wantPrefix, wantSuffix []string) {
-	t.Helper()
-	if len(got) < len(wantPrefix)+len(wantSuffix) {
-		t.Fatalf("args too short: got %v", got)
-	}
-	if !hasPrefix(got, wantPrefix) {
-		t.Fatalf("args prefix mismatch\ngot:  %v\nwant: %v", got, wantPrefix)
-	}
-	if !hasSuffix(got, wantSuffix) {
-		t.Fatalf("args suffix mismatch\ngot:  %v\nwant: %v", got, wantSuffix)
-	}
+func TestLoadMinimalEnvSettings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
-	settingsIdx := findArg(got, "--settings")
-	if settingsIdx != -1 {
-		if settingsIdx+1 >= len(got) {
-			t.Fatalf("--settings missing value in %v", got)
+	t.Run("missing file returns empty", func(t *testing.T) {
+		if got := loadMinimalEnvSettings(); len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
 		}
-		if settingsIdx < len(wantPrefix) {
-			t.Fatalf("--settings at wrong position %d in %v", settingsIdx, got)
-		}
-		suffixStart := len(got) - len(wantSuffix)
-		if settingsIdx >= suffixStart {
-			t.Fatalf("--settings placed inside suffix at %d in %v", settingsIdx, got)
-		}
-	}
-}
+	})
 
-func hasPrefix(args, prefix []string) bool {
-	if len(args) < len(prefix) {
-		return false
-	}
-	for i := range prefix {
-		if args[i] != prefix[i] {
-			return false
+	t.Run("valid env returns string map", func(t *testing.T) {
+		dir := filepath.Join(home, ".claude")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
 		}
-	}
-	return true
-}
+		path := filepath.Join(dir, "setting.json")
+		data := []byte(`{"env":{"ANTHROPIC_API_KEY":"secret","FOO":"bar"}}`)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
 
-func hasSuffix(args, suffix []string) bool {
-	if len(args) < len(suffix) {
-		return false
-	}
-	offset := len(args) - len(suffix)
-	for i := range suffix {
-		if args[offset+i] != suffix[i] {
-			return false
+		got := loadMinimalEnvSettings()
+		if got["ANTHROPIC_API_KEY"] != "secret" || got["FOO"] != "bar" {
+			t.Fatalf("got %v, want keys present", got)
 		}
-	}
-	return true
-}
+	})
 
-func findArg(args []string, target string) int {
-	for i, a := range args {
-		if a == target {
-			return i
+	t.Run("non-string values are ignored", func(t *testing.T) {
+		dir := filepath.Join(home, ".claude")
+		path := filepath.Join(dir, "setting.json")
+		data := []byte(`{"env":{"GOOD":"ok","BAD":123,"ALSO_BAD":true}}`)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
 		}
-	}
-	return -1
+
+		got := loadMinimalEnvSettings()
+		if got["GOOD"] != "ok" {
+			t.Fatalf("got %v, want GOOD=ok", got)
+		}
+		if _, ok := got["BAD"]; ok {
+			t.Fatalf("got %v, want BAD omitted", got)
+		}
+		if _, ok := got["ALSO_BAD"]; ok {
+			t.Fatalf("got %v, want ALSO_BAD omitted", got)
+		}
+	})
+
+	t.Run("oversized file returns empty", func(t *testing.T) {
+		dir := filepath.Join(home, ".claude")
+		path := filepath.Join(dir, "setting.json")
+		data := bytes.Repeat([]byte("a"), maxClaudeSettingsBytes+1)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := loadMinimalEnvSettings(); len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
+		}
+	})
 }

@@ -35,32 +35,49 @@ func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	return buildClaudeArgs(cfg, targetArg)
 }
 
-// loadMinimalEnvSettings 从 ~/.claude/setting.json 只提取 env 配置
-// 返回 JSON 字符串格式的最小配置，如果失败返回空字符串
-func loadMinimalEnvSettings() string {
-	home := os.Getenv("HOME")
-	if home == "" {
-		return ""
+const maxClaudeSettingsBytes = 1 << 20 // 1MB
+
+// loadMinimalEnvSettings 从 ~/.claude/setting.json 只提取 env 配置。
+// 只接受字符串类型的值；文件缺失/解析失败/超限都返回空。
+func loadMinimalEnvSettings() map[string]string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
 	}
 
 	settingPath := filepath.Join(home, ".claude", "setting.json")
+	info, err := os.Stat(settingPath)
+	if err != nil || info.Size() > maxClaudeSettingsBytes {
+		return nil
+	}
+
 	data, err := os.ReadFile(settingPath)
 	if err != nil {
-		return ""
+		return nil
 	}
 
-	var config map[string]interface{}
-	if err := json.Unmarshal(data, &config); err != nil {
-		return ""
+	var cfg struct {
+		Env map[string]any `json:"env"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+	if len(cfg.Env) == 0 {
+		return nil
 	}
 
-	if env, ok := config["env"].(map[string]interface{}); ok && len(env) > 0 {
-		minimal := map[string]interface{}{"env": env}
-		jsonBytes, _ := json.Marshal(minimal)
-		return string(jsonBytes)
+	env := make(map[string]string, len(cfg.Env))
+	for k, v := range cfg.Env {
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		env[k] = s
 	}
-
-	return ""
+	if len(env) == 0 {
+		return nil
+	}
+	return env
 }
 
 func buildClaudeArgs(cfg *Config, targetArg string) []string {
@@ -75,10 +92,6 @@ func buildClaudeArgs(cfg *Config, targetArg string) []string {
 	// Prevent infinite recursion: disable all setting sources (user, project, local)
 	// This ensures a clean execution environment without CLAUDE.md or skills that would trigger codeagent
 	args = append(args, "--setting-sources", "")
-
-	if envSettings := loadMinimalEnvSettings(); envSettings != "" {
-		args = append(args, "--settings", envSettings)
-	}
 
 	if cfg.Mode == "resume" {
 		if cfg.SessionID != "" {
