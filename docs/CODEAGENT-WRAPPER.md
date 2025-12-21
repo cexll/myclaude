@@ -163,7 +163,7 @@ EOF
 # Set custom timeout (1 hour = 3600000ms)
 CODEX_TIMEOUT=3600000 codeagent-wrapper "long running task"
 
-# Default timeout: 86400000ms (24 hours)
+# Default timeout: 7200000ms (2 hours)
 ```
 
 **Timeout behavior:**
@@ -279,7 +279,7 @@ Error: dependency backend_1701234567 failed
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CODEX_TIMEOUT` | 86400000 | Timeout in milliseconds |
+| `CODEX_TIMEOUT` | 7200000 | Timeout in milliseconds |
 
 ## Troubleshooting
 

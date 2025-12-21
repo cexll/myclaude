@@ -18,7 +18,7 @@ func TestParseJSONStream_SkipsOverlongLineAndContinues(t *testing.T) {
 	var warns []string
 	warnFn := func(msg string) { warns = append(warns, msg) }
 
-	gotMessage, gotThreadID := parseJSONStreamInternal(strings.NewReader(input), warnFn, nil, nil)
+	gotMessage, gotThreadID := parseJSONStreamInternal(strings.NewReader(input), warnFn, nil, nil, nil)
 	if gotMessage != "ok" {
 		t.Fatalf("message=%q, want %q (warns=%v)", gotMessage, "ok", warns)
 	}

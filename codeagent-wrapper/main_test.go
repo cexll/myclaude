@@ -879,13 +879,14 @@ func TestRunCodexTask_ContextTimeout(t *testing.T) {
 	}
 }
 
-func TestRunCodexTask_ForcesStopAfterMessage(t *testing.T) {
+func TestRunCodexTask_ForcesStopAfterCompletion(t *testing.T) {
 	defer resetTestHooks()
 	forceKillDelay.Store(0)
 
 	fake := newFakeCmd(fakeCmdConfig{
 		StdoutPlan: []fakeStdoutEvent{
 			{Data: `{"type":"item.completed","item":{"type":"agent_message","text":"done"}}` + "\n"},
+			{Data: `{"type":"thread.completed","thread_id":"tid"}` + "\n"},
 		},
 		KeepStdoutOpen:      true,
 		BlockWait:           true,
@@ -907,6 +908,43 @@ func TestRunCodexTask_ForcesStopAfterMessage(t *testing.T) {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	if duration > 2*time.Second {
+		t.Fatalf("runCodexTaskWithContext took too long: %v", duration)
+	}
+	if fake.process.SignalCount() == 0 {
+		t.Fatalf("expected SIGTERM to be sent, got %d", fake.process.SignalCount())
+	}
+}
+
+func TestRunCodexTask_DoesNotTerminateBeforeThreadCompleted(t *testing.T) {
+	defer resetTestHooks()
+	forceKillDelay.Store(0)
+
+	fake := newFakeCmd(fakeCmdConfig{
+		StdoutPlan: []fakeStdoutEvent{
+			{Data: `{"type":"item.completed","item":{"type":"agent_message","text":"intermediate"}}` + "\n"},
+			{Delay: 1100 * time.Millisecond, Data: `{"type":"item.completed","item":{"type":"agent_message","text":"final"}}` + "\n"},
+			{Data: `{"type":"thread.completed","thread_id":"tid"}` + "\n"},
+		},
+		KeepStdoutOpen:      true,
+		BlockWait:           true,
+		ReleaseWaitOnSignal: true,
+		ReleaseWaitOnKill:   true,
+	})
+
+	newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+		return fake
+	}
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+	codexCommand = "fake-cmd"
+
+	start := time.Now()
+	result := runCodexTaskWithContext(context.Background(), TaskSpec{Task: "done", WorkDir: defaultWorkdir}, nil, nil, false, false, 60)
+	duration := time.Since(start)
+
+	if result.ExitCode != 0 || result.Message != "final" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if duration > 5*time.Second {
 		t.Fatalf("runCodexTaskWithContext took too long: %v", duration)
 	}
 	if fake.process.SignalCount() == 0 {
@@ -1516,12 +1554,12 @@ func TestRunResolveTimeout(t *testing.T) {
 		envVal string
 		want   int
 	}{
-		{"empty env", "", 86400},
-		{"milliseconds", "86400000", 86400},
+		{"empty env", "", 7200},
+		{"milliseconds", "7200000", 7200},
 		{"seconds", "3600", 3600},
-		{"invalid", "invalid", 86400},
-		{"negative", "-100", 86400},
-		{"zero", "0", 86400},
+		{"invalid", "invalid", 7200},
+		{"negative", "-100", 7200},
+		{"zero", "0", 7200},
 		{"small milliseconds", "5000", 5000},
 		{"boundary", "10000", 10000},
 		{"above boundary", "10001", 10},
@@ -1685,7 +1723,7 @@ func TestBackendParseJSONStream_GeminiEvents_OnMessageTriggeredOnStatus(t *testi
 	var called int
 	message, threadID := parseJSONStreamInternal(strings.NewReader(input), nil, nil, func() {
 		called++
-	})
+	}, nil)
 
 	if message != "Hi there" {
 		t.Fatalf("message=%q, want %q", message, "Hi there")
@@ -1714,7 +1752,7 @@ func TestBackendParseJSONStream_OnMessage(t *testing.T) {
 	var called int
 	message, threadID := parseJSONStreamInternal(strings.NewReader(`{"type":"item.completed","item":{"type":"agent_message","text":"hook"}}`), nil, nil, func() {
 		called++
-	})
+	}, nil)
 	if message != "hook" {
 		t.Fatalf("message = %q, want hook", message)
 	}
@@ -1726,10 +1764,86 @@ func TestBackendParseJSONStream_OnMessage(t *testing.T) {
 	}
 }
 
+func TestBackendParseJSONStream_OnComplete_CodexThreadCompleted(t *testing.T) {
+	input := `{"type":"item.completed","item":{"type":"agent_message","text":"first"}}` + "\n" +
+		`{"type":"item.completed","item":{"type":"agent_message","text":"second"}}` + "\n" +
+		`{"type":"thread.completed","thread_id":"t-1"}`
+
+	var onMessageCalls int
+	var onCompleteCalls int
+	message, threadID := parseJSONStreamInternal(strings.NewReader(input), nil, nil, func() {
+		onMessageCalls++
+	}, func() {
+		onCompleteCalls++
+	})
+	if message != "second" {
+		t.Fatalf("message = %q, want second", message)
+	}
+	if threadID != "t-1" {
+		t.Fatalf("threadID = %q, want t-1", threadID)
+	}
+	if onMessageCalls != 2 {
+		t.Fatalf("onMessage calls = %d, want 2", onMessageCalls)
+	}
+	if onCompleteCalls != 1 {
+		t.Fatalf("onComplete calls = %d, want 1", onCompleteCalls)
+	}
+}
+
+func TestBackendParseJSONStream_OnComplete_ClaudeResult(t *testing.T) {
+	input := `{"type":"message","subtype":"stream","session_id":"s-1"}` + "\n" +
+		`{"type":"result","result":"OK","session_id":"s-1"}`
+
+	var onMessageCalls int
+	var onCompleteCalls int
+	message, threadID := parseJSONStreamInternal(strings.NewReader(input), nil, nil, func() {
+		onMessageCalls++
+	}, func() {
+		onCompleteCalls++
+	})
+	if message != "OK" {
+		t.Fatalf("message = %q, want OK", message)
+	}
+	if threadID != "s-1" {
+		t.Fatalf("threadID = %q, want s-1", threadID)
+	}
+	if onMessageCalls != 1 {
+		t.Fatalf("onMessage calls = %d, want 1", onMessageCalls)
+	}
+	if onCompleteCalls != 1 {
+		t.Fatalf("onComplete calls = %d, want 1", onCompleteCalls)
+	}
+}
+
+func TestBackendParseJSONStream_OnComplete_GeminiTerminalResultStatus(t *testing.T) {
+	input := `{"type":"message","role":"assistant","content":"Hi","delta":true,"session_id":"g-1"}` + "\n" +
+		`{"type":"result","status":"success","session_id":"g-1"}`
+
+	var onMessageCalls int
+	var onCompleteCalls int
+	message, threadID := parseJSONStreamInternal(strings.NewReader(input), nil, nil, func() {
+		onMessageCalls++
+	}, func() {
+		onCompleteCalls++
+	})
+	if message != "Hi" {
+		t.Fatalf("message = %q, want Hi", message)
+	}
+	if threadID != "g-1" {
+		t.Fatalf("threadID = %q, want g-1", threadID)
+	}
+	if onMessageCalls != 1 {
+		t.Fatalf("onMessage calls = %d, want 1", onMessageCalls)
+	}
+	if onCompleteCalls != 1 {
+		t.Fatalf("onComplete calls = %d, want 1", onCompleteCalls)
+	}
+}
+
 func TestBackendParseJSONStream_ScannerError(t *testing.T) {
 	var warnings []string
 	warnFn := func(msg string) { warnings = append(warnings, msg) }
-	message, threadID := parseJSONStreamInternal(errReader{err: errors.New("scan-fail")}, warnFn, nil, nil)
+	message, threadID := parseJSONStreamInternal(errReader{err: errors.New("scan-fail")}, warnFn, nil, nil, nil)
 	if message != "" || threadID != "" {
 		t.Fatalf("expected empty output on scanner error, got message=%q threadID=%q", message, threadID)
 	}

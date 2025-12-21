@@ -16,7 +16,7 @@ import (
 const (
 	version             = "5.2.6"
 	defaultWorkdir      = "."
-	defaultTimeout      = 86400 // seconds
+	defaultTimeout      = 7200 // seconds (2 hours)
 	codexLogLineLimit   = 1000
 	stdinSpecialChars   = "\n\\\"'`$"
 	stderrCaptureLimit  = 4 * 1024
@@ -456,7 +456,7 @@ Parallel mode examples:
     %[1]s --parallel <<'EOF'
 
 Environment Variables:
-    CODEX_TIMEOUT  Timeout in milliseconds (default: 86400000)
+    CODEX_TIMEOUT  Timeout in milliseconds (default: 7200000)
 
 Exit Codes:
     0    Success

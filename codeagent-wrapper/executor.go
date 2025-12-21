@@ -731,11 +731,17 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	// Start parse goroutine BEFORE starting the command to avoid race condition
 	// where fast-completing commands close stdout before parser starts reading
 	messageSeen := make(chan struct{}, 1)
+	completeSeen := make(chan struct{}, 1)
 	parseCh := make(chan parseResult, 1)
 	go func() {
 		msg, tid := parseJSONStreamInternal(stdoutReader, logWarnFn, logInfoFn, func() {
 			select {
 			case messageSeen <- struct{}{}:
+			default:
+			}
+		}, func() {
+			select {
+			case completeSeen <- struct{}{}:
 			default:
 			}
 		})
@@ -776,14 +782,15 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	go func() { waitCh <- cmd.Wait() }()
 
 	var (
-		waitErr             error
-		forceKillTimer      *forceKillTimer
-		ctxCancelled        bool
-		messageTimer        *time.Timer
-		messageTimerCh      <-chan time.Time
-		forcedAfterMessage  bool
-		terminated          bool
-		messageSeenObserved bool
+		waitErr              error
+		forceKillTimer       *forceKillTimer
+		ctxCancelled         bool
+		messageTimer         *time.Timer
+		messageTimerCh       <-chan time.Time
+		forcedAfterComplete  bool
+		terminated           bool
+		messageSeenObserved  bool
+		completeSeenObserved bool
 	)
 
 waitLoop:
@@ -795,33 +802,39 @@ waitLoop:
 			ctxCancelled = true
 			logErrorFn(cancelReason(commandName, ctx))
 			if !terminated {
-				forceKillTimer = terminateCommandFn(cmd)
-				terminated = true
+				if timer := terminateCommandFn(cmd); timer != nil {
+					forceKillTimer = timer
+					terminated = true
+				}
 			}
 			waitErr = <-waitCh
 			break waitLoop
 		case <-messageTimerCh:
-			forcedAfterMessage = true
+			forcedAfterComplete = true
 			messageTimerCh = nil
 			if !terminated {
 				logWarnFn(fmt.Sprintf("%s output parsed; terminating lingering backend", commandName))
-				forceKillTimer = terminateCommandFn(cmd)
-				terminated = true
+				if timer := terminateCommandFn(cmd); timer != nil {
+					forceKillTimer = timer
+					terminated = true
+				}
 			}
-		case <-messageSeen:
-			messageSeenObserved = true
+		case <-completeSeen:
+			completeSeenObserved = true
 			if messageTimer != nil {
 				continue
 			}
 			messageTimer = time.NewTimer(postMessageTerminateDelay)
 			messageTimerCh = messageTimer.C
+		case <-messageSeen:
+			messageSeenObserved = true
 		}
 	}
 
 	if messageTimer != nil {
-		if !messageTimer.Stop() && messageTimerCh != nil {
+		if !messageTimer.Stop() {
 			select {
-			case <-messageTimerCh:
+			case <-messageTimer.C:
 			default:
 			}
 		}
@@ -836,7 +849,7 @@ waitLoop:
 	case ctxCancelled:
 		closeWithReason(stdout, stdoutCloseReasonCtx)
 		parsed = <-parseCh
-	case messageSeenObserved:
+	case messageSeenObserved || completeSeenObserved:
 		closeWithReason(stdout, stdoutCloseReasonWait)
 		parsed = <-parseCh
 	default:
@@ -848,6 +861,10 @@ waitLoop:
 			closeWithReason(stdout, stdoutCloseReasonWait)
 		case <-messageSeen:
 			messageSeenObserved = true
+			closeWithReason(stdout, stdoutCloseReasonWait)
+			parsed = <-parseCh
+		case <-completeSeen:
+			completeSeenObserved = true
 			closeWithReason(stdout, stdoutCloseReasonWait)
 			parsed = <-parseCh
 		case <-drainTimer.C:
@@ -868,7 +885,7 @@ waitLoop:
 	}
 
 	if waitErr != nil {
-		if forcedAfterMessage && parsed.message != "" {
+		if forcedAfterComplete && parsed.message != "" {
 			logWarnFn(fmt.Sprintf("%s terminated after delivering output", commandName))
 		} else {
 			if exitErr, ok := waitErr.(*exec.ExitError); ok {

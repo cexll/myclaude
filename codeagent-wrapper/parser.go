@@ -50,7 +50,7 @@ func parseJSONStreamWithWarn(r io.Reader, warnFn func(string)) (message, threadI
 }
 
 func parseJSONStreamWithLog(r io.Reader, warnFn func(string), infoFn func(string)) (message, threadID string) {
-	return parseJSONStreamInternal(r, warnFn, infoFn, nil)
+	return parseJSONStreamInternal(r, warnFn, infoFn, nil, nil)
 }
 
 const (
@@ -95,7 +95,7 @@ type ItemContent struct {
 	Text interface{} `json:"text"`
 }
 
-func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(string), onMessage func()) (message, threadID string) {
+func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(string), onMessage func(), onComplete func()) (message, threadID string) {
 	reader := bufio.NewReaderSize(r, jsonLineReaderSize)
 
 	if warnFn == nil {
@@ -108,6 +108,12 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 	notifyMessage := func() {
 		if onMessage != nil {
 			onMessage()
+		}
+	}
+
+	notifyComplete := func() {
+		if onComplete != nil {
+			onComplete()
 		}
 	}
 
@@ -158,6 +164,9 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 			}
 		}
 		isClaude := event.Subtype != "" || event.Result != ""
+		if !isClaude && event.Type == "result" && event.SessionID != "" && event.Status == "" {
+			isClaude = true
+		}
 		isGemini := event.Role != "" || event.Delta != nil || event.Status != ""
 
 		// Handle Codex events
@@ -177,6 +186,13 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 			case "thread.started":
 				threadID = event.ThreadID
 				infoFn(fmt.Sprintf("thread.started event thread_id=%s", threadID))
+
+			case "thread.completed":
+				if event.ThreadID != "" && threadID == "" {
+					threadID = event.ThreadID
+				}
+				infoFn(fmt.Sprintf("thread.completed event thread_id=%s", event.ThreadID))
+				notifyComplete()
 
 			case "item.completed":
 				var itemType string
@@ -221,6 +237,10 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 				claudeMessage = event.Result
 				notifyMessage()
 			}
+
+			if event.Type == "result" {
+				notifyComplete()
+			}
 			continue
 		}
 
@@ -236,6 +256,10 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 
 			if event.Status != "" {
 				notifyMessage()
+
+				if event.Type == "result" && (event.Status == "success" || event.Status == "error" || event.Status == "complete" || event.Status == "failed") {
+					notifyComplete()
+				}
 			}
 
 			delta := false
