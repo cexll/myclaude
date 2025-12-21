@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	version             = "5.2.6"
+	version             = "5.2.7"
 	defaultWorkdir      = "."
 	defaultTimeout      = 7200 // seconds (2 hours)
 	codexLogLineLimit   = 1000
