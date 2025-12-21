@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+const postMessageTerminateDelay = 1 * time.Second
+
 // commandRunner abstracts exec.Cmd for testability
 type commandRunner interface {
 	Start() error
@@ -729,11 +731,17 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	// Start parse goroutine BEFORE starting the command to avoid race condition
 	// where fast-completing commands close stdout before parser starts reading
 	messageSeen := make(chan struct{}, 1)
+	completeSeen := make(chan struct{}, 1)
 	parseCh := make(chan parseResult, 1)
 	go func() {
 		msg, tid := parseJSONStreamInternal(stdoutReader, logWarnFn, logInfoFn, func() {
 			select {
 			case messageSeen <- struct{}{}:
+			default:
+			}
+		}, func() {
+			select {
+			case completeSeen <- struct{}{}:
 			default:
 			}
 		})
@@ -773,17 +781,63 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
 
-	var waitErr error
-	var forceKillTimer *forceKillTimer
-	var ctxCancelled bool
+	var (
+		waitErr              error
+		forceKillTimer       *forceKillTimer
+		ctxCancelled         bool
+		messageTimer         *time.Timer
+		messageTimerCh       <-chan time.Time
+		forcedAfterComplete  bool
+		terminated           bool
+		messageSeenObserved  bool
+		completeSeenObserved bool
+	)
 
-	select {
-	case waitErr = <-waitCh:
-	case <-ctx.Done():
-		ctxCancelled = true
-		logErrorFn(cancelReason(commandName, ctx))
-		forceKillTimer = terminateCommandFn(cmd)
-		waitErr = <-waitCh
+waitLoop:
+	for {
+		select {
+		case waitErr = <-waitCh:
+			break waitLoop
+		case <-ctx.Done():
+			ctxCancelled = true
+			logErrorFn(cancelReason(commandName, ctx))
+			if !terminated {
+				if timer := terminateCommandFn(cmd); timer != nil {
+					forceKillTimer = timer
+					terminated = true
+				}
+			}
+			waitErr = <-waitCh
+			break waitLoop
+		case <-messageTimerCh:
+			forcedAfterComplete = true
+			messageTimerCh = nil
+			if !terminated {
+				logWarnFn(fmt.Sprintf("%s output parsed; terminating lingering backend", commandName))
+				if timer := terminateCommandFn(cmd); timer != nil {
+					forceKillTimer = timer
+					terminated = true
+				}
+			}
+		case <-completeSeen:
+			completeSeenObserved = true
+			if messageTimer != nil {
+				continue
+			}
+			messageTimer = time.NewTimer(postMessageTerminateDelay)
+			messageTimerCh = messageTimer.C
+		case <-messageSeen:
+			messageSeenObserved = true
+		}
+	}
+
+	if messageTimer != nil {
+		if !messageTimer.Stop() {
+			select {
+			case <-messageTimer.C:
+			default:
+			}
+		}
 	}
 
 	if forceKillTimer != nil {
@@ -791,10 +845,14 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	var parsed parseResult
-	if ctxCancelled {
+	switch {
+	case ctxCancelled:
 		closeWithReason(stdout, stdoutCloseReasonCtx)
 		parsed = <-parseCh
-	} else {
+	case messageSeenObserved || completeSeenObserved:
+		closeWithReason(stdout, stdoutCloseReasonWait)
+		parsed = <-parseCh
+	default:
 		drainTimer := time.NewTimer(stdoutDrainTimeout)
 		defer drainTimer.Stop()
 
@@ -802,6 +860,11 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		case parsed = <-parseCh:
 			closeWithReason(stdout, stdoutCloseReasonWait)
 		case <-messageSeen:
+			messageSeenObserved = true
+			closeWithReason(stdout, stdoutCloseReasonWait)
+			parsed = <-parseCh
+		case <-completeSeen:
+			completeSeenObserved = true
 			closeWithReason(stdout, stdoutCloseReasonWait)
 			parsed = <-parseCh
 		case <-drainTimer.C:
@@ -822,17 +885,21 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	if waitErr != nil {
-		if exitErr, ok := waitErr.(*exec.ExitError); ok {
-			code := exitErr.ExitCode()
-			logErrorFn(fmt.Sprintf("%s exited with status %d", commandName, code))
-			result.ExitCode = code
-			result.Error = attachStderr(fmt.Sprintf("%s exited with status %d", commandName, code))
+		if forcedAfterComplete && parsed.message != "" {
+			logWarnFn(fmt.Sprintf("%s terminated after delivering output", commandName))
+		} else {
+			if exitErr, ok := waitErr.(*exec.ExitError); ok {
+				code := exitErr.ExitCode()
+				logErrorFn(fmt.Sprintf("%s exited with status %d", commandName, code))
+				result.ExitCode = code
+				result.Error = attachStderr(fmt.Sprintf("%s exited with status %d", commandName, code))
+				return result
+			}
+			logErrorFn(commandName + " error: " + waitErr.Error())
+			result.ExitCode = 1
+			result.Error = attachStderr(commandName + " error: " + waitErr.Error())
 			return result
 		}
-		logErrorFn(commandName + " error: " + waitErr.Error())
-		result.ExitCode = 1
-		result.Error = attachStderr(commandName + " error: " + waitErr.Error())
-		return result
 	}
 
 	message := parsed.message

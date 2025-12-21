@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	version             = "5.2.5"
+	version             = "5.2.6"
 	defaultWorkdir      = "."
-	defaultTimeout      = 7200 // seconds
+	defaultTimeout      = 7200 // seconds (2 hours)
 	codexLogLineLimit   = 1000
 	stdinSpecialChars   = "\n\\\"'`$"
 	stderrCaptureLimit  = 4 * 1024
