@@ -509,7 +509,11 @@ func generateFinalOutput(results []TaskResult) string {
 func buildCodexArgs(cfg *Config, targetArg string) []string {
 	if cfg.Mode == "resume" {
 		return []string{
-			"e",
+			"exec",
+			"--dangerously-bypass-approvals-and-sandbox",
+			"-m", "gpt-5.2-codex",
+			"-c", "model_reasoning_effort=low",
+			"-c", "enable_compaction=true",
 			"--skip-git-repo-check",
 			"--json",
 			"resume",
@@ -518,7 +522,11 @@ func buildCodexArgs(cfg *Config, targetArg string) []string {
 		}
 	}
 	return []string{
-		"e",
+		"exec",
+		"--dangerously-bypass-approvals-and-sandbox",
+		"-m", "gpt-5.2-codex",
+		"-c", "model_reasoning_effort=low",
+		"-c", "enable_compaction=true",
 		"--skip-git-repo-check",
 		"-C", cfg.WorkDir,
 		"--json",

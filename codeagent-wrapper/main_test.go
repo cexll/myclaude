@@ -1283,7 +1283,17 @@ func TestRunShouldUseStdin(t *testing.T) {
 func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
 	args := buildCodexArgs(cfg, "my task")
-	expected := []string{"e", "--skip-git-repo-check", "-C", "/test/dir", "--json", "my task"}
+	expected := []string{
+		"exec",
+		"--dangerously-bypass-approvals-and-sandbox",
+		"-m", "gpt-5.2-codex",
+		"-c", "model_reasoning_effort=low",
+		"-c", "enable_compaction=true",
+		"--skip-git-repo-check",
+		"-C", "/test/dir",
+		"--json",
+		"my task",
+	}
 	if len(args) != len(expected) {
 		t.Fatalf("len mismatch")
 	}
@@ -1297,7 +1307,18 @@ func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 func TestRunBuildCodexArgs_ResumeMode(t *testing.T) {
 	cfg := &Config{Mode: "resume", SessionID: "session-abc"}
 	args := buildCodexArgs(cfg, "-")
-	expected := []string{"e", "--skip-git-repo-check", "--json", "resume", "session-abc", "-"}
+	expected := []string{
+		"exec",
+		"--dangerously-bypass-approvals-and-sandbox",
+		"-m", "gpt-5.2-codex",
+		"-c", "model_reasoning_effort=low",
+		"-c", "enable_compaction=true",
+		"--skip-git-repo-check",
+		"--json",
+		"resume",
+		"session-abc",
+		"-",
+	}
 	if len(args) != len(expected) {
 		t.Fatalf("len mismatch")
 	}
@@ -1363,7 +1384,17 @@ func TestBackendBuildArgs_CodexBackend(t *testing.T) {
 	backend := CodexBackend{}
 	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
 	got := backend.BuildArgs(cfg, "task")
-	want := []string{"e", "--skip-git-repo-check", "-C", "/test/dir", "--json", "task"}
+	want := []string{
+		"exec",
+		"--dangerously-bypass-approvals-and-sandbox",
+		"-m", "gpt-5.2-codex",
+		"-c", "model_reasoning_effort=low",
+		"-c", "enable_compaction=true",
+		"--skip-git-repo-check",
+		"-C", "/test/dir",
+		"--json",
+		"task",
+	}
 	if len(got) != len(want) {
 		t.Fatalf("length mismatch")
 	}

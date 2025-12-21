@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -257,11 +258,16 @@ func TestExecutorHelperCoverage(t *testing.T) {
 		}
 
 		args := buildCodexArgs(&Config{Mode: "new", WorkDir: "/tmp"}, "task")
-		if len(args) == 0 || args[3] != "/tmp" {
+		if len(args) == 0 || args[0] != "exec" {
+			t.Fatalf("unexpected codex args: %+v", args)
+		}
+		workdirIdx := slices.Index(args, "-C")
+		if workdirIdx == -1 || workdirIdx+1 >= len(args) || args[workdirIdx+1] != "/tmp" {
 			t.Fatalf("unexpected codex args: %+v", args)
 		}
 		args = buildCodexArgs(&Config{Mode: "resume", SessionID: "sess"}, "target")
-		if args[3] != "resume" || args[4] != "sess" {
+		resumeIdx := slices.Index(args, "resume")
+		if resumeIdx == -1 || resumeIdx+1 >= len(args) || args[resumeIdx+1] != "sess" {
 			t.Fatalf("unexpected resume args: %+v", args)
 		}
 	})

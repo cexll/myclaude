@@ -93,7 +93,17 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 		backend := CodexBackend{}
 		cfg := &Config{Mode: "new", WorkDir: "/tmp"}
 		got := backend.BuildArgs(cfg, "task")
-		want := []string{"e", "--skip-git-repo-check", "-C", "/tmp", "--json", "task"}
+		want := []string{
+			"exec",
+			"--dangerously-bypass-approvals-and-sandbox",
+			"-m", "gpt-5.2-codex",
+			"-c", "model_reasoning_effort=low",
+			"-c", "enable_compaction=true",
+			"--skip-git-repo-check",
+			"-C", "/tmp",
+			"--json",
+			"task",
+		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
