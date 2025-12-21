@@ -29,6 +29,32 @@ func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	return buildClaudeArgs(cfg, targetArg)
 }
 
+func buildClaudeArgs(cfg *Config, targetArg string) []string {
+	if cfg == nil {
+		return nil
+	}
+	args := []string{"-p"}
+	if cfg.SkipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
+	}
+
+	// Prevent infinite recursion: disable all setting sources (user, project, local)
+	// This ensures a clean execution environment without CLAUDE.md or skills that would trigger codeagent
+	args = append(args, "--setting-sources", "")
+
+	if cfg.Mode == "resume" {
+		if cfg.SessionID != "" {
+			// Claude CLI uses -r <session_id> for resume.
+			args = append(args, "-r", cfg.SessionID)
+		}
+	}
+	// Note: claude CLI doesn't support -C flag; workdir set via cmd.Dir
+
+	args = append(args, "--output-format", "stream-json", "--verbose", targetArg)
+
+	return args
+}
+
 type GeminiBackend struct{}
 
 func (GeminiBackend) Name() string { return "gemini" }
@@ -39,31 +65,20 @@ func (GeminiBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	return buildGeminiArgs(cfg, targetArg)
 }
 
-func buildClaudeArgs(cfg *Config, targetArg string) []string {
-	if cfg == nil {
-		return nil
-	}
-	args := []string{
-		"-p",
-		"--dangerously-skip-permissions",
-		"--setting-sources",
-		"",
-	}
-	if cfg.Mode == "resume" && cfg.SessionID != "" {
-		args = append(args, "-r", cfg.SessionID)
-	}
-	args = append(args, "--output-format", "stream-json", "--verbose", targetArg)
-	return args
-}
-
 func buildGeminiArgs(cfg *Config, targetArg string) []string {
 	if cfg == nil {
 		return nil
 	}
 	args := []string{"-o", "stream-json", "-y"}
-	if cfg.Mode == "resume" && cfg.SessionID != "" {
-		args = append(args, "-r", cfg.SessionID)
+
+	if cfg.Mode == "resume" {
+		if cfg.SessionID != "" {
+			args = append(args, "-r", cfg.SessionID)
+		}
 	}
+	// Note: gemini CLI doesn't support -C flag; workdir set via cmd.Dir
+
 	args = append(args, "-p", targetArg)
+
 	return args
 }
