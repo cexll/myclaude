@@ -1,5 +1,11 @@
 package main
 
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
 // Backend defines the contract for invoking different AI CLI backends.
 // Each backend is responsible for supplying the executable command and
 // building the argument list based on the wrapper config.
@@ -27,6 +33,51 @@ func (ClaudeBackend) Command() string {
 }
 func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	return buildClaudeArgs(cfg, targetArg)
+}
+
+const maxClaudeSettingsBytes = 1 << 20 // 1MB
+
+// loadMinimalEnvSettings 从 ~/.claude/setting.json 只提取 env 配置。
+// 只接受字符串类型的值；文件缺失/解析失败/超限都返回空。
+func loadMinimalEnvSettings() map[string]string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
+	}
+
+	settingPath := filepath.Join(home, ".claude", "setting.json")
+	info, err := os.Stat(settingPath)
+	if err != nil || info.Size() > maxClaudeSettingsBytes {
+		return nil
+	}
+
+	data, err := os.ReadFile(settingPath)
+	if err != nil {
+		return nil
+	}
+
+	var cfg struct {
+		Env map[string]any `json:"env"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil
+	}
+	if len(cfg.Env) == 0 {
+		return nil
+	}
+
+	env := make(map[string]string, len(cfg.Env))
+	for k, v := range cfg.Env {
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		env[k] = s
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
 }
 
 func buildClaudeArgs(cfg *Config, targetArg string) []string {

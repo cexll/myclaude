@@ -255,6 +255,10 @@ func (d *drainBlockingCmd) SetDir(dir string) {
 	d.inner.SetDir(dir)
 }
 
+func (d *drainBlockingCmd) SetEnv(env map[string]string) {
+	d.inner.SetEnv(env)
+}
+
 func (d *drainBlockingCmd) Process() processHandle {
 	return d.inner.Process()
 }
@@ -387,6 +391,8 @@ type fakeCmd struct {
 
 	stderr io.Writer
 
+	env map[string]string
+
 	waitDelay time.Duration
 	waitErr   error
 	startErr  error
@@ -510,6 +516,20 @@ func (f *fakeCmd) SetStderr(w io.Writer) {
 }
 
 func (f *fakeCmd) SetDir(string) {}
+
+func (f *fakeCmd) SetEnv(env map[string]string) {
+	if len(env) == 0 {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.env == nil {
+		f.env = make(map[string]string, len(env))
+	}
+	for k, v := range env {
+		f.env[k] = v
+	}
+}
 
 func (f *fakeCmd) Process() processHandle {
 	if f == nil {
@@ -1549,11 +1569,11 @@ func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
 	got := backend.BuildArgs(cfg, "todo")
 	want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
 	if len(got) != len(want) {
-		t.Fatalf("length mismatch")
+		t.Fatalf("args length=%d, want %d: %v", len(got), len(want), got)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("index %d got %s want %s", i, got[i], want[i])
+			t.Fatalf("index %d got %q want %q (args=%v)", i, got[i], want[i], got)
 		}
 	}
 
@@ -1568,18 +1588,14 @@ func TestClaudeBackendBuildArgs_OutputValidation(t *testing.T) {
 	target := "ensure-flags"
 
 	args := backend.BuildArgs(cfg, target)
-	expectedPrefix := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose"}
-
-	if len(args) != len(expectedPrefix)+1 {
-		t.Fatalf("args length=%d, want %d", len(args), len(expectedPrefix)+1)
+	want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", target}
+	if len(args) != len(want) {
+		t.Fatalf("args length=%d, want %d: %v", len(args), len(want), args)
 	}
-	for i, val := range expectedPrefix {
-		if args[i] != val {
-			t.Fatalf("args[%d]=%q, want %q", i, args[i], val)
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("index %d got %q want %q (args=%v)", i, args[i], want[i], args)
 		}
-	}
-	if args[len(args)-1] != target {
-		t.Fatalf("last arg=%q, want target %q", args[len(args)-1], target)
 	}
 }
 

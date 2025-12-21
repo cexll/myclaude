@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -147,4 +149,65 @@ func TestClaudeBuildArgs_BackendMetadata(t *testing.T) {
 			t.Fatalf("Command() = %s, want %s", got, tt.command)
 		}
 	}
+}
+
+func TestLoadMinimalEnvSettings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	t.Run("missing file returns empty", func(t *testing.T) {
+		if got := loadMinimalEnvSettings(); len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
+		}
+	})
+
+	t.Run("valid env returns string map", func(t *testing.T) {
+		dir := filepath.Join(home, ".claude")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		path := filepath.Join(dir, "setting.json")
+		data := []byte(`{"env":{"ANTHROPIC_API_KEY":"secret","FOO":"bar"}}`)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		got := loadMinimalEnvSettings()
+		if got["ANTHROPIC_API_KEY"] != "secret" || got["FOO"] != "bar" {
+			t.Fatalf("got %v, want keys present", got)
+		}
+	})
+
+	t.Run("non-string values are ignored", func(t *testing.T) {
+		dir := filepath.Join(home, ".claude")
+		path := filepath.Join(dir, "setting.json")
+		data := []byte(`{"env":{"GOOD":"ok","BAD":123,"ALSO_BAD":true}}`)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		got := loadMinimalEnvSettings()
+		if got["GOOD"] != "ok" {
+			t.Fatalf("got %v, want GOOD=ok", got)
+		}
+		if _, ok := got["BAD"]; ok {
+			t.Fatalf("got %v, want BAD omitted", got)
+		}
+		if _, ok := got["ALSO_BAD"]; ok {
+			t.Fatalf("got %v, want ALSO_BAD omitted", got)
+		}
+	})
+
+	t.Run("oversized file returns empty", func(t *testing.T) {
+		dir := filepath.Join(home, ".claude")
+		path := filepath.Join(dir, "setting.json")
+		data := bytes.Repeat([]byte("a"), maxClaudeSettingsBytes+1)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := loadMinimalEnvSettings(); len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
+		}
+	})
 }
