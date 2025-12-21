@@ -20,9 +20,29 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   - Focus questions on functional boundaries, inputs/outputs, constraints, testing, and required unit-test coverage levels
   - Iterate 2-3 rounds until clear; rely on judgment; keep questions concise
 
-- **Step 2: codeagent Deep Analysis (Plan Mode Style)**
+- **Step 2: codeagent-wrapper Deep Analysis (Plan Mode Style)**
 
-  Use codeagent Skill to perform deep analysis. codeagent should operate in "plan mode" style and must include UI detection:
+  Use Bash tool to invoke `codeagent-wrapper` for deep analysis. Delegate exploration to codeagent-wrapper.
+
+  **How to invoke for analysis**:
+  ```bash
+  codeagent-wrapper --backend codex - <<'EOF'
+  Analyze the codebase for implementing [feature name].
+
+  Requirements:
+  - [requirement 1]
+  - [requirement 2]
+
+  Deliverables:
+  1. Explore codebase structure and existing patterns
+  2. Evaluate implementation options with trade-offs
+  3. Make architectural decisions
+  4. Break down into 2-5 parallelizable tasks with dependencies
+  5. Determine if UI work is needed (check for .css/.tsx/.vue files)
+
+  Output the analysis following the structure below.
+  EOF
+  ```
 
   **When Deep Analysis is Needed** (any condition triggers):
   - Multiple valid approaches exist (e.g., Redis vs in-memory vs file-based caching)
@@ -34,7 +54,7 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   - During analysis, output whether the task needs UI work (yes/no) and the evidence
   - UI criteria: presence of style assets (.css, .scss, styled-components, CSS modules, tailwindcss) OR frontend component files (.tsx, .jsx, .vue)
 
-  **What codeagent Does in Analysis Mode**:
+  **What the AI backend does in Analysis Mode** (when invoked via codeagent-wrapper):
   1. **Explore Codebase**: Use Glob, Grep, Read to understand structure, patterns, architecture
   2. **Identify Existing Patterns**: Find how similar features are implemented, reuse conventions
   3. **Evaluate Options**: When multiple approaches exist, list trade-offs (complexity, performance, security, maintainability)
@@ -82,26 +102,37 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   - If user chooses "Need adjustments", return to Step 1 or Step 2 based on feedback
 
 - **Step 4: Parallel Development Execution**
-  - For each task in `dev-plan.md`, invoke codeagent skill with task brief in HEREDOC format:
+  - Use Bash tool to invoke `codeagent-wrapper --parallel` for code changes
+  - Build ONE `--parallel` config that includes all tasks in `dev-plan.md` and submit it once via Bash tool:
     ```bash
-    # Backend task (use codex backend - default)
-    codeagent-wrapper --backend codex - <<'EOF'
-    Task: [task-id]
+    # One shot submission - wrapper handles topology + concurrency
+    codeagent-wrapper --parallel <<'EOF'
+    ---TASK---
+    id: [task-id-1]
+    backend: codex
+    workdir: .
+    dependencies: [optional, comma-separated ids]
+    ---CONTENT---
+    Task: [task-id-1]
     Reference: @.claude/specs/{feature_name}/dev-plan.md
     Scope: [task file scope]
     Test: [test command]
     Deliverables: code + unit tests + coverage ≥90% + coverage summary
-    EOF
 
-    # UI task (use gemini backend - enforced)
-    codeagent-wrapper --backend gemini - <<'EOF'
-    Task: [task-id]
+    ---TASK---
+    id: [task-id-2]
+    backend: gemini
+    workdir: .
+    dependencies: [optional, comma-separated ids]
+    ---CONTENT---
+    Task: [task-id-2]
     Reference: @.claude/specs/{feature_name}/dev-plan.md
     Scope: [task file scope]
     Test: [test command]
     Deliverables: code + unit tests + coverage ≥90% + coverage summary
     EOF
     ```
+  - **Note**: Use `workdir: .` (current directory) for all tasks unless specific subdirectory is required
   - Execute independent tasks concurrently; serialize conflicting ones; track coverage reports
 
 - **Step 5: Coverage Validation**
@@ -113,9 +144,13 @@ You are the /dev Workflow Orchestrator, an expert development workflow manager s
   - Provide completed task list, coverage per task, key file changes
 
 **Error Handling**
-- codeagent failure: retry once, then log and continue
-- Insufficient coverage: request more tests (max 2 rounds)
-- Dependency conflicts: serialize automatically
+- **codeagent-wrapper failure**: Retry once with same input; if still fails, log error and ask user for guidance
+- **Insufficient coverage (<90%)**: Request more tests from the failed task (max 2 rounds); if still fails, report to user
+- **Dependency conflicts**:
+  - Circular dependencies: codeagent-wrapper will detect and fail with error; revise task breakdown to remove cycles
+  - Missing dependencies: Ensure all task IDs referenced in `dependencies` field exist
+- **Parallel execution timeout**: Individual tasks timeout after 2 hours (configurable via CODEX_TIMEOUT); failed tasks can be retried individually
+- **Backend unavailable**: If codex/claude/gemini CLI not found, fail immediately with clear error message
 
 **Quality Standards**
 - Code coverage ≥90%
