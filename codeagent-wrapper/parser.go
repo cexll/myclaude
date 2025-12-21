@@ -85,7 +85,7 @@ type UnifiedEvent struct {
 	// Gemini-specific fields
 	Role    string `json:"role,omitempty"`
 	Content string `json:"content,omitempty"`
-	Delta   bool   `json:"delta,omitempty"`
+	Delta   *bool  `json:"delta,omitempty"`
 	Status  string `json:"status,omitempty"`
 }
 
@@ -148,27 +148,23 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 		}
 
 		// Detect backend type by field presence
-		isCodex := event.ThreadID != "" || len(event.Item) > 0
+		isCodex := event.ThreadID != ""
+		if !isCodex && len(event.Item) > 0 {
+			var itemHeader struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(event.Item, &itemHeader) == nil && itemHeader.Type != "" {
+				isCodex = true
+			}
+		}
 		isClaude := event.Subtype != "" || event.Result != ""
-		isGemini := event.Role != "" || event.Delta
+		isGemini := event.Role != "" || event.Delta != nil || event.Status != ""
 
 		// Handle Codex events
 		if isCodex {
 			var details []string
 			if event.ThreadID != "" {
 				details = append(details, fmt.Sprintf("thread_id=%s", event.ThreadID))
-			}
-
-			// Parse item type if present
-			var itemType string
-			if len(event.Item) > 0 {
-				var itemHeader struct {
-					Type string `json:"type"`
-				}
-				if err := json.Unmarshal(event.Item, &itemHeader); err == nil {
-					itemType = itemHeader.Type
-					details = append(details, fmt.Sprintf("item_type=%s", itemType))
-				}
 			}
 
 			if len(details) > 0 {
@@ -183,6 +179,16 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 				infoFn(fmt.Sprintf("thread.started event thread_id=%s", threadID))
 
 			case "item.completed":
+				var itemType string
+				if len(event.Item) > 0 {
+					var itemHeader struct {
+						Type string `json:"type"`
+					}
+					if err := json.Unmarshal(event.Item, &itemHeader); err == nil {
+						itemType = itemHeader.Type
+					}
+				}
+
 				if itemType == "agent_message" && len(event.Item) > 0 {
 					// Lazy parse: only parse item content when needed
 					var item ItemContent
@@ -226,10 +232,18 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 
 			if event.Content != "" {
 				geminiBuffer.WriteString(event.Content)
+			}
+
+			if event.Status != "" {
 				notifyMessage()
 			}
 
-			infoFn(fmt.Sprintf("Parsed Gemini event #%d type=%s role=%s delta=%t status=%s content_len=%d", totalEvents, event.Type, event.Role, event.Delta, event.Status, len(event.Content)))
+			delta := false
+			if event.Delta != nil {
+				delta = *event.Delta
+			}
+
+			infoFn(fmt.Sprintf("Parsed Gemini event #%d type=%s role=%s delta=%t status=%s content_len=%d", totalEvents, event.Type, event.Role, delta, event.Status, len(event.Content)))
 			continue
 		}
 
