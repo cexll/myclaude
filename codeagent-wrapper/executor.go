@@ -512,44 +512,165 @@ func shouldSkipTask(task TaskSpec, failed map[string]TaskResult) (bool, string) 
 }
 
 func generateFinalOutput(results []TaskResult) string {
+	return generateFinalOutputWithMode(results, true) // default to summary mode
+}
+
+// generateFinalOutputWithMode generates output based on mode
+// summaryOnly=true: structured report - every token has value
+// summaryOnly=false: full output with complete messages (legacy behavior)
+func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string {
 	var sb strings.Builder
 
+	// Count results by status
 	success := 0
 	failed := 0
+	belowTarget := 0
 	for _, res := range results {
 		if res.ExitCode == 0 && res.Error == "" {
 			success++
+			if res.CoverageNum > 0 && res.CoverageTarget > 0 && res.CoverageNum < res.CoverageTarget {
+				belowTarget++
+			}
 		} else {
 			failed++
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("=== Parallel Execution Summary ===\n"))
-	sb.WriteString(fmt.Sprintf("Total: %d | Success: %d | Failed: %d\n\n", len(results), success, failed))
+	if summaryOnly {
+		// Header
+		sb.WriteString("=== Execution Report ===\n")
+		sb.WriteString(fmt.Sprintf("%d tasks | %d passed | %d failed", len(results), success, failed))
+		if belowTarget > 0 {
+			sb.WriteString(fmt.Sprintf(" | %d below %.0f%%", belowTarget, results[0].CoverageTarget))
+		}
+		sb.WriteString("\n\n")
 
-	for _, res := range results {
-		sb.WriteString(fmt.Sprintf("--- Task: %s ---\n", res.TaskID))
-		if res.Error != "" {
-			sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\nError: %s\n", res.ExitCode, res.Error))
-		} else if res.ExitCode != 0 {
-			sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\n", res.ExitCode))
-		} else {
-			sb.WriteString("Status: SUCCESS\n")
-		}
-		if res.SessionID != "" {
-			sb.WriteString(fmt.Sprintf("Session: %s\n", res.SessionID))
-		}
-		if res.LogPath != "" {
-			if res.sharedLog {
-				sb.WriteString(fmt.Sprintf("Log: %s (shared)\n", res.LogPath))
+		// Task Results - each task gets: Did + Files + Tests + Coverage
+		sb.WriteString("## Task Results\n")
+
+		for _, res := range results {
+			isSuccess := res.ExitCode == 0 && res.Error == ""
+			isBelowTarget := res.CoverageNum > 0 && res.CoverageTarget > 0 && res.CoverageNum < res.CoverageTarget
+
+			if isSuccess && !isBelowTarget {
+				// Passed task: one block with Did/Files/Tests
+				sb.WriteString(fmt.Sprintf("\n### %s ✓", res.TaskID))
+				if res.Coverage != "" {
+					sb.WriteString(fmt.Sprintf(" %s", res.Coverage))
+				}
+				sb.WriteString("\n")
+
+				if res.KeyOutput != "" {
+					sb.WriteString(fmt.Sprintf("Did: %s\n", res.KeyOutput))
+				}
+				if len(res.FilesChanged) > 0 {
+					sb.WriteString(fmt.Sprintf("Files: %s\n", strings.Join(res.FilesChanged, ", ")))
+				}
+				if res.TestsPassed > 0 {
+					sb.WriteString(fmt.Sprintf("Tests: %d passed\n", res.TestsPassed))
+				}
+				if res.LogPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+				}
+
+			} else if isSuccess && isBelowTarget {
+				// Below target: add Gap info
+				sb.WriteString(fmt.Sprintf("\n### %s ⚠️ %s (below %.0f%%)\n", res.TaskID, res.Coverage, res.CoverageTarget))
+
+				if res.KeyOutput != "" {
+					sb.WriteString(fmt.Sprintf("Did: %s\n", res.KeyOutput))
+				}
+				if len(res.FilesChanged) > 0 {
+					sb.WriteString(fmt.Sprintf("Files: %s\n", strings.Join(res.FilesChanged, ", ")))
+				}
+				if res.TestsPassed > 0 {
+					sb.WriteString(fmt.Sprintf("Tests: %d passed\n", res.TestsPassed))
+				}
+				// Extract what's missing from coverage
+				gap := extractCoverageGap(res.Message)
+				if gap != "" {
+					sb.WriteString(fmt.Sprintf("Gap: %s\n", gap))
+				}
+				if res.LogPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+				}
+
 			} else {
-				sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+				// Failed task: show error detail
+				sb.WriteString(fmt.Sprintf("\n### %s ✗ FAILED\n", res.TaskID))
+				sb.WriteString(fmt.Sprintf("Exit code: %d\n", res.ExitCode))
+				if res.Error != "" {
+					sb.WriteString(fmt.Sprintf("Error: %s\n", res.Error))
+				}
+				// Show context from output (last meaningful lines)
+				detail := extractErrorDetail(res.Message, 300)
+				if detail != "" {
+					sb.WriteString(fmt.Sprintf("Detail: %s\n", detail))
+				}
+				if res.LogPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+				}
 			}
 		}
-		if res.Message != "" {
-			sb.WriteString(fmt.Sprintf("\n%s\n", res.Message))
+
+		// Summary section
+		sb.WriteString("\n## Summary\n")
+		sb.WriteString(fmt.Sprintf("- %d/%d completed successfully\n", success, len(results)))
+
+		if belowTarget > 0 || failed > 0 {
+			var needFix []string
+			var needCoverage []string
+			for _, res := range results {
+				if res.ExitCode != 0 || res.Error != "" {
+					reason := res.Error
+					if len(reason) > 50 {
+						reason = reason[:50] + "..."
+					}
+					needFix = append(needFix, fmt.Sprintf("%s (%s)", res.TaskID, reason))
+				} else if res.CoverageNum > 0 && res.CoverageTarget > 0 && res.CoverageNum < res.CoverageTarget {
+					needCoverage = append(needCoverage, res.TaskID)
+				}
+			}
+			if len(needFix) > 0 {
+				sb.WriteString(fmt.Sprintf("- Fix: %s\n", strings.Join(needFix, ", ")))
+			}
+			if len(needCoverage) > 0 {
+				sb.WriteString(fmt.Sprintf("- Coverage: %s\n", strings.Join(needCoverage, ", ")))
+			}
 		}
-		sb.WriteString("\n")
+
+	} else {
+		// Legacy full output mode
+		sb.WriteString("=== Parallel Execution Summary ===\n")
+		sb.WriteString(fmt.Sprintf("Total: %d | Success: %d | Failed: %d\n\n", len(results), success, failed))
+
+		for _, res := range results {
+			sb.WriteString(fmt.Sprintf("--- Task: %s ---\n", res.TaskID))
+			if res.Error != "" {
+				sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\nError: %s\n", res.ExitCode, res.Error))
+			} else if res.ExitCode != 0 {
+				sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\n", res.ExitCode))
+			} else {
+				sb.WriteString("Status: SUCCESS\n")
+			}
+			if res.Coverage != "" {
+				sb.WriteString(fmt.Sprintf("Coverage: %s\n", res.Coverage))
+			}
+			if res.SessionID != "" {
+				sb.WriteString(fmt.Sprintf("Session: %s\n", res.SessionID))
+			}
+			if res.LogPath != "" {
+				if res.sharedLog {
+					sb.WriteString(fmt.Sprintf("Log: %s (shared)\n", res.LogPath))
+				} else {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+				}
+			}
+			if res.Message != "" {
+				sb.WriteString(fmt.Sprintf("\n%s\n", res.Message))
+			}
+			sb.WriteString("\n")
+		}
 	}
 
 	return sb.String()

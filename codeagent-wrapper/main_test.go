@@ -2633,14 +2633,17 @@ func TestRunGenerateFinalOutput(t *testing.T) {
 	if out == "" {
 		t.Fatalf("generateFinalOutput() returned empty string")
 	}
-	if !strings.Contains(out, "Total: 3") || !strings.Contains(out, "Success: 2") || !strings.Contains(out, "Failed: 1") {
+	// New format: "X tasks | Y passed | Z failed"
+	if !strings.Contains(out, "3 tasks") || !strings.Contains(out, "2 passed") || !strings.Contains(out, "1 failed") {
 		t.Fatalf("summary missing, got %q", out)
 	}
-	if !strings.Contains(out, "Task: a") || !strings.Contains(out, "Task: b") {
-		t.Fatalf("task entries missing")
+	// New format uses ### task-id for each task
+	if !strings.Contains(out, "### a") || !strings.Contains(out, "### b") {
+		t.Fatalf("task entries missing in structured format")
 	}
-	if strings.Contains(out, "Log:") {
-		t.Fatalf("unexpected log line when LogPath empty, got %q", out)
+	// Should have Summary section
+	if !strings.Contains(out, "## Summary") {
+		t.Fatalf("Summary section missing, got %q", out)
 	}
 }
 
@@ -2660,12 +2663,18 @@ func TestRunGenerateFinalOutput_LogPath(t *testing.T) {
 			LogPath:  "/tmp/log-b",
 		},
 	}
+	// Test summary mode (default) - should contain log paths
 	out := generateFinalOutput(results)
-	if !strings.Contains(out, "Session: sid\nLog: /tmp/log-a") {
-		t.Fatalf("output missing log line after session: %q", out)
+	if !strings.Contains(out, "/tmp/log-b") {
+		t.Fatalf("summary output missing log path for failed task: %q", out)
+	}
+	// Test full output mode - shows Session: and Log: lines
+	out = generateFinalOutputWithMode(results, false)
+	if !strings.Contains(out, "Session: sid") || !strings.Contains(out, "Log: /tmp/log-a") {
+		t.Fatalf("full output missing log line after session: %q", out)
 	}
 	if !strings.Contains(out, "Log: /tmp/log-b") {
-		t.Fatalf("output missing log line for failed task: %q", out)
+		t.Fatalf("full output missing log line for failed task: %q", out)
 	}
 }
 
@@ -3017,7 +3026,9 @@ func TestVersionFlag(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codeagent-wrapper version 5.2.8\n"
+
+	want := "codeagent-wrapper version 5.4.0\n"
+
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
@@ -3031,7 +3042,9 @@ func TestVersionShortFlag(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codeagent-wrapper version 5.2.8\n"
+
+	want := "codeagent-wrapper version 5.4.0\n"
+
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}
@@ -3045,7 +3058,9 @@ func TestVersionLegacyAlias(t *testing.T) {
 			t.Errorf("exit = %d, want 0", code)
 		}
 	})
-	want := "codex-wrapper version 5.2.8\n"
+
+	want := "codex-wrapper version 5.4.0\n"
+
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
 	}

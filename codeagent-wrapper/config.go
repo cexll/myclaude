@@ -49,7 +49,15 @@ type TaskResult struct {
 	SessionID string `json:"session_id"`
 	Error     string `json:"error"`
 	LogPath   string `json:"log_path"`
-	sharedLog bool
+	// Structured report fields
+	Coverage       string   `json:"coverage,omitempty"`        // extracted coverage percentage (e.g., "92%")
+	CoverageNum    float64  `json:"coverage_num,omitempty"`    // numeric coverage for comparison
+	CoverageTarget float64  `json:"coverage_target,omitempty"` // target coverage (default 90)
+	FilesChanged   []string `json:"files_changed,omitempty"`   // list of changed files
+	KeyOutput      string   `json:"key_output,omitempty"`      // brief summary of what was done
+	TestsPassed    int      `json:"tests_passed,omitempty"`    // number of tests passed
+	TestsFailed    int      `json:"tests_failed,omitempty"`    // number of tests failed
+	sharedLog      bool
 }
 
 var backendRegistry = map[string]Backend{

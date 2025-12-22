@@ -101,11 +101,12 @@ EOF
 
 ## Parallel Execution
 
-**With global backend**:
+**Default (summary mode - context-efficient):**
 ```bash
-codeagent-wrapper --parallel --backend claude <<'EOF'
+codeagent-wrapper --parallel <<'EOF'
 ---TASK---
 id: task1
+backend: codex
 workdir: /path/to/dir
 ---CONTENT---
 task content
@@ -116,6 +117,17 @@ dependencies: task1
 dependent task
 EOF
 ```
+
+**Full output mode (for debugging):**
+```bash
+codeagent-wrapper --parallel --full-output <<'EOF'
+...
+EOF
+```
+
+**Output Modes:**
+- **Summary (default)**: Structured report with changes, output, verification, and review summary.
+- **Full (`--full-output`)**: Complete task messages. Use only when debugging specific failures.
 
 **With per-task backend**:
 ```bash

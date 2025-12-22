@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	version             = "5.2.8"
+	version             = "5.4.0"
 	defaultWorkdir      = "."
 	defaultTimeout      = 7200 // seconds (2 hours)
 	codexLogLineLimit   = 1000
@@ -175,6 +175,7 @@ func run() (exitCode int) {
 
 		if parallelIndex != -1 {
 			backendName := defaultBackendName
+			fullOutput := false
 			var extras []string
 
 			for i := 0; i < len(args); i++ {
@@ -182,6 +183,8 @@ func run() (exitCode int) {
 				switch {
 				case arg == "--parallel":
 					continue
+				case arg == "--full-output":
+					fullOutput = true
 				case arg == "--backend":
 					if i+1 >= len(args) {
 						fmt.Fprintln(os.Stderr, "ERROR: --backend flag requires a value")
@@ -202,11 +205,12 @@ func run() (exitCode int) {
 			}
 
 			if len(extras) > 0 {
-				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend is allowed.")
+				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend and --full-output are allowed.")
 				fmt.Fprintln(os.Stderr, "Usage examples:")
 				fmt.Fprintf(os.Stderr, "  %s --parallel < tasks.txt\n", name)
 				fmt.Fprintf(os.Stderr, "  echo '...' | %s --parallel\n", name)
 				fmt.Fprintf(os.Stderr, "  %s --parallel <<'EOF'\n", name)
+				fmt.Fprintf(os.Stderr, "  %s --parallel --full-output <<'EOF'  # include full task output\n", name)
 				return 1
 			}
 
@@ -244,7 +248,29 @@ func run() (exitCode int) {
 			}
 
 			results := executeConcurrent(layers, timeoutSec)
-			fmt.Println(generateFinalOutput(results))
+
+			// Extract structured report fields from each result
+			for i := range results {
+				if results[i].Message != "" {
+					// Coverage extraction
+					results[i].Coverage = extractCoverage(results[i].Message)
+					results[i].CoverageNum = extractCoverageNum(results[i].Coverage)
+					results[i].CoverageTarget = 90.0 // default target
+
+					// Files changed
+					results[i].FilesChanged = extractFilesChanged(results[i].Message)
+
+					// Test results
+					results[i].TestsPassed, results[i].TestsFailed = extractTestResults(results[i].Message)
+
+					// Key output summary
+					results[i].KeyOutput = extractKeyOutput(results[i].Message, 150)
+				}
+			}
+
+			// Default: summary mode (context-efficient)
+			// --full-output: legacy full output mode
+			fmt.Println(generateFinalOutputWithMode(results, !fullOutput))
 
 			exitCode = 0
 			for _, res := range results {
