@@ -37,7 +37,7 @@ func (ClaudeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 
 const maxClaudeSettingsBytes = 1 << 20 // 1MB
 
-// loadMinimalEnvSettings 从 ~/.claude/setting.json 只提取 env 配置。
+// loadMinimalEnvSettings 从 ~/.claude/settings.json 只提取 env 配置。
 // 只接受字符串类型的值；文件缺失/解析失败/超限都返回空。
 func loadMinimalEnvSettings() map[string]string {
 	home, err := os.UserHomeDir()
@@ -45,7 +45,7 @@ func loadMinimalEnvSettings() map[string]string {
 		return nil
 	}
 
-	settingPath := filepath.Join(home, ".claude", "setting.json")
+	settingPath := filepath.Join(home, ".claude", "settings.json")
 	info, err := os.Stat(settingPath)
 	if err != nil || info.Size() > maxClaudeSettingsBytes {
 		return nil

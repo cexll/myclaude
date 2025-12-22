@@ -167,7 +167,7 @@ func TestLoadMinimalEnvSettings(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		path := filepath.Join(dir, "setting.json")
+		path := filepath.Join(dir, "settings.json")
 		data := []byte(`{"env":{"ANTHROPIC_API_KEY":"secret","FOO":"bar"}}`)
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
@@ -181,7 +181,7 @@ func TestLoadMinimalEnvSettings(t *testing.T) {
 
 	t.Run("non-string values are ignored", func(t *testing.T) {
 		dir := filepath.Join(home, ".claude")
-		path := filepath.Join(dir, "setting.json")
+		path := filepath.Join(dir, "settings.json")
 		data := []byte(`{"env":{"GOOD":"ok","BAD":123,"ALSO_BAD":true}}`)
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
@@ -201,7 +201,7 @@ func TestLoadMinimalEnvSettings(t *testing.T) {
 
 	t.Run("oversized file returns empty", func(t *testing.T) {
 		dir := filepath.Join(home, ".claude")
-		path := filepath.Join(dir, "setting.json")
+		path := filepath.Join(dir, "settings.json")
 		data := bytes.Repeat([]byte("a"), maxClaudeSettingsBytes+1)
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
