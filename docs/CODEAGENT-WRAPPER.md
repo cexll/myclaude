@@ -105,6 +105,7 @@ EOF
 Execute multiple tasks concurrently with dependency management:
 
 ```bash
+# Default: summary output (context-efficient, recommended)
 codeagent-wrapper --parallel <<'EOF'
 ---TASK---
 id: backend_1701234567
@@ -125,6 +126,49 @@ dependencies: backend_1701234567, frontend_1701234568
 ---CONTENT---
 add integration tests for user management flow
 EOF
+
+# Full output mode (for debugging, includes complete task messages)
+codeagent-wrapper --parallel --full-output <<'EOF'
+...
+EOF
+```
+
+**Output Modes:**
+- **Summary (default)**: Structured report with task results, verification, and review summary.
+- **Full (`--full-output`)**: Complete task messages included. Use only for debugging.
+
+**Summary Output Example:**
+```
+=== Parallel Execution Summary ===
+Total: 3 | Success: 2 | Failed: 1
+Coverage Warning: 1 task(s) below target
+
+## Task Results
+
+### backend_api ✓
+Changes: src/auth/login.ts, src/auth/middleware.ts
+Output: "Implemented /api/login endpoint with JWT authentication"
+Verify: 12 tests passed, coverage 92% (target: 90%)
+Log: /tmp/codeagent-xxx.log
+
+### frontend_form ✓
+Changes: src/components/LoginForm.tsx
+Output: "Created responsive login form with validation"
+Verify: 8 tests passed, coverage 88% (target: 90%) ⚠️ BELOW TARGET
+Log: /tmp/codeagent-yyy.log
+
+### integration_tests ✗
+Exit code: 1
+Error: Assertion failed at line 45
+Output: "Expected status 200 but got 401"
+Log: /tmp/codeagent-zzz.log
+
+## Summary for Review
+- 2/3 tasks completed
+- Issues requiring attention:
+  - integration_tests: Assertion failed at line 45
+  - frontend_form: coverage 88% < 90%
+- Action needed: fix 1 failed task(s), improve coverage for 1 task(s)
 ```
 
 **Parallel Task Format:**

@@ -268,9 +268,15 @@ func TestExecutorHelperCoverage(t *testing.T) {
 		if !strings.Contains(out, "ok") || !strings.Contains(out, "fail") {
 			t.Fatalf("unexpected summary output: %s", out)
 		}
+		// Test summary mode (default) - should have new format with ### headers
 		out = generateFinalOutput([]TaskResult{{TaskID: "rich", ExitCode: 0, SessionID: "sess", LogPath: "/tmp/log", Message: "hello"}})
+		if !strings.Contains(out, "### rich") {
+			t.Fatalf("summary output missing task header: %s", out)
+		}
+		// Test full output mode - should have Session and Message
+		out = generateFinalOutputWithMode([]TaskResult{{TaskID: "rich", ExitCode: 0, SessionID: "sess", LogPath: "/tmp/log", Message: "hello"}}, false)
 		if !strings.Contains(out, "Session: sess") || !strings.Contains(out, "Log: /tmp/log") || !strings.Contains(out, "hello") {
-			t.Fatalf("rich output missing fields: %s", out)
+			t.Fatalf("full output missing fields: %s", out)
 		}
 
 		args := buildCodexArgs(&Config{Mode: "new", WorkDir: "/tmp"}, "task")
@@ -1111,9 +1117,10 @@ func TestExecutorExecuteConcurrentWithContextBranches(t *testing.T) {
 			}
 		}
 
-		summary := generateFinalOutput(results)
+		// Test full output mode for shared marker (summary mode doesn't show it)
+		summary := generateFinalOutputWithMode(results, false)
 		if !strings.Contains(summary, "(shared)") {
-			t.Fatalf("summary missing shared marker: %s", summary)
+			t.Fatalf("full output missing shared marker: %s", summary)
 		}
 
 		mainLogger.Flush()

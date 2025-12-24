@@ -223,3 +223,400 @@ func greet(name string) string {
 func farewell(name string) string {
 	return "goodbye " + name
 }
+
+// extractMessageSummary extracts a brief summary from task output
+// Returns first meaningful line or truncated content up to maxLen chars
+func extractMessageSummary(message string, maxLen int) string {
+	if message == "" || maxLen <= 0 {
+		return ""
+	}
+
+	// Try to find a meaningful summary line
+	lines := strings.Split(message, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Skip empty lines and common noise
+		if line == "" || strings.HasPrefix(line, "```") || strings.HasPrefix(line, "---") {
+			continue
+		}
+		// Found a meaningful line
+		if len(line) <= maxLen {
+			return line
+		}
+		// Truncate long line
+		return line[:maxLen-3] + "..."
+	}
+
+	// Fallback: truncate entire message
+	clean := strings.TrimSpace(message)
+	if len(clean) <= maxLen {
+		return clean
+	}
+	return clean[:maxLen-3] + "..."
+}
+
+// extractCoverage extracts coverage percentage from task output
+// Supports common formats: "Coverage: 92%", "92% coverage", "coverage 92%", "TOTAL 92%"
+func extractCoverage(message string) string {
+	if message == "" {
+		return ""
+	}
+
+	// Common coverage patterns
+	patterns := []string{
+		// pytest: "TOTAL ... 92%"
+		// jest: "All files ... 92%"
+		// go: "coverage: 92.0% of statements"
+	}
+	_ = patterns // placeholder for future regex if needed
+
+	lines := strings.Split(message, "\n")
+	for _, line := range lines {
+		lower := strings.ToLower(line)
+
+		// Look for coverage-related lines
+		if !strings.Contains(lower, "coverage") && !strings.Contains(lower, "total") {
+			continue
+		}
+
+		// Extract percentage pattern: number followed by %
+		for i := 0; i < len(line); i++ {
+			if line[i] == '%' && i > 0 {
+				// Walk back to find the number
+				j := i - 1
+				for j >= 0 && (line[j] == '.' || (line[j] >= '0' && line[j] <= '9')) {
+					j--
+				}
+				if j < i-1 {
+					numStr := line[j+1 : i]
+					// Validate it's a reasonable percentage
+					if num, err := strconv.ParseFloat(numStr, 64); err == nil && num >= 0 && num <= 100 {
+						return numStr + "%"
+					}
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// extractCoverageNum extracts coverage as a numeric value for comparison
+func extractCoverageNum(coverage string) float64 {
+	if coverage == "" {
+		return 0
+	}
+	// Remove % sign and parse
+	numStr := strings.TrimSuffix(coverage, "%")
+	if num, err := strconv.ParseFloat(numStr, 64); err == nil {
+		return num
+	}
+	return 0
+}
+
+// extractFilesChanged extracts list of changed files from task output
+// Looks for common patterns like "Modified: file.ts", "Created: file.ts", file paths in output
+func extractFilesChanged(message string) []string {
+	if message == "" {
+		return nil
+	}
+
+	var files []string
+	seen := make(map[string]bool)
+
+	lines := strings.Split(message, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Pattern 1: "Modified: path/to/file.ts" or "Created: path/to/file.ts"
+		for _, prefix := range []string{"Modified:", "Created:", "Updated:", "Edited:", "Wrote:", "Changed:"} {
+			if strings.HasPrefix(line, prefix) {
+				file := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+				if file != "" && !seen[file] {
+					files = append(files, file)
+					seen[file] = true
+				}
+			}
+		}
+
+		// Pattern 2: Lines that look like file paths (contain / and end with common extensions)
+		if strings.Contains(line, "/") {
+			for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs", ".java", ".vue", ".css", ".scss"} {
+				if strings.HasSuffix(line, ext) || strings.Contains(line, ext+" ") || strings.Contains(line, ext+",") {
+					// Extract the file path
+					parts := strings.Fields(line)
+					for _, part := range parts {
+						part = strings.Trim(part, "`,\"'()[]")
+						if strings.Contains(part, "/") && !seen[part] {
+							for _, e := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs", ".java", ".vue", ".css", ".scss"} {
+								if strings.HasSuffix(part, e) {
+									files = append(files, part)
+									seen[part] = true
+									break
+								}
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// Limit to first 10 files to avoid bloat
+	if len(files) > 10 {
+		files = files[:10]
+	}
+
+	return files
+}
+
+// extractTestResults extracts test pass/fail counts from task output
+func extractTestResults(message string) (passed, failed int) {
+	if message == "" {
+		return 0, 0
+	}
+
+	lower := strings.ToLower(message)
+
+	// Common patterns:
+	// pytest: "12 passed, 2 failed"
+	// jest: "Tests: 2 failed, 12 passed"
+	// go: "ok ... 12 tests"
+
+	lines := strings.Split(lower, "\n")
+	for _, line := range lines {
+		// Look for test result lines
+		if !strings.Contains(line, "pass") && !strings.Contains(line, "fail") && !strings.Contains(line, "test") {
+			continue
+		}
+
+		// Extract numbers near "passed" or "pass"
+		if idx := strings.Index(line, "pass"); idx != -1 {
+			// Look for number before "pass"
+			num := extractNumberBefore(line, idx)
+			if num > 0 {
+				passed = num
+			}
+		}
+
+		// Extract numbers near "failed" or "fail"
+		if idx := strings.Index(line, "fail"); idx != -1 {
+			num := extractNumberBefore(line, idx)
+			if num > 0 {
+				failed = num
+			}
+		}
+
+		// If we found both, stop
+		if passed > 0 || failed > 0 {
+			break
+		}
+	}
+
+	return passed, failed
+}
+
+// extractNumberBefore extracts a number that appears before the given index
+func extractNumberBefore(s string, idx int) int {
+	if idx <= 0 {
+		return 0
+	}
+
+	// Walk backwards to find digits
+	end := idx - 1
+	for end >= 0 && (s[end] == ' ' || s[end] == ':' || s[end] == ',') {
+		end--
+	}
+	if end < 0 {
+		return 0
+	}
+
+	start := end
+	for start >= 0 && s[start] >= '0' && s[start] <= '9' {
+		start--
+	}
+	start++
+
+	if start > end {
+		return 0
+	}
+
+	numStr := s[start : end+1]
+	if num, err := strconv.Atoi(numStr); err == nil {
+		return num
+	}
+	return 0
+}
+
+// extractKeyOutput extracts a brief summary of what the task accomplished
+// Looks for summary lines, first meaningful sentence, or truncates message
+func extractKeyOutput(message string, maxLen int) string {
+	if message == "" || maxLen <= 0 {
+		return ""
+	}
+
+	lines := strings.Split(message, "\n")
+
+	// Priority 1: Look for explicit summary lines
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		lower := strings.ToLower(line)
+		if strings.HasPrefix(lower, "summary:") || strings.HasPrefix(lower, "completed:") ||
+			strings.HasPrefix(lower, "implemented:") || strings.HasPrefix(lower, "added:") ||
+			strings.HasPrefix(lower, "created:") || strings.HasPrefix(lower, "fixed:") {
+			content := line
+			for _, prefix := range []string{"Summary:", "Completed:", "Implemented:", "Added:", "Created:", "Fixed:",
+				"summary:", "completed:", "implemented:", "added:", "created:", "fixed:"} {
+				content = strings.TrimPrefix(content, prefix)
+			}
+			content = strings.TrimSpace(content)
+			if len(content) > 0 {
+				if len(content) <= maxLen {
+					return content
+				}
+				return content[:maxLen-3] + "..."
+			}
+		}
+	}
+
+	// Priority 2: First meaningful line (skip noise)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "```") || strings.HasPrefix(line, "---") ||
+			strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+			continue
+		}
+		// Skip very short lines (likely headers or markers)
+		if len(line) < 20 {
+			continue
+		}
+		if len(line) <= maxLen {
+			return line
+		}
+		return line[:maxLen-3] + "..."
+	}
+
+	// Fallback: truncate entire message
+	clean := strings.TrimSpace(message)
+	if len(clean) <= maxLen {
+		return clean
+	}
+	return clean[:maxLen-3] + "..."
+}
+
+// extractCoverageGap extracts what's missing from coverage reports
+// Looks for uncovered lines, branches, or functions
+func extractCoverageGap(message string) string {
+	if message == "" {
+		return ""
+	}
+
+	lower := strings.ToLower(message)
+	lines := strings.Split(message, "\n")
+
+	// Look for uncovered/missing patterns
+	for _, line := range lines {
+		lineLower := strings.ToLower(line)
+		line = strings.TrimSpace(line)
+
+		// Common patterns for uncovered code
+		if strings.Contains(lineLower, "uncovered") ||
+			strings.Contains(lineLower, "not covered") ||
+			strings.Contains(lineLower, "missing coverage") ||
+			strings.Contains(lineLower, "lines not covered") {
+			if len(line) > 100 {
+				return line[:97] + "..."
+			}
+			return line
+		}
+
+		// Look for specific file:line patterns in coverage reports
+		if strings.Contains(lineLower, "branch") && strings.Contains(lineLower, "not taken") {
+			if len(line) > 100 {
+				return line[:97] + "..."
+			}
+			return line
+		}
+	}
+
+	// Look for function names that aren't covered
+	if strings.Contains(lower, "function") && strings.Contains(lower, "0%") {
+		for _, line := range lines {
+			if strings.Contains(strings.ToLower(line), "0%") && strings.Contains(line, "function") {
+				line = strings.TrimSpace(line)
+				if len(line) > 100 {
+					return line[:97] + "..."
+				}
+				return line
+			}
+		}
+	}
+
+	return ""
+}
+
+// extractErrorDetail extracts meaningful error context from task output
+// Returns the most relevant error information up to maxLen characters
+func extractErrorDetail(message string, maxLen int) string {
+	if message == "" || maxLen <= 0 {
+		return ""
+	}
+
+	lines := strings.Split(message, "\n")
+	var errorLines []string
+
+	// Look for error-related lines
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		lower := strings.ToLower(line)
+
+		// Skip noise lines
+		if strings.HasPrefix(line, "at ") && strings.Contains(line, "(") {
+			// Stack trace line - only keep first one
+			if len(errorLines) > 0 && strings.HasPrefix(strings.ToLower(errorLines[len(errorLines)-1]), "at ") {
+				continue
+			}
+		}
+
+		// Prioritize error/fail lines
+		if strings.Contains(lower, "error") ||
+			strings.Contains(lower, "fail") ||
+			strings.Contains(lower, "exception") ||
+			strings.Contains(lower, "assert") ||
+			strings.Contains(lower, "expected") ||
+			strings.Contains(lower, "timeout") ||
+			strings.Contains(lower, "not found") ||
+			strings.Contains(lower, "cannot") ||
+			strings.Contains(lower, "undefined") ||
+			strings.HasPrefix(line, "FAIL") ||
+			strings.HasPrefix(line, "●") {
+			errorLines = append(errorLines, line)
+		}
+	}
+
+	if len(errorLines) == 0 {
+		// No specific error lines found, take last few lines
+		start := len(lines) - 5
+		if start < 0 {
+			start = 0
+		}
+		for _, line := range lines[start:] {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				errorLines = append(errorLines, line)
+			}
+		}
+	}
+
+	// Join and truncate
+	result := strings.Join(errorLines, " | ")
+	if len(result) > maxLen {
+		return result[:maxLen-3] + "..."
+	}
+	return result
+}
