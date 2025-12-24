@@ -14,14 +14,15 @@ import (
 )
 
 const (
-	version             = "5.4.0"
-	defaultWorkdir      = "."
-	defaultTimeout      = 7200 // seconds (2 hours)
-	codexLogLineLimit   = 1000
-	stdinSpecialChars   = "\n\\\"'`$"
-	stderrCaptureLimit  = 4 * 1024
-	defaultBackendName  = "codex"
-	defaultCodexCommand = "codex"
+	version               = "5.4.0"
+	defaultWorkdir        = "."
+	defaultTimeout        = 7200 // seconds (2 hours)
+	defaultCoverageTarget = 90.0
+	codexLogLineLimit     = 1000
+	stdinSpecialChars     = "\n\\\"'`$"
+	stderrCaptureLimit    = 4 * 1024
+	defaultBackendName    = "codex"
+	defaultCodexCommand   = "codex"
 
 	// stdout close reasons
 	stdoutCloseReasonWait  = "wait-done"
@@ -251,21 +252,23 @@ func run() (exitCode int) {
 
 			// Extract structured report fields from each result
 			for i := range results {
-				if results[i].Message != "" {
-					// Coverage extraction
-					results[i].Coverage = extractCoverage(results[i].Message)
-					results[i].CoverageNum = extractCoverageNum(results[i].Coverage)
-					results[i].CoverageTarget = 90.0 // default target
-
-					// Files changed
-					results[i].FilesChanged = extractFilesChanged(results[i].Message)
-
-					// Test results
-					results[i].TestsPassed, results[i].TestsFailed = extractTestResults(results[i].Message)
-
-					// Key output summary
-					results[i].KeyOutput = extractKeyOutput(results[i].Message, 150)
+				results[i].CoverageTarget = defaultCoverageTarget
+				if results[i].Message == "" {
+					continue
 				}
+
+				// Coverage extraction
+				results[i].Coverage = extractCoverage(results[i].Message)
+				results[i].CoverageNum = extractCoverageNum(results[i].Coverage)
+
+				// Files changed
+				results[i].FilesChanged = extractFilesChanged(results[i].Message)
+
+				// Test results
+				results[i].TestsPassed, results[i].TestsFailed = extractTestResults(results[i].Message)
+
+				// Key output summary
+				results[i].KeyOutput = extractKeyOutput(results[i].Message, 150)
 			}
 
 			// Default: summary mode (context-efficient)
@@ -473,12 +476,14 @@ Usage:
     %[1]s resume <session_id> "task" [workdir]
     %[1]s resume <session_id> - [workdir]
     %[1]s --parallel               Run tasks in parallel (config from stdin)
+    %[1]s --parallel --full-output Run tasks in parallel with full output (legacy)
     %[1]s --version
     %[1]s --help
 
 Parallel mode examples:
     %[1]s --parallel < tasks.txt
     echo '...' | %[1]s --parallel
+    %[1]s --parallel --full-output < tasks.txt
     %[1]s --parallel <<'EOF'
 
 Environment Variables:

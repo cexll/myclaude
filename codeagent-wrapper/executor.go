@@ -521,6 +521,14 @@ func generateFinalOutput(results []TaskResult) string {
 func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string {
 	var sb strings.Builder
 
+	reportCoverageTarget := defaultCoverageTarget
+	for _, res := range results {
+		if res.CoverageTarget > 0 {
+			reportCoverageTarget = res.CoverageTarget
+			break
+		}
+	}
+
 	// Count results by status
 	success := 0
 	failed := 0
@@ -528,7 +536,11 @@ func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string 
 	for _, res := range results {
 		if res.ExitCode == 0 && res.Error == "" {
 			success++
-			if res.CoverageNum > 0 && res.CoverageTarget > 0 && res.CoverageNum < res.CoverageTarget {
+			target := res.CoverageTarget
+			if target <= 0 {
+				target = reportCoverageTarget
+			}
+			if res.Coverage != "" && target > 0 && res.CoverageNum < target {
 				belowTarget++
 			}
 		} else {
@@ -541,7 +553,7 @@ func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string 
 		sb.WriteString("=== Execution Report ===\n")
 		sb.WriteString(fmt.Sprintf("%d tasks | %d passed | %d failed", len(results), success, failed))
 		if belowTarget > 0 {
-			sb.WriteString(fmt.Sprintf(" | %d below %.0f%%", belowTarget, results[0].CoverageTarget))
+			sb.WriteString(fmt.Sprintf(" | %d below %.0f%%", belowTarget, reportCoverageTarget))
 		}
 		sb.WriteString("\n\n")
 
@@ -549,66 +561,77 @@ func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string 
 		sb.WriteString("## Task Results\n")
 
 		for _, res := range results {
+			taskID := sanitizeOutput(res.TaskID)
+			coverage := sanitizeOutput(res.Coverage)
+			keyOutput := sanitizeOutput(res.KeyOutput)
+			logPath := sanitizeOutput(res.LogPath)
+			filesChanged := sanitizeOutput(strings.Join(res.FilesChanged, ", "))
+
+			target := res.CoverageTarget
+			if target <= 0 {
+				target = reportCoverageTarget
+			}
+
 			isSuccess := res.ExitCode == 0 && res.Error == ""
-			isBelowTarget := res.CoverageNum > 0 && res.CoverageTarget > 0 && res.CoverageNum < res.CoverageTarget
+			isBelowTarget := isSuccess && coverage != "" && target > 0 && res.CoverageNum < target
 
 			if isSuccess && !isBelowTarget {
 				// Passed task: one block with Did/Files/Tests
-				sb.WriteString(fmt.Sprintf("\n### %s ✓", res.TaskID))
-				if res.Coverage != "" {
-					sb.WriteString(fmt.Sprintf(" %s", res.Coverage))
+				sb.WriteString(fmt.Sprintf("\n### %s ✓", taskID))
+				if coverage != "" {
+					sb.WriteString(fmt.Sprintf(" %s", coverage))
 				}
 				sb.WriteString("\n")
 
-				if res.KeyOutput != "" {
-					sb.WriteString(fmt.Sprintf("Did: %s\n", res.KeyOutput))
+				if keyOutput != "" {
+					sb.WriteString(fmt.Sprintf("Did: %s\n", keyOutput))
 				}
 				if len(res.FilesChanged) > 0 {
-					sb.WriteString(fmt.Sprintf("Files: %s\n", strings.Join(res.FilesChanged, ", ")))
+					sb.WriteString(fmt.Sprintf("Files: %s\n", filesChanged))
 				}
 				if res.TestsPassed > 0 {
 					sb.WriteString(fmt.Sprintf("Tests: %d passed\n", res.TestsPassed))
 				}
-				if res.LogPath != "" {
-					sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+				if logPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", logPath))
 				}
 
 			} else if isSuccess && isBelowTarget {
 				// Below target: add Gap info
-				sb.WriteString(fmt.Sprintf("\n### %s ⚠️ %s (below %.0f%%)\n", res.TaskID, res.Coverage, res.CoverageTarget))
+				sb.WriteString(fmt.Sprintf("\n### %s ⚠️ %s (below %.0f%%)\n", taskID, coverage, target))
 
-				if res.KeyOutput != "" {
-					sb.WriteString(fmt.Sprintf("Did: %s\n", res.KeyOutput))
+				if keyOutput != "" {
+					sb.WriteString(fmt.Sprintf("Did: %s\n", keyOutput))
 				}
 				if len(res.FilesChanged) > 0 {
-					sb.WriteString(fmt.Sprintf("Files: %s\n", strings.Join(res.FilesChanged, ", ")))
+					sb.WriteString(fmt.Sprintf("Files: %s\n", filesChanged))
 				}
 				if res.TestsPassed > 0 {
 					sb.WriteString(fmt.Sprintf("Tests: %d passed\n", res.TestsPassed))
 				}
 				// Extract what's missing from coverage
-				gap := extractCoverageGap(res.Message)
+				gap := sanitizeOutput(extractCoverageGap(res.Message))
 				if gap != "" {
 					sb.WriteString(fmt.Sprintf("Gap: %s\n", gap))
 				}
-				if res.LogPath != "" {
-					sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+				if logPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", logPath))
 				}
 
 			} else {
 				// Failed task: show error detail
-				sb.WriteString(fmt.Sprintf("\n### %s ✗ FAILED\n", res.TaskID))
+				sb.WriteString(fmt.Sprintf("\n### %s ✗ FAILED\n", taskID))
 				sb.WriteString(fmt.Sprintf("Exit code: %d\n", res.ExitCode))
-				if res.Error != "" {
-					sb.WriteString(fmt.Sprintf("Error: %s\n", res.Error))
+				if errText := sanitizeOutput(res.Error); errText != "" {
+					sb.WriteString(fmt.Sprintf("Error: %s\n", errText))
 				}
 				// Show context from output (last meaningful lines)
-				detail := extractErrorDetail(res.Message, 300)
+				detail := sanitizeOutput(extractErrorDetail(res.Message, 300))
 				if detail != "" {
 					sb.WriteString(fmt.Sprintf("Detail: %s\n", detail))
 				}
-				if res.LogPath != "" {
-					sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+				if logPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", logPath))
 				}
 			}
 		}
@@ -622,13 +645,22 @@ func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string 
 			var needCoverage []string
 			for _, res := range results {
 				if res.ExitCode != 0 || res.Error != "" {
-					reason := res.Error
-					if len(reason) > 50 {
-						reason = reason[:50] + "..."
+					taskID := sanitizeOutput(res.TaskID)
+					reason := sanitizeOutput(res.Error)
+					if reason == "" && res.ExitCode != 0 {
+						reason = fmt.Sprintf("exit code %d", res.ExitCode)
 					}
-					needFix = append(needFix, fmt.Sprintf("%s (%s)", res.TaskID, reason))
-				} else if res.CoverageNum > 0 && res.CoverageTarget > 0 && res.CoverageNum < res.CoverageTarget {
-					needCoverage = append(needCoverage, res.TaskID)
+					reason = safeTruncate(reason, 50)
+					needFix = append(needFix, fmt.Sprintf("%s (%s)", taskID, reason))
+					continue
+				}
+
+				target := res.CoverageTarget
+				if target <= 0 {
+					target = reportCoverageTarget
+				}
+				if res.Coverage != "" && target > 0 && res.CoverageNum < target {
+					needCoverage = append(needCoverage, sanitizeOutput(res.TaskID))
 				}
 			}
 			if len(needFix) > 0 {
@@ -645,29 +677,34 @@ func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string 
 		sb.WriteString(fmt.Sprintf("Total: %d | Success: %d | Failed: %d\n\n", len(results), success, failed))
 
 		for _, res := range results {
-			sb.WriteString(fmt.Sprintf("--- Task: %s ---\n", res.TaskID))
+			taskID := sanitizeOutput(res.TaskID)
+			sb.WriteString(fmt.Sprintf("--- Task: %s ---\n", taskID))
 			if res.Error != "" {
-				sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\nError: %s\n", res.ExitCode, res.Error))
+				sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\nError: %s\n", res.ExitCode, sanitizeOutput(res.Error)))
 			} else if res.ExitCode != 0 {
 				sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\n", res.ExitCode))
 			} else {
 				sb.WriteString("Status: SUCCESS\n")
 			}
 			if res.Coverage != "" {
-				sb.WriteString(fmt.Sprintf("Coverage: %s\n", res.Coverage))
+				sb.WriteString(fmt.Sprintf("Coverage: %s\n", sanitizeOutput(res.Coverage)))
 			}
 			if res.SessionID != "" {
-				sb.WriteString(fmt.Sprintf("Session: %s\n", res.SessionID))
+				sb.WriteString(fmt.Sprintf("Session: %s\n", sanitizeOutput(res.SessionID)))
 			}
 			if res.LogPath != "" {
+				logPath := sanitizeOutput(res.LogPath)
 				if res.sharedLog {
-					sb.WriteString(fmt.Sprintf("Log: %s (shared)\n", res.LogPath))
+					sb.WriteString(fmt.Sprintf("Log: %s (shared)\n", logPath))
 				} else {
-					sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+					sb.WriteString(fmt.Sprintf("Log: %s\n", logPath))
 				}
 			}
 			if res.Message != "" {
-				sb.WriteString(fmt.Sprintf("\n%s\n", res.Message))
+				message := sanitizeOutput(res.Message)
+				if message != "" {
+					sb.WriteString(fmt.Sprintf("\n%s\n", message))
+				}
 			}
 			sb.WriteString("\n")
 		}
