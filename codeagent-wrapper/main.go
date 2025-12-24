@@ -31,6 +31,8 @@ const (
 	stdoutDrainTimeout     = 100 * time.Millisecond
 )
 
+var useASCIIMode = os.Getenv("CODEAGENT_ASCII_MODE") == "true"
+
 // Test hooks for dependency injection
 var (
 	stdinReader  io.Reader = os.Stdin
@@ -257,18 +259,20 @@ func run() (exitCode int) {
 					continue
 				}
 
+				lines := strings.Split(results[i].Message, "\n")
+
 				// Coverage extraction
-				results[i].Coverage = extractCoverage(results[i].Message)
+				results[i].Coverage = extractCoverageFromLines(lines)
 				results[i].CoverageNum = extractCoverageNum(results[i].Coverage)
 
 				// Files changed
-				results[i].FilesChanged = extractFilesChanged(results[i].Message)
+				results[i].FilesChanged = extractFilesChangedFromLines(lines)
 
 				// Test results
-				results[i].TestsPassed, results[i].TestsFailed = extractTestResults(results[i].Message)
+				results[i].TestsPassed, results[i].TestsFailed = extractTestResultsFromLines(lines)
 
 				// Key output summary
-				results[i].KeyOutput = extractKeyOutput(results[i].Message, 150)
+				results[i].KeyOutput = extractKeyOutputFromLines(lines, 150)
 			}
 
 			// Default: summary mode (context-efficient)
@@ -487,7 +491,8 @@ Parallel mode examples:
     %[1]s --parallel <<'EOF'
 
 Environment Variables:
-    CODEX_TIMEOUT  Timeout in milliseconds (default: 7200000)
+    CODEX_TIMEOUT         Timeout in milliseconds (default: 7200000)
+    CODEAGENT_ASCII_MODE  Use ASCII symbols instead of Unicode (PASS/WARN/FAIL)
 
 Exit Codes:
     0    Success

@@ -289,6 +289,45 @@ func TestExecutorHelperCoverage(t *testing.T) {
 		}
 	})
 
+	t.Run("generateFinalOutputASCIIMode", func(t *testing.T) {
+		t.Setenv("CODEAGENT_ASCII_MODE", "true")
+
+		results := []TaskResult{
+			{TaskID: "ok", ExitCode: 0, Coverage: "92%", CoverageNum: 92, CoverageTarget: 90, KeyOutput: "done"},
+			{TaskID: "warn", ExitCode: 0, Coverage: "80%", CoverageNum: 80, CoverageTarget: 90, KeyOutput: "did"},
+			{TaskID: "bad", ExitCode: 2, Error: "boom"},
+		}
+		out := generateFinalOutput(results)
+
+		for _, sym := range []string{"PASS", "WARN", "FAIL"} {
+			if !strings.Contains(out, sym) {
+				t.Fatalf("ASCII mode should include %q, got: %s", sym, out)
+			}
+		}
+		for _, sym := range []string{"✓", "⚠️", "✗"} {
+			if strings.Contains(out, sym) {
+				t.Fatalf("ASCII mode should not include %q, got: %s", sym, out)
+			}
+		}
+	})
+
+	t.Run("generateFinalOutputUnicodeMode", func(t *testing.T) {
+		t.Setenv("CODEAGENT_ASCII_MODE", "false")
+
+		results := []TaskResult{
+			{TaskID: "ok", ExitCode: 0, Coverage: "92%", CoverageNum: 92, CoverageTarget: 90, KeyOutput: "done"},
+			{TaskID: "warn", ExitCode: 0, Coverage: "80%", CoverageNum: 80, CoverageTarget: 90, KeyOutput: "did"},
+			{TaskID: "bad", ExitCode: 2, Error: "boom"},
+		}
+		out := generateFinalOutput(results)
+
+		for _, sym := range []string{"✓", "⚠️", "✗"} {
+			if !strings.Contains(out, sym) {
+				t.Fatalf("Unicode mode should include %q, got: %s", sym, out)
+			}
+		}
+	})
+
 	t.Run("executeConcurrentWrapper", func(t *testing.T) {
 		orig := runCodexTaskFn
 		defer func() { runCodexTaskFn = orig }()

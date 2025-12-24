@@ -87,16 +87,17 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 			}
 			inTaskResults = false
 		} else if inTaskResults && strings.HasPrefix(line, "### ") {
-			// New task: ### task-id ✓ 92% or ### task-id ✗ FAILED
+			// New task: ### task-id ✓ 92% or ### task-id PASS 92% (ASCII mode)
 			if currentTask != nil {
 				payload.Results = append(payload.Results, *currentTask)
 			}
 			currentTask = &TaskResult{}
 
 			taskLine := strings.TrimPrefix(line, "### ")
+			success, warning, failed := getStatusSymbols()
 			// Parse different formats
-			if strings.Contains(taskLine, " ✓") {
-				parts := strings.Split(taskLine, " ✓")
+			if strings.Contains(taskLine, " "+success) {
+				parts := strings.Split(taskLine, " "+success)
 				currentTask.TaskID = strings.TrimSpace(parts[0])
 				currentTask.ExitCode = 0
 				// Extract coverage if present
@@ -106,12 +107,12 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 						currentTask.Coverage = coveragePart
 					}
 				}
-			} else if strings.Contains(taskLine, " ⚠️") {
-				parts := strings.Split(taskLine, " ⚠️")
+			} else if strings.Contains(taskLine, " "+warning) {
+				parts := strings.Split(taskLine, " "+warning)
 				currentTask.TaskID = strings.TrimSpace(parts[0])
 				currentTask.ExitCode = 0
-			} else if strings.Contains(taskLine, " ✗") {
-				parts := strings.Split(taskLine, " ✗")
+			} else if strings.Contains(taskLine, " "+failed) {
+				parts := strings.Split(taskLine, " "+failed)
 				currentTask.TaskID = strings.TrimSpace(parts[0])
 				currentTask.ExitCode = 1
 			} else {

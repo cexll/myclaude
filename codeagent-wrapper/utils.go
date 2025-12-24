@@ -297,24 +297,29 @@ func extractMessageSummary(message string, maxLen int) string {
 	return safeTruncate(clean, maxLen)
 }
 
-// extractCoverage extracts coverage percentage from task output
-// Supports common formats: "Coverage: 92%", "92% coverage", "coverage 92%", "TOTAL 92%"
-func extractCoverage(message string) string {
-	if message == "" {
+// extractCoverageFromLines extracts coverage from pre-split lines.
+func extractCoverageFromLines(lines []string) string {
+	if len(lines) == 0 {
 		return ""
 	}
 
-	trimmed := strings.TrimSpace(message)
-	if strings.HasSuffix(trimmed, "%") && !strings.Contains(trimmed, "\n") {
-		if num, err := strconv.ParseFloat(strings.TrimSuffix(trimmed, "%"), 64); err == nil && num >= 0 && num <= 100 {
-			return trimmed
+	end := len(lines)
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+
+	if end == 1 {
+		trimmed := strings.TrimSpace(lines[0])
+		if strings.HasSuffix(trimmed, "%") {
+			if num, err := strconv.ParseFloat(strings.TrimSuffix(trimmed, "%"), 64); err == nil && num >= 0 && num <= 100 {
+				return trimmed
+			}
 		}
 	}
 
 	coverageKeywords := []string{"file", "stmt", "branch", "line", "coverage", "total"}
 
-	lines := strings.Split(message, "\n")
-	for _, line := range lines {
+	for _, line := range lines[:end] {
 		lower := strings.ToLower(line)
 
 		hasKeyword := false
@@ -359,6 +364,16 @@ func extractCoverage(message string) string {
 	return ""
 }
 
+// extractCoverage extracts coverage percentage from task output
+// Supports common formats: "Coverage: 92%", "92% coverage", "coverage 92%", "TOTAL 92%"
+func extractCoverage(message string) string {
+	if message == "" {
+		return ""
+	}
+
+	return extractCoverageFromLines(strings.Split(message, "\n"))
+}
+
 // extractCoverageNum extracts coverage as a numeric value for comparison
 func extractCoverageNum(coverage string) float64 {
 	if coverage == "" {
@@ -372,10 +387,9 @@ func extractCoverageNum(coverage string) float64 {
 	return 0
 }
 
-// extractFilesChanged extracts list of changed files from task output
-// Looks for common patterns like "Modified: file.ts", "Created: file.ts", file paths in output
-func extractFilesChanged(message string) []string {
-	if message == "" {
+// extractFilesChangedFromLines extracts files from pre-split lines.
+func extractFilesChangedFromLines(lines []string) []string {
+	if len(lines) == 0 {
 		return nil
 	}
 
@@ -383,7 +397,6 @@ func extractFilesChanged(message string) []string {
 	seen := make(map[string]bool)
 	exts := []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs", ".java", ".vue", ".css", ".scss", ".md", ".json", ".yaml", ".yml", ".toml"}
 
-	lines := strings.Split(message, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
@@ -429,21 +442,30 @@ func extractFilesChanged(message string) []string {
 	return files
 }
 
-// extractTestResults extracts test pass/fail counts from task output
-func extractTestResults(message string) (passed, failed int) {
+// extractFilesChanged extracts list of changed files from task output
+// Looks for common patterns like "Modified: file.ts", "Created: file.ts", file paths in output
+func extractFilesChanged(message string) []string {
 	if message == "" {
-		return 0, 0
+		return nil
 	}
 
-	lower := strings.ToLower(message)
+	return extractFilesChangedFromLines(strings.Split(message, "\n"))
+}
+
+// extractTestResultsFromLines extracts test results from pre-split lines.
+func extractTestResultsFromLines(lines []string) (passed, failed int) {
+	if len(lines) == 0 {
+		return 0, 0
+	}
 
 	// Common patterns:
 	// pytest: "12 passed, 2 failed"
 	// jest: "Tests: 2 failed, 12 passed"
 	// go: "ok ... 12 tests"
 
-	lines := strings.Split(lower, "\n")
 	for _, line := range lines {
+		line = strings.ToLower(line)
+
 		// Look for test result lines
 		if !strings.Contains(line, "pass") && !strings.Contains(line, "fail") && !strings.Contains(line, "test") {
 			continue
@@ -485,6 +507,15 @@ func extractTestResults(message string) (passed, failed int) {
 	return passed, failed
 }
 
+// extractTestResults extracts test pass/fail counts from task output
+func extractTestResults(message string) (passed, failed int) {
+	if message == "" {
+		return 0, 0
+	}
+
+	return extractTestResultsFromLines(strings.Split(message, "\n"))
+}
+
 // extractNumberBefore extracts a number that appears before the given index
 func extractNumberBefore(s string, idx int) int {
 	if idx <= 0 {
@@ -517,14 +548,11 @@ func extractNumberBefore(s string, idx int) int {
 	return 0
 }
 
-// extractKeyOutput extracts a brief summary of what the task accomplished
-// Looks for summary lines, first meaningful sentence, or truncates message
-func extractKeyOutput(message string, maxLen int) string {
-	if message == "" || maxLen <= 0 {
+// extractKeyOutputFromLines extracts key output from pre-split lines.
+func extractKeyOutputFromLines(lines []string, maxLen int) string {
+	if len(lines) == 0 || maxLen <= 0 {
 		return ""
 	}
-
-	lines := strings.Split(message, "\n")
 
 	// Priority 1: Look for explicit summary lines
 	for _, line := range lines {
@@ -560,8 +588,17 @@ func extractKeyOutput(message string, maxLen int) string {
 	}
 
 	// Fallback: truncate entire message
-	clean := strings.TrimSpace(message)
+	clean := strings.TrimSpace(strings.Join(lines, "\n"))
 	return safeTruncate(clean, maxLen)
+}
+
+// extractKeyOutput extracts a brief summary of what the task accomplished
+// Looks for summary lines, first meaningful sentence, or truncates message
+func extractKeyOutput(message string, maxLen int) string {
+	if message == "" || maxLen <= 0 {
+		return ""
+	}
+	return extractKeyOutputFromLines(strings.Split(message, "\n"), maxLen)
 }
 
 // extractCoverageGap extracts what's missing from coverage reports

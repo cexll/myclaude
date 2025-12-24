@@ -511,6 +511,14 @@ func shouldSkipTask(task TaskSpec, failed map[string]TaskResult) (bool, string) 
 	return true, fmt.Sprintf("skipped due to failed dependencies: %s", strings.Join(blocked, ","))
 }
 
+// getStatusSymbols returns status symbols based on ASCII mode.
+func getStatusSymbols() (success, warning, failed string) {
+	if os.Getenv("CODEAGENT_ASCII_MODE") == "true" {
+		return "PASS", "WARN", "FAIL"
+	}
+	return "✓", "⚠️", "✗"
+}
+
 func generateFinalOutput(results []TaskResult) string {
 	return generateFinalOutputWithMode(results, true) // default to summary mode
 }
@@ -520,6 +528,7 @@ func generateFinalOutput(results []TaskResult) string {
 // summaryOnly=false: full output with complete messages (legacy behavior)
 func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string {
 	var sb strings.Builder
+	successSymbol, warningSymbol, failedSymbol := getStatusSymbols()
 
 	reportCoverageTarget := defaultCoverageTarget
 	for _, res := range results {
@@ -577,7 +586,7 @@ func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string 
 
 			if isSuccess && !isBelowTarget {
 				// Passed task: one block with Did/Files/Tests
-				sb.WriteString(fmt.Sprintf("\n### %s ✓", taskID))
+				sb.WriteString(fmt.Sprintf("\n### %s %s", taskID, successSymbol))
 				if coverage != "" {
 					sb.WriteString(fmt.Sprintf(" %s", coverage))
 				}
@@ -598,7 +607,7 @@ func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string 
 
 			} else if isSuccess && isBelowTarget {
 				// Below target: add Gap info
-				sb.WriteString(fmt.Sprintf("\n### %s ⚠️ %s (below %.0f%%)\n", taskID, coverage, target))
+				sb.WriteString(fmt.Sprintf("\n### %s %s %s (below %.0f%%)\n", taskID, warningSymbol, coverage, target))
 
 				if keyOutput != "" {
 					sb.WriteString(fmt.Sprintf("Did: %s\n", keyOutput))
@@ -620,7 +629,7 @@ func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string 
 
 			} else {
 				// Failed task: show error detail
-				sb.WriteString(fmt.Sprintf("\n### %s ✗ FAILED\n", taskID))
+				sb.WriteString(fmt.Sprintf("\n### %s %s FAILED\n", taskID, failedSymbol))
 				sb.WriteString(fmt.Sprintf("Exit code: %d\n", res.ExitCode))
 				if errText := sanitizeOutput(res.Error); errText != "" {
 					sb.WriteString(fmt.Sprintf("Error: %s\n", errText))
