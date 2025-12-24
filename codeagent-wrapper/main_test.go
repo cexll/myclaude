@@ -2972,6 +2972,46 @@ test`
 	}
 }
 
+func TestRunParallelWithFullOutput(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
+
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{"codeagent-wrapper", "--parallel", "--full-output"}
+
+	stdinReader = strings.NewReader(`---TASK---
+id: T1
+---CONTENT---
+noop`)
+	t.Cleanup(func() { stdinReader = os.Stdin })
+
+	orig := runCodexTaskFn
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: "full output marker"}
+	}
+	t.Cleanup(func() { runCodexTaskFn = orig })
+
+	out := captureOutput(t, func() {
+		if code := run(); code != 0 {
+			t.Fatalf("run exit = %d, want 0", code)
+		}
+	})
+
+	if !strings.Contains(out, "=== Parallel Execution Summary ===") {
+		t.Fatalf("output missing full-output header, got %q", out)
+	}
+	if !strings.Contains(out, "--- Task: T1 ---") {
+		t.Fatalf("output missing task block, got %q", out)
+	}
+	if !strings.Contains(out, "full output marker") {
+		t.Fatalf("output missing task message, got %q", out)
+	}
+	if strings.Contains(out, "=== Execution Report ===") {
+		t.Fatalf("output should not include summary-only header, got %q", out)
+	}
+}
+
 func TestParallelInvalidBackend(t *testing.T) {
 	defer resetTestHooks()
 	cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }

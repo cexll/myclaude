@@ -75,9 +75,9 @@ func getEnv(key, defaultValue string) string {
 }
 
 type logWriter struct {
-	prefix string
-	maxLen int
-	buf    bytes.Buffer
+	prefix  string
+	maxLen  int
+	buf     bytes.Buffer
 	dropped bool
 }
 
@@ -205,6 +205,55 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
+// safeTruncate safely truncates string to maxLen, avoiding panic and UTF-8 corruption.
+func safeTruncate(s string, maxLen int) string {
+	if maxLen <= 0 || s == "" {
+		return ""
+	}
+
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+
+	if maxLen < 4 {
+		return string(runes[:1])
+	}
+
+	cutoff := maxLen - 3
+	if cutoff <= 0 {
+		return string(runes[:1])
+	}
+	if len(runes) <= cutoff {
+		return s
+	}
+	return string(runes[:cutoff]) + "..."
+}
+
+// sanitizeOutput removes ANSI escape sequences and control characters.
+func sanitizeOutput(s string) string {
+	var result strings.Builder
+	inEscape := false
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
+			inEscape = true
+			i++ // skip '['
+			continue
+		}
+		if inEscape {
+			if (s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= 'a' && s[i] <= 'z') {
+				inEscape = false
+			}
+			continue
+		}
+		// Keep printable chars and common whitespace.
+		if s[i] >= 32 || s[i] == '\n' || s[i] == '\t' {
+			result.WriteByte(s[i])
+		}
+	}
+	return result.String()
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -240,19 +289,12 @@ func extractMessageSummary(message string, maxLen int) string {
 			continue
 		}
 		// Found a meaningful line
-		if len(line) <= maxLen {
-			return line
-		}
-		// Truncate long line
-		return line[:maxLen-3] + "..."
+		return safeTruncate(line, maxLen)
 	}
 
 	// Fallback: truncate entire message
 	clean := strings.TrimSpace(message)
-	if len(clean) <= maxLen {
-		return clean
-	}
-	return clean[:maxLen-3] + "..."
+	return safeTruncate(clean, maxLen)
 }
 
 // extractCoverage extracts coverage percentage from task output
@@ -262,20 +304,36 @@ func extractCoverage(message string) string {
 		return ""
 	}
 
-	// Common coverage patterns
-	patterns := []string{
-		// pytest: "TOTAL ... 92%"
-		// jest: "All files ... 92%"
-		// go: "coverage: 92.0% of statements"
+	trimmed := strings.TrimSpace(message)
+	if strings.HasSuffix(trimmed, "%") && !strings.Contains(trimmed, "\n") {
+		if num, err := strconv.ParseFloat(strings.TrimSuffix(trimmed, "%"), 64); err == nil && num >= 0 && num <= 100 {
+			return trimmed
+		}
 	}
-	_ = patterns // placeholder for future regex if needed
+
+	coverageKeywords := []string{"file", "stmt", "branch", "line", "coverage", "total"}
 
 	lines := strings.Split(message, "\n")
 	for _, line := range lines {
 		lower := strings.ToLower(line)
 
-		// Look for coverage-related lines
-		if !strings.Contains(lower, "coverage") && !strings.Contains(lower, "total") {
+		hasKeyword := false
+		tokens := strings.FieldsFunc(lower, func(r rune) bool { return r < 'a' || r > 'z' })
+		for _, token := range tokens {
+			for _, kw := range coverageKeywords {
+				if strings.HasPrefix(token, kw) {
+					hasKeyword = true
+					break
+				}
+			}
+			if hasKeyword {
+				break
+			}
+		}
+		if !hasKeyword {
+			continue
+		}
+		if !strings.Contains(line, "%") {
 			continue
 		}
 
@@ -323,40 +381,40 @@ func extractFilesChanged(message string) []string {
 
 	var files []string
 	seen := make(map[string]bool)
+	exts := []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs", ".java", ".vue", ".css", ".scss", ".md", ".json", ".yaml", ".yml", ".toml"}
 
 	lines := strings.Split(message, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
 		// Pattern 1: "Modified: path/to/file.ts" or "Created: path/to/file.ts"
+		matchedPrefix := false
 		for _, prefix := range []string{"Modified:", "Created:", "Updated:", "Edited:", "Wrote:", "Changed:"} {
 			if strings.HasPrefix(line, prefix) {
 				file := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+				file = strings.Trim(file, "`,\"'()[],:")
+				file = strings.TrimPrefix(file, "@")
 				if file != "" && !seen[file] {
 					files = append(files, file)
 					seen[file] = true
 				}
+				matchedPrefix = true
+				break
 			}
 		}
+		if matchedPrefix {
+			continue
+		}
 
-		// Pattern 2: Lines that look like file paths (contain / and end with common extensions)
-		if strings.Contains(line, "/") {
-			for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs", ".java", ".vue", ".css", ".scss"} {
-				if strings.HasSuffix(line, ext) || strings.Contains(line, ext+" ") || strings.Contains(line, ext+",") {
-					// Extract the file path
-					parts := strings.Fields(line)
-					for _, part := range parts {
-						part = strings.Trim(part, "`,\"'()[]")
-						if strings.Contains(part, "/") && !seen[part] {
-							for _, e := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs", ".java", ".vue", ".css", ".scss"} {
-								if strings.HasSuffix(part, e) {
-									files = append(files, part)
-									seen[part] = true
-									break
-								}
-							}
-						}
-					}
+		// Pattern 2: Tokens that look like file paths (allow root files, strip @ prefix).
+		parts := strings.Fields(line)
+		for _, part := range parts {
+			part = strings.Trim(part, "`,\"'()[],:")
+			part = strings.TrimPrefix(part, "@")
+			for _, ext := range exts {
+				if strings.HasSuffix(part, ext) && !seen[part] {
+					files = append(files, part)
+					seen[part] = true
 					break
 				}
 			}
@@ -408,8 +466,18 @@ func extractTestResults(message string) (passed, failed int) {
 			}
 		}
 
+		// go test style: "ok ... 12 tests"
+		if passed == 0 {
+			if idx := strings.Index(line, "test"); idx != -1 {
+				num := extractNumberBefore(line, idx)
+				if num > 0 {
+					passed = num
+				}
+			}
+		}
+
 		// If we found both, stop
-		if passed > 0 || failed > 0 {
+		if passed > 0 && failed > 0 {
 			break
 		}
 	}
@@ -472,10 +540,7 @@ func extractKeyOutput(message string, maxLen int) string {
 			}
 			content = strings.TrimSpace(content)
 			if len(content) > 0 {
-				if len(content) <= maxLen {
-					return content
-				}
-				return content[:maxLen-3] + "..."
+				return safeTruncate(content, maxLen)
 			}
 		}
 	}
@@ -491,18 +556,12 @@ func extractKeyOutput(message string, maxLen int) string {
 		if len(line) < 20 {
 			continue
 		}
-		if len(line) <= maxLen {
-			return line
-		}
-		return line[:maxLen-3] + "..."
+		return safeTruncate(line, maxLen)
 	}
 
 	// Fallback: truncate entire message
 	clean := strings.TrimSpace(message)
-	if len(clean) <= maxLen {
-		return clean
-	}
-	return clean[:maxLen-3] + "..."
+	return safeTruncate(clean, maxLen)
 }
 
 // extractCoverageGap extracts what's missing from coverage reports
@@ -615,8 +674,5 @@ func extractErrorDetail(message string, maxLen int) string {
 
 	// Join and truncate
 	result := strings.Join(errorLines, " | ")
-	if len(result) > maxLen {
-		return result[:maxLen-3] + "..."
-	}
-	return result
+	return safeTruncate(result, maxLen)
 }

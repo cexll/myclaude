@@ -134,41 +134,39 @@ EOF
 ```
 
 **Output Modes:**
-- **Summary (default)**: Structured report with task results, verification, and review summary.
+- **Summary (default)**: Structured report with extracted `Did/Files/Tests/Coverage`, plus a short action summary.
 - **Full (`--full-output`)**: Complete task messages included. Use only for debugging.
 
 **Summary Output Example:**
 ```
-=== Parallel Execution Summary ===
-Total: 3 | Success: 2 | Failed: 1
-Coverage Warning: 1 task(s) below target
+=== Execution Report ===
+3 tasks | 2 passed | 1 failed | 1 below 90%
 
 ## Task Results
 
-### backend_api ✓
-Changes: src/auth/login.ts, src/auth/middleware.ts
-Output: "Implemented /api/login endpoint with JWT authentication"
-Verify: 12 tests passed, coverage 92% (target: 90%)
+### backend_api ✓ 92%
+Did: Implemented /api/users CRUD endpoints
+Files: backend/users.go, backend/router.go
+Tests: 12 passed
 Log: /tmp/codeagent-xxx.log
 
-### frontend_form ✓
-Changes: src/components/LoginForm.tsx
-Output: "Created responsive login form with validation"
-Verify: 8 tests passed, coverage 88% (target: 90%) ⚠️ BELOW TARGET
+### frontend_form ⚠️ 88% (below 90%)
+Did: Created login form with validation
+Files: frontend/LoginForm.tsx
+Tests: 8 passed
+Gap: lines not covered: frontend/LoginForm.tsx:42-47
 Log: /tmp/codeagent-yyy.log
 
-### integration_tests ✗
+### integration_tests ✗ FAILED
 Exit code: 1
 Error: Assertion failed at line 45
-Output: "Expected status 200 but got 401"
+Detail: Expected status 200 but got 401
 Log: /tmp/codeagent-zzz.log
 
-## Summary for Review
-- 2/3 tasks completed
-- Issues requiring attention:
-  - integration_tests: Assertion failed at line 45
-  - frontend_form: coverage 88% < 90%
-- Action needed: fix 1 failed task(s), improve coverage for 1 task(s)
+## Summary
+- 2/3 completed successfully
+- Fix: integration_tests (Assertion failed at line 45)
+- Coverage: frontend_form
 ```
 
 **Parallel Task Format:**
