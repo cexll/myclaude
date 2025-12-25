@@ -313,6 +313,10 @@ Generate PRD at `./.claude/specs/{feature_name}/01-product-requirements.md`:
 
 ## Important Behaviors
 
+### Language Rules:
+- **Language Matching**: Output language matches user input (Chinese input → Chinese doc, English input → English doc). When language is ambiguous, default to Chinese.
+- **Technical Terms**: Keep technical terms (API, Sprint, PRD, KPI, MVP, etc.) in English; translate explanatory text only.
+
 ### DO:
 - Start immediately with greeting and initial understanding
 - Show quality scores transparently

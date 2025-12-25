@@ -46,10 +46,26 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 
 	lines := strings.Split(out, "\n")
 	var currentTask *TaskResult
+	inTaskResults := false
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Total:") {
+
+		// Parse new format header: "X tasks | Y passed | Z failed"
+		if strings.Contains(line, "tasks |") && strings.Contains(line, "passed |") {
+			parts := strings.Split(line, "|")
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if strings.HasSuffix(p, "tasks") {
+					fmt.Sscanf(p, "%d tasks", &payload.Summary.Total)
+				} else if strings.HasSuffix(p, "passed") {
+					fmt.Sscanf(p, "%d passed", &payload.Summary.Success)
+				} else if strings.HasSuffix(p, "failed") {
+					fmt.Sscanf(p, "%d failed", &payload.Summary.Failed)
+				}
+			}
+		} else if strings.HasPrefix(line, "Total:") {
+			// Legacy format: "Total: X | Success: Y | Failed: Z"
 			parts := strings.Split(line, "|")
 			for _, p := range parts {
 				p = strings.TrimSpace(p)
@@ -61,13 +77,72 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 					fmt.Sscanf(p, "Failed: %d", &payload.Summary.Failed)
 				}
 			}
+		} else if line == "## Task Results" {
+			inTaskResults = true
+		} else if line == "## Summary" {
+			// End of task results section
+			if currentTask != nil {
+				payload.Results = append(payload.Results, *currentTask)
+				currentTask = nil
+			}
+			inTaskResults = false
+		} else if inTaskResults && strings.HasPrefix(line, "### ") {
+			// New task: ### task-id ✓ 92% or ### task-id PASS 92% (ASCII mode)
+			if currentTask != nil {
+				payload.Results = append(payload.Results, *currentTask)
+			}
+			currentTask = &TaskResult{}
+
+			taskLine := strings.TrimPrefix(line, "### ")
+			success, warning, failed := getStatusSymbols()
+			// Parse different formats
+			if strings.Contains(taskLine, " "+success) {
+				parts := strings.Split(taskLine, " "+success)
+				currentTask.TaskID = strings.TrimSpace(parts[0])
+				currentTask.ExitCode = 0
+				// Extract coverage if present
+				if len(parts) > 1 {
+					coveragePart := strings.TrimSpace(parts[1])
+					if strings.HasSuffix(coveragePart, "%") {
+						currentTask.Coverage = coveragePart
+					}
+				}
+			} else if strings.Contains(taskLine, " "+warning) {
+				parts := strings.Split(taskLine, " "+warning)
+				currentTask.TaskID = strings.TrimSpace(parts[0])
+				currentTask.ExitCode = 0
+			} else if strings.Contains(taskLine, " "+failed) {
+				parts := strings.Split(taskLine, " "+failed)
+				currentTask.TaskID = strings.TrimSpace(parts[0])
+				currentTask.ExitCode = 1
+			} else {
+				currentTask.TaskID = taskLine
+			}
+		} else if currentTask != nil && inTaskResults {
+			// Parse task details
+			if strings.HasPrefix(line, "Exit code:") {
+				fmt.Sscanf(line, "Exit code: %d", &currentTask.ExitCode)
+			} else if strings.HasPrefix(line, "Error:") {
+				currentTask.Error = strings.TrimPrefix(line, "Error: ")
+			} else if strings.HasPrefix(line, "Log:") {
+				currentTask.LogPath = strings.TrimSpace(strings.TrimPrefix(line, "Log:"))
+			} else if strings.HasPrefix(line, "Did:") {
+				currentTask.KeyOutput = strings.TrimSpace(strings.TrimPrefix(line, "Did:"))
+			} else if strings.HasPrefix(line, "Detail:") {
+				// Error detail for failed tasks
+				if currentTask.Message == "" {
+					currentTask.Message = strings.TrimSpace(strings.TrimPrefix(line, "Detail:"))
+				}
+			}
 		} else if strings.HasPrefix(line, "--- Task:") {
+			// Legacy full output format
 			if currentTask != nil {
 				payload.Results = append(payload.Results, *currentTask)
 			}
 			currentTask = &TaskResult{}
 			currentTask.TaskID = strings.TrimSuffix(strings.TrimPrefix(line, "--- Task: "), " ---")
-		} else if currentTask != nil {
+		} else if currentTask != nil && !inTaskResults {
+			// Legacy format parsing
 			if strings.HasPrefix(line, "Status: SUCCESS") {
 				currentTask.ExitCode = 0
 			} else if strings.HasPrefix(line, "Status: FAILED") {
@@ -82,15 +157,11 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 				currentTask.SessionID = strings.TrimPrefix(line, "Session: ")
 			} else if strings.HasPrefix(line, "Log:") {
 				currentTask.LogPath = strings.TrimSpace(strings.TrimPrefix(line, "Log:"))
-			} else if line != "" && !strings.HasPrefix(line, "===") && !strings.HasPrefix(line, "---") {
-				if currentTask.Message != "" {
-					currentTask.Message += "\n"
-				}
-				currentTask.Message += line
 			}
 		}
 	}
 
+	// Handle last task
 	if currentTask != nil {
 		payload.Results = append(payload.Results, *currentTask)
 	}
@@ -343,9 +414,10 @@ task-beta`
 	}
 
 	for _, id := range []string{"alpha", "beta"} {
-		want := fmt.Sprintf("Log: %s", logPathFor(id))
-		if !strings.Contains(output, want) {
-			t.Fatalf("parallel output missing %q for %s:\n%s", want, id, output)
+		// Summary mode shows log paths in table format, not "Log: xxx"
+		logPath := logPathFor(id)
+		if !strings.Contains(output, logPath) {
+			t.Fatalf("parallel output missing log path %q for %s:\n%s", logPath, id, output)
 		}
 	}
 }
@@ -426,10 +498,11 @@ ok-d`
 		t.Fatalf("expected startup banner in stderr, got:\n%s", stderrOut)
 	}
 
+	// After parallel log isolation fix, each task has its own log file
 	expectedLines := map[string]struct{}{
-		fmt.Sprintf("Task a: Log: %s", expectedLog): {},
-		fmt.Sprintf("Task b: Log: %s", expectedLog): {},
-		fmt.Sprintf("Task d: Log: %s", expectedLog): {},
+		fmt.Sprintf("Task a: Log: %s", filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d-a.log", os.Getpid()))): {},
+		fmt.Sprintf("Task b: Log: %s", filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d-b.log", os.Getpid()))): {},
+		fmt.Sprintf("Task d: Log: %s", filepath.Join(tempDir, fmt.Sprintf("codex-wrapper-%d-d.log", os.Getpid()))): {},
 	}
 
 	if len(taskLines) != len(expectedLines) {
@@ -549,16 +622,16 @@ ok-e`
 	if resD.LogPath != logPathFor("D") || resE.LogPath != logPathFor("E") {
 		t.Fatalf("expected log paths for D/E, got D=%q E=%q", resD.LogPath, resE.LogPath)
 	}
+	// Summary mode shows log paths in table, verify they appear in output
 	for _, id := range []string{"A", "D", "E"} {
-		block := extractTaskBlock(t, output, id)
-		want := fmt.Sprintf("Log: %s", logPathFor(id))
-		if !strings.Contains(block, want) {
-			t.Fatalf("task %s block missing %q:\n%s", id, want, block)
+		logPath := logPathFor(id)
+		if !strings.Contains(output, logPath) {
+			t.Fatalf("task %s log path %q not found in output:\n%s", id, logPath, output)
 		}
 	}
-	blockB := extractTaskBlock(t, output, "B")
-	if strings.Contains(blockB, "Log:") {
-		t.Fatalf("skipped task B should not emit a log line:\n%s", blockB)
+	// Task B was skipped, should have "-" or empty log path in table
+	if resB.LogPath != "" {
+		t.Fatalf("skipped task B should have empty log path, got %q", resB.LogPath)
 	}
 }
 

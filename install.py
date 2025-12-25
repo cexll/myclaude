@@ -17,7 +17,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-import jsonschema
+try:
+    import jsonschema
+except ImportError:  # pragma: no cover
+    jsonschema = None
 
 DEFAULT_INSTALL_DIR = "~/.claude"
 
@@ -86,6 +89,32 @@ def load_config(path: str) -> Dict[str, Any]:
 
     config_path = Path(path).expanduser().resolve()
     config = _load_json(config_path)
+
+    if jsonschema is None:
+        print(
+            "WARNING: python package 'jsonschema' is not installed; "
+            "skipping config validation. To enable validation run:\n"
+            "  python3 -m pip install jsonschema\n",
+            file=sys.stderr,
+        )
+
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"Config must be a dict, got {type(config).__name__}. "
+                "Check your config.json syntax."
+            )
+
+        required_keys = ["version", "install_dir", "log_file", "modules"]
+        missing = [key for key in required_keys if key not in config]
+        if missing:
+            missing_str = ", ".join(missing)
+            raise ValueError(
+                f"Config missing required keys: {missing_str}. "
+                "Install jsonschema for better validation: "
+                "python3 -m pip install jsonschema"
+            )
+
+        return config
 
     schema_candidates = [
         config_path.parent / "config.schema.json",
@@ -357,26 +386,47 @@ def op_run_command(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
     stderr_lines: List[str] = []
 
     # Read stdout and stderr in real-time
-    import selectors
-    sel = selectors.DefaultSelector()
-    sel.register(process.stdout, selectors.EVENT_READ)  # type: ignore[arg-type]
-    sel.register(process.stderr, selectors.EVENT_READ)  # type: ignore[arg-type]
+    if sys.platform == "win32":
+        # On Windows, use threads instead of selectors (pipes aren't selectable)
+        import threading
 
-    while process.poll() is None or sel.get_map():
-        for key, _ in sel.select(timeout=0.1):
-            line = key.fileobj.readline()  # type: ignore[union-attr]
-            if not line:
-                sel.unregister(key.fileobj)
-                continue
-            if key.fileobj == process.stdout:
-                stdout_lines.append(line)
-                print(line, end="", flush=True)
-            else:
-                stderr_lines.append(line)
-                print(line, end="", file=sys.stderr, flush=True)
+        def read_output(pipe, lines, file=None):
+            for line in iter(pipe.readline, ''):
+                lines.append(line)
+                print(line, end="", flush=True, file=file)
+            pipe.close()
 
-    sel.close()
-    process.wait()
+        stdout_thread = threading.Thread(target=read_output, args=(process.stdout, stdout_lines))
+        stderr_thread = threading.Thread(target=read_output, args=(process.stderr, stderr_lines, sys.stderr))
+
+        stdout_thread.start()
+        stderr_thread.start()
+
+        stdout_thread.join()
+        stderr_thread.join()
+        process.wait()
+    else:
+        # On Unix, use selectors for more efficient I/O
+        import selectors
+        sel = selectors.DefaultSelector()
+        sel.register(process.stdout, selectors.EVENT_READ)  # type: ignore[arg-type]
+        sel.register(process.stderr, selectors.EVENT_READ)  # type: ignore[arg-type]
+
+        while process.poll() is None or sel.get_map():
+            for key, _ in sel.select(timeout=0.1):
+                line = key.fileobj.readline()  # type: ignore[union-attr]
+                if not line:
+                    sel.unregister(key.fileobj)
+                    continue
+                if key.fileobj == process.stdout:
+                    stdout_lines.append(line)
+                    print(line, end="", flush=True)
+                else:
+                    stderr_lines.append(line)
+                    print(line, end="", file=sys.stderr, flush=True)
+
+        sel.close()
+        process.wait()
 
     write_log(
         {

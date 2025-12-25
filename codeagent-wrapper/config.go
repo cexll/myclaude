@@ -49,6 +49,15 @@ type TaskResult struct {
 	SessionID string `json:"session_id"`
 	Error     string `json:"error"`
 	LogPath   string `json:"log_path"`
+	// Structured report fields
+	Coverage       string   `json:"coverage,omitempty"`        // extracted coverage percentage (e.g., "92%")
+	CoverageNum    float64  `json:"coverage_num,omitempty"`    // numeric coverage for comparison
+	CoverageTarget float64  `json:"coverage_target,omitempty"` // target coverage (default 90)
+	FilesChanged   []string `json:"files_changed,omitempty"`   // list of changed files
+	KeyOutput      string   `json:"key_output,omitempty"`      // brief summary of what was done
+	TestsPassed    int      `json:"tests_passed,omitempty"`    // number of tests passed
+	TestsFailed    int      `json:"tests_failed,omitempty"`    // number of tests failed
+	sharedLog      bool
 }
 
 var backendRegistry = map[string]Backend{
@@ -163,6 +172,9 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 		if content == "" {
 			return nil, fmt.Errorf("task block #%d (%q) missing content", taskIndex, task.ID)
 		}
+		if task.Mode == "resume" && strings.TrimSpace(task.SessionID) == "" {
+			return nil, fmt.Errorf("task block #%d (%q) has empty session_id", taskIndex, task.ID)
+		}
 		if _, exists := seen[task.ID]; exists {
 			return nil, fmt.Errorf("task block #%d has duplicate id: %s", taskIndex, task.ID)
 		}
@@ -231,7 +243,10 @@ func parseArgs() (*Config, error) {
 			return nil, fmt.Errorf("resume mode requires: resume <session_id> <task>")
 		}
 		cfg.Mode = "resume"
-		cfg.SessionID = args[1]
+		cfg.SessionID = strings.TrimSpace(args[1])
+		if cfg.SessionID == "" {
+			return nil, fmt.Errorf("resume mode requires non-empty session_id")
+		}
 		cfg.Task = args[2]
 		cfg.ExplicitStdin = (args[2] == "-")
 		if len(args) > 3 {

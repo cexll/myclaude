@@ -1,0 +1,22 @@
+# Ensure shell scripts always use LF line endings on all platforms
+*.sh text eol=lf
+
+# Ensure Python files use LF line endings
+*.py text eol=lf
+
+# Auto-detect text files and normalize line endings to LF
+* text=auto eol=lf
+
+# Explicitly declare files that should always be treated as binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mov binary
+*.mp4 binary
+*.mp3 binary
+*.zip binary
+*.gz binary
+*.tar binary

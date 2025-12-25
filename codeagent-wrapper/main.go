@@ -14,14 +14,15 @@ import (
 )
 
 const (
-	version             = "5.2.2"
-	defaultWorkdir      = "."
-	defaultTimeout      = 7200 // seconds
-	codexLogLineLimit   = 1000
-	stdinSpecialChars   = "\n\\\"'`$"
-	stderrCaptureLimit  = 4 * 1024
-	defaultBackendName  = "codex"
-	defaultCodexCommand = "codex"
+	version               = "5.4.0"
+	defaultWorkdir        = "."
+	defaultTimeout        = 7200 // seconds (2 hours)
+	defaultCoverageTarget = 90.0
+	codexLogLineLimit     = 1000
+	stdinSpecialChars     = "\n\\\"'`$"
+	stderrCaptureLimit    = 4 * 1024
+	defaultBackendName    = "codex"
+	defaultCodexCommand   = "codex"
 
 	// stdout close reasons
 	stdoutCloseReasonWait  = "wait-done"
@@ -29,6 +30,8 @@ const (
 	stdoutCloseReasonCtx   = "context-cancel"
 	stdoutDrainTimeout     = 100 * time.Millisecond
 )
+
+var useASCIIMode = os.Getenv("CODEAGENT_ASCII_MODE") == "true"
 
 // Test hooks for dependency injection
 var (
@@ -175,6 +178,7 @@ func run() (exitCode int) {
 
 		if parallelIndex != -1 {
 			backendName := defaultBackendName
+			fullOutput := false
 			var extras []string
 
 			for i := 0; i < len(args); i++ {
@@ -182,6 +186,8 @@ func run() (exitCode int) {
 				switch {
 				case arg == "--parallel":
 					continue
+				case arg == "--full-output":
+					fullOutput = true
 				case arg == "--backend":
 					if i+1 >= len(args) {
 						fmt.Fprintln(os.Stderr, "ERROR: --backend flag requires a value")
@@ -202,11 +208,12 @@ func run() (exitCode int) {
 			}
 
 			if len(extras) > 0 {
-				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend is allowed.")
+				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend and --full-output are allowed.")
 				fmt.Fprintln(os.Stderr, "Usage examples:")
 				fmt.Fprintf(os.Stderr, "  %s --parallel < tasks.txt\n", name)
 				fmt.Fprintf(os.Stderr, "  echo '...' | %s --parallel\n", name)
 				fmt.Fprintf(os.Stderr, "  %s --parallel <<'EOF'\n", name)
+				fmt.Fprintf(os.Stderr, "  %s --parallel --full-output <<'EOF'  # include full task output\n", name)
 				return 1
 			}
 
@@ -244,7 +251,33 @@ func run() (exitCode int) {
 			}
 
 			results := executeConcurrent(layers, timeoutSec)
-			fmt.Println(generateFinalOutput(results))
+
+			// Extract structured report fields from each result
+			for i := range results {
+				results[i].CoverageTarget = defaultCoverageTarget
+				if results[i].Message == "" {
+					continue
+				}
+
+				lines := strings.Split(results[i].Message, "\n")
+
+				// Coverage extraction
+				results[i].Coverage = extractCoverageFromLines(lines)
+				results[i].CoverageNum = extractCoverageNum(results[i].Coverage)
+
+				// Files changed
+				results[i].FilesChanged = extractFilesChangedFromLines(lines)
+
+				// Test results
+				results[i].TestsPassed, results[i].TestsFailed = extractTestResultsFromLines(lines)
+
+				// Key output summary
+				results[i].KeyOutput = extractKeyOutputFromLines(lines, 150)
+			}
+
+			// Default: summary mode (context-efficient)
+			// --full-output: legacy full output mode
+			fmt.Println(generateFinalOutputWithMode(results, !fullOutput))
 
 			exitCode = 0
 			for _, res := range results {
@@ -447,16 +480,19 @@ Usage:
     %[1]s resume <session_id> "task" [workdir]
     %[1]s resume <session_id> - [workdir]
     %[1]s --parallel               Run tasks in parallel (config from stdin)
+    %[1]s --parallel --full-output Run tasks in parallel with full output (legacy)
     %[1]s --version
     %[1]s --help
 
 Parallel mode examples:
     %[1]s --parallel < tasks.txt
     echo '...' | %[1]s --parallel
+    %[1]s --parallel --full-output < tasks.txt
     %[1]s --parallel <<'EOF'
 
 Environment Variables:
-    CODEX_TIMEOUT  Timeout in milliseconds (default: 7200000)
+    CODEX_TIMEOUT         Timeout in milliseconds (default: 7200000)
+    CODEAGENT_ASCII_MODE  Use ASCII symbols instead of Unicode (PASS/WARN/FAIL)
 
 Exit Codes:
     0    Success

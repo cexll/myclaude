@@ -104,38 +104,10 @@ jobs:
           cp install.sh install.bat release/
           ls -la release/
 
-      - name: Extract release notes from CHANGELOG
-        id: extract_notes
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-
-          # Extract version section from CHANGELOG.md
-          awk -v ver="$VERSION" '
-            /^## [0-9]+\.[0-9]+\.[0-9]+ - / {
-              if (found) exit
-              if ($2 == ver) {
-                found = 1
-                next
-              }
-            }
-            found && /^## / { exit }
-            found { print }
-          ' CHANGELOG.md > release_notes.md
-
-          # Fallback to auto-generated if extraction failed
-          if [ ! -s release_notes.md ]; then
-            echo "⚠️ No release notes found in CHANGELOG.md for version $VERSION" > release_notes.md
-            echo "" >> release_notes.md
-            echo "## What's Changed" >> release_notes.md
-            echo "See commits in this release for details." >> release_notes.md
-          fi
-
-          cat release_notes.md
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
-          body_path: release_notes.md
+          generate_release_notes: true
           draft: false
           prerelease: false

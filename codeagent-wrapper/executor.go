@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+const postMessageTerminateDelay = 1 * time.Second
+
 // commandRunner abstracts exec.Cmd for testability
 type commandRunner interface {
 	Start() error
@@ -24,6 +26,7 @@ type commandRunner interface {
 	StdinPipe() (io.WriteCloser, error)
 	SetStderr(io.Writer)
 	SetDir(string)
+	SetEnv(env map[string]string)
 	Process() processHandle
 }
 
@@ -79,6 +82,52 @@ func (r *realCmd) SetDir(dir string) {
 	}
 }
 
+func (r *realCmd) SetEnv(env map[string]string) {
+	if r == nil || r.cmd == nil || len(env) == 0 {
+		return
+	}
+
+	merged := make(map[string]string, len(env)+len(os.Environ()))
+	for _, kv := range os.Environ() {
+		if kv == "" {
+			continue
+		}
+		idx := strings.IndexByte(kv, '=')
+		if idx <= 0 {
+			continue
+		}
+		merged[kv[:idx]] = kv[idx+1:]
+	}
+	for _, kv := range r.cmd.Env {
+		if kv == "" {
+			continue
+		}
+		idx := strings.IndexByte(kv, '=')
+		if idx <= 0 {
+			continue
+		}
+		merged[kv[:idx]] = kv[idx+1:]
+	}
+	for k, v := range env {
+		if strings.TrimSpace(k) == "" {
+			continue
+		}
+		merged[k] = v
+	}
+
+	keys := make([]string, 0, len(merged))
+	for k := range merged {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+merged[k])
+	}
+	r.cmd.Env = out
+}
+
 func (r *realCmd) Process() processHandle {
 	if r == nil || r.cmd == nil || r.cmd.Process == nil {
 		return nil
@@ -122,7 +171,57 @@ type parseResult struct {
 	threadID string
 }
 
-var runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+type taskLoggerContextKey struct{}
+
+func withTaskLogger(ctx context.Context, logger *Logger) context.Context {
+	if ctx == nil || logger == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, taskLoggerContextKey{}, logger)
+}
+
+func taskLoggerFromContext(ctx context.Context) *Logger {
+	if ctx == nil {
+		return nil
+	}
+	logger, _ := ctx.Value(taskLoggerContextKey{}).(*Logger)
+	return logger
+}
+
+type taskLoggerHandle struct {
+	logger  *Logger
+	path    string
+	shared  bool
+	closeFn func()
+}
+
+func newTaskLoggerHandle(taskID string) taskLoggerHandle {
+	taskLogger, err := NewLoggerWithSuffix(taskID)
+	if err == nil {
+		return taskLoggerHandle{
+			logger:  taskLogger,
+			path:    taskLogger.Path(),
+			closeFn: func() { _ = taskLogger.Close() },
+		}
+	}
+
+	msg := fmt.Sprintf("Failed to create task logger for %s: %v, using main logger", taskID, err)
+	mainLogger := activeLogger()
+	if mainLogger != nil {
+		logWarn(msg)
+		return taskLoggerHandle{
+			logger: mainLogger,
+			path:   mainLogger.Path(),
+			shared: true,
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, msg)
+	return taskLoggerHandle{}
+}
+
+// defaultRunCodexTaskFn is the default implementation of runCodexTaskFn (exposed for test reset)
+func defaultRunCodexTaskFn(task TaskSpec, timeout int) TaskResult {
 	if task.WorkDir == "" {
 		task.WorkDir = defaultWorkdir
 	}
@@ -150,6 +249,8 @@ var runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
 	}
 	return runCodexTaskWithContext(parentCtx, task, backend, nil, false, true, timeout)
 }
+
+var runCodexTaskFn = defaultRunCodexTaskFn
 
 func topologicalSort(tasks []TaskSpec) ([][]TaskSpec, error) {
 	idToTask := make(map[string]TaskSpec, len(tasks))
@@ -235,13 +336,8 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 	var startPrintMu sync.Mutex
 	bannerPrinted := false
 
-	printTaskStart := func(taskID string) {
-		logger := activeLogger()
-		if logger == nil {
-			return
-		}
-		path := logger.Path()
-		if path == "" {
+	printTaskStart := func(taskID, logPath string, shared bool) {
+		if logPath == "" {
 			return
 		}
 		startPrintMu.Lock()
@@ -249,7 +345,11 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 			fmt.Fprintln(os.Stderr, "=== Starting Parallel Execution ===")
 			bannerPrinted = true
 		}
-		fmt.Fprintf(os.Stderr, "Task %s: Log: %s\n", taskID, path)
+		label := "Log"
+		if shared {
+			label = "Log (shared)"
+		}
+		fmt.Fprintf(os.Stderr, "Task %s: %s: %s\n", taskID, label, logPath)
 		startPrintMu.Unlock()
 	}
 
@@ -319,9 +419,11 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 			wg.Add(1)
 			go func(ts TaskSpec) {
 				defer wg.Done()
+				var taskLogPath string
+				handle := taskLoggerHandle{}
 				defer func() {
 					if r := recover(); r != nil {
-						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r)}
+						resultsCh <- TaskResult{TaskID: ts.ID, ExitCode: 1, Error: fmt.Sprintf("panic: %v", r), LogPath: taskLogPath, sharedLog: handle.shared}
 					}
 				}()
 
@@ -338,9 +440,31 @@ func executeConcurrentWithContext(parentCtx context.Context, layers [][]TaskSpec
 					logConcurrencyState("done", ts.ID, int(after), workerLimit)
 				}()
 
-				ts.Context = ctx
-				printTaskStart(ts.ID)
-				resultsCh <- runCodexTaskFn(ts, timeout)
+				handle = newTaskLoggerHandle(ts.ID)
+				taskLogPath = handle.path
+				if handle.closeFn != nil {
+					defer handle.closeFn()
+				}
+
+				taskCtx := ctx
+				if handle.logger != nil {
+					taskCtx = withTaskLogger(ctx, handle.logger)
+				}
+				ts.Context = taskCtx
+
+				printTaskStart(ts.ID, taskLogPath, handle.shared)
+
+				res := runCodexTaskFn(ts, timeout)
+				if taskLogPath != "" {
+					if res.LogPath == "" || (handle.shared && handle.logger != nil && res.LogPath == handle.logger.Path()) {
+						res.LogPath = taskLogPath
+					}
+				}
+				// 只有当最终的 LogPath 确实是共享 logger 的路径时才标记为 shared
+				if handle.shared && handle.logger != nil && res.LogPath == handle.logger.Path() {
+					res.sharedLog = true
+				}
+				resultsCh <- res
 			}(task)
 		}
 
@@ -387,64 +511,255 @@ func shouldSkipTask(task TaskSpec, failed map[string]TaskResult) (bool, string) 
 	return true, fmt.Sprintf("skipped due to failed dependencies: %s", strings.Join(blocked, ","))
 }
 
-func generateFinalOutput(results []TaskResult) string {
-	var sb strings.Builder
+// getStatusSymbols returns status symbols based on ASCII mode.
+func getStatusSymbols() (success, warning, failed string) {
+	if os.Getenv("CODEAGENT_ASCII_MODE") == "true" {
+		return "PASS", "WARN", "FAIL"
+	}
+	return "✓", "⚠️", "✗"
+}
 
+func generateFinalOutput(results []TaskResult) string {
+	return generateFinalOutputWithMode(results, true) // default to summary mode
+}
+
+// generateFinalOutputWithMode generates output based on mode
+// summaryOnly=true: structured report - every token has value
+// summaryOnly=false: full output with complete messages (legacy behavior)
+func generateFinalOutputWithMode(results []TaskResult, summaryOnly bool) string {
+	var sb strings.Builder
+	successSymbol, warningSymbol, failedSymbol := getStatusSymbols()
+
+	reportCoverageTarget := defaultCoverageTarget
+	for _, res := range results {
+		if res.CoverageTarget > 0 {
+			reportCoverageTarget = res.CoverageTarget
+			break
+		}
+	}
+
+	// Count results by status
 	success := 0
 	failed := 0
+	belowTarget := 0
 	for _, res := range results {
 		if res.ExitCode == 0 && res.Error == "" {
 			success++
+			target := res.CoverageTarget
+			if target <= 0 {
+				target = reportCoverageTarget
+			}
+			if res.Coverage != "" && target > 0 && res.CoverageNum < target {
+				belowTarget++
+			}
 		} else {
 			failed++
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("=== Parallel Execution Summary ===\n"))
-	sb.WriteString(fmt.Sprintf("Total: %d | Success: %d | Failed: %d\n\n", len(results), success, failed))
+	if summaryOnly {
+		// Header
+		sb.WriteString("=== Execution Report ===\n")
+		sb.WriteString(fmt.Sprintf("%d tasks | %d passed | %d failed", len(results), success, failed))
+		if belowTarget > 0 {
+			sb.WriteString(fmt.Sprintf(" | %d below %.0f%%", belowTarget, reportCoverageTarget))
+		}
+		sb.WriteString("\n\n")
 
-	for _, res := range results {
-		sb.WriteString(fmt.Sprintf("--- Task: %s ---\n", res.TaskID))
-		if res.Error != "" {
-			sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\nError: %s\n", res.ExitCode, res.Error))
-		} else if res.ExitCode != 0 {
-			sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\n", res.ExitCode))
-		} else {
-			sb.WriteString("Status: SUCCESS\n")
+		// Task Results - each task gets: Did + Files + Tests + Coverage
+		sb.WriteString("## Task Results\n")
+
+		for _, res := range results {
+			taskID := sanitizeOutput(res.TaskID)
+			coverage := sanitizeOutput(res.Coverage)
+			keyOutput := sanitizeOutput(res.KeyOutput)
+			logPath := sanitizeOutput(res.LogPath)
+			filesChanged := sanitizeOutput(strings.Join(res.FilesChanged, ", "))
+
+			target := res.CoverageTarget
+			if target <= 0 {
+				target = reportCoverageTarget
+			}
+
+			isSuccess := res.ExitCode == 0 && res.Error == ""
+			isBelowTarget := isSuccess && coverage != "" && target > 0 && res.CoverageNum < target
+
+			if isSuccess && !isBelowTarget {
+				// Passed task: one block with Did/Files/Tests
+				sb.WriteString(fmt.Sprintf("\n### %s %s", taskID, successSymbol))
+				if coverage != "" {
+					sb.WriteString(fmt.Sprintf(" %s", coverage))
+				}
+				sb.WriteString("\n")
+
+				if keyOutput != "" {
+					sb.WriteString(fmt.Sprintf("Did: %s\n", keyOutput))
+				}
+				if len(res.FilesChanged) > 0 {
+					sb.WriteString(fmt.Sprintf("Files: %s\n", filesChanged))
+				}
+				if res.TestsPassed > 0 {
+					sb.WriteString(fmt.Sprintf("Tests: %d passed\n", res.TestsPassed))
+				}
+				if logPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", logPath))
+				}
+
+			} else if isSuccess && isBelowTarget {
+				// Below target: add Gap info
+				sb.WriteString(fmt.Sprintf("\n### %s %s %s (below %.0f%%)\n", taskID, warningSymbol, coverage, target))
+
+				if keyOutput != "" {
+					sb.WriteString(fmt.Sprintf("Did: %s\n", keyOutput))
+				}
+				if len(res.FilesChanged) > 0 {
+					sb.WriteString(fmt.Sprintf("Files: %s\n", filesChanged))
+				}
+				if res.TestsPassed > 0 {
+					sb.WriteString(fmt.Sprintf("Tests: %d passed\n", res.TestsPassed))
+				}
+				// Extract what's missing from coverage
+				gap := sanitizeOutput(extractCoverageGap(res.Message))
+				if gap != "" {
+					sb.WriteString(fmt.Sprintf("Gap: %s\n", gap))
+				}
+				if logPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", logPath))
+				}
+
+			} else {
+				// Failed task: show error detail
+				sb.WriteString(fmt.Sprintf("\n### %s %s FAILED\n", taskID, failedSymbol))
+				sb.WriteString(fmt.Sprintf("Exit code: %d\n", res.ExitCode))
+				if errText := sanitizeOutput(res.Error); errText != "" {
+					sb.WriteString(fmt.Sprintf("Error: %s\n", errText))
+				}
+				// Show context from output (last meaningful lines)
+				detail := sanitizeOutput(extractErrorDetail(res.Message, 300))
+				if detail != "" {
+					sb.WriteString(fmt.Sprintf("Detail: %s\n", detail))
+				}
+				if logPath != "" {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", logPath))
+				}
+			}
 		}
-		if res.SessionID != "" {
-			sb.WriteString(fmt.Sprintf("Session: %s\n", res.SessionID))
+
+		// Summary section
+		sb.WriteString("\n## Summary\n")
+		sb.WriteString(fmt.Sprintf("- %d/%d completed successfully\n", success, len(results)))
+
+		if belowTarget > 0 || failed > 0 {
+			var needFix []string
+			var needCoverage []string
+			for _, res := range results {
+				if res.ExitCode != 0 || res.Error != "" {
+					taskID := sanitizeOutput(res.TaskID)
+					reason := sanitizeOutput(res.Error)
+					if reason == "" && res.ExitCode != 0 {
+						reason = fmt.Sprintf("exit code %d", res.ExitCode)
+					}
+					reason = safeTruncate(reason, 50)
+					needFix = append(needFix, fmt.Sprintf("%s (%s)", taskID, reason))
+					continue
+				}
+
+				target := res.CoverageTarget
+				if target <= 0 {
+					target = reportCoverageTarget
+				}
+				if res.Coverage != "" && target > 0 && res.CoverageNum < target {
+					needCoverage = append(needCoverage, sanitizeOutput(res.TaskID))
+				}
+			}
+			if len(needFix) > 0 {
+				sb.WriteString(fmt.Sprintf("- Fix: %s\n", strings.Join(needFix, ", ")))
+			}
+			if len(needCoverage) > 0 {
+				sb.WriteString(fmt.Sprintf("- Coverage: %s\n", strings.Join(needCoverage, ", ")))
+			}
 		}
-		if res.LogPath != "" {
-			sb.WriteString(fmt.Sprintf("Log: %s\n", res.LogPath))
+
+	} else {
+		// Legacy full output mode
+		sb.WriteString("=== Parallel Execution Summary ===\n")
+		sb.WriteString(fmt.Sprintf("Total: %d | Success: %d | Failed: %d\n\n", len(results), success, failed))
+
+		for _, res := range results {
+			taskID := sanitizeOutput(res.TaskID)
+			sb.WriteString(fmt.Sprintf("--- Task: %s ---\n", taskID))
+			if res.Error != "" {
+				sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\nError: %s\n", res.ExitCode, sanitizeOutput(res.Error)))
+			} else if res.ExitCode != 0 {
+				sb.WriteString(fmt.Sprintf("Status: FAILED (exit code %d)\n", res.ExitCode))
+			} else {
+				sb.WriteString("Status: SUCCESS\n")
+			}
+			if res.Coverage != "" {
+				sb.WriteString(fmt.Sprintf("Coverage: %s\n", sanitizeOutput(res.Coverage)))
+			}
+			if res.SessionID != "" {
+				sb.WriteString(fmt.Sprintf("Session: %s\n", sanitizeOutput(res.SessionID)))
+			}
+			if res.LogPath != "" {
+				logPath := sanitizeOutput(res.LogPath)
+				if res.sharedLog {
+					sb.WriteString(fmt.Sprintf("Log: %s (shared)\n", logPath))
+				} else {
+					sb.WriteString(fmt.Sprintf("Log: %s\n", logPath))
+				}
+			}
+			if res.Message != "" {
+				message := sanitizeOutput(res.Message)
+				if message != "" {
+					sb.WriteString(fmt.Sprintf("\n%s\n", message))
+				}
+			}
+			sb.WriteString("\n")
 		}
-		if res.Message != "" {
-			sb.WriteString(fmt.Sprintf("\n%s\n", res.Message))
-		}
-		sb.WriteString("\n")
 	}
 
 	return sb.String()
 }
 
 func buildCodexArgs(cfg *Config, targetArg string) []string {
-	if cfg.Mode == "resume" {
-		return []string{
-			"e",
-			"--skip-git-repo-check",
-			"--json",
-			"resume",
-			cfg.SessionID,
-			targetArg,
+	if cfg == nil {
+		panic("buildCodexArgs: nil config")
+	}
+
+	var resumeSessionID string
+	isResume := cfg.Mode == "resume"
+	if isResume {
+		resumeSessionID = strings.TrimSpace(cfg.SessionID)
+		if resumeSessionID == "" {
+			logError("invalid config: resume mode requires non-empty session_id")
+			isResume = false
 		}
 	}
-	return []string{
-		"e",
-		"--skip-git-repo-check",
+
+	args := []string{"e"}
+
+	if envFlagEnabled("CODEX_BYPASS_SANDBOX") {
+		logWarn("CODEX_BYPASS_SANDBOX=true: running without approval/sandbox protection")
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	}
+
+	args = append(args, "--skip-git-repo-check")
+
+	if isResume {
+		return append(args,
+			"--json",
+			"resume",
+			resumeSessionID,
+			targetArg,
+		)
+	}
+
+	return append(args,
 		"-C", cfg.WorkDir,
 		"--json",
 		targetArg,
-	}
+	)
 }
 
 func runCodexTask(taskSpec TaskSpec, silent bool, timeoutSec int) TaskResult {
@@ -457,15 +772,16 @@ func runCodexProcess(parentCtx context.Context, codexArgs []string, taskText str
 }
 
 func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backend Backend, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) TaskResult {
-	result := TaskResult{TaskID: taskSpec.ID}
-	setLogPath := func() {
-		if result.LogPath != "" {
-			return
-		}
-		if logger := activeLogger(); logger != nil {
-			result.LogPath = logger.Path()
-		}
+	if parentCtx == nil {
+		parentCtx = taskSpec.Context
 	}
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+
+	result := TaskResult{TaskID: taskSpec.ID}
+	injectedLogger := taskLoggerFromContext(parentCtx)
+	logger := injectedLogger
 
 	cfg := &Config{
 		Mode:      taskSpec.Mode,
@@ -492,6 +808,12 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 	if cfg.WorkDir == "" {
 		cfg.WorkDir = defaultWorkdir
+	}
+
+	if cfg.Mode == "resume" && strings.TrimSpace(cfg.SessionID) == "" {
+		result.ExitCode = 1
+		result.Error = "resume mode requires non-empty session_id"
+		return result
 	}
 
 	useStdin := taskSpec.UseStdin
@@ -521,17 +843,17 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	if silent {
 		// Silent mode: only persist to file when available; avoid stderr noise.
 		logInfoFn = func(msg string) {
-			if logger := activeLogger(); logger != nil {
+			if logger != nil {
 				logger.Info(prefixMsg(msg))
 			}
 		}
 		logWarnFn = func(msg string) {
-			if logger := activeLogger(); logger != nil {
+			if logger != nil {
 				logger.Warn(prefixMsg(msg))
 			}
 		}
 		logErrorFn = func(msg string) {
-			if logger := activeLogger(); logger != nil {
+			if logger != nil {
 				logger.Error(prefixMsg(msg))
 			}
 		}
@@ -547,10 +869,11 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	var stderrLogger *logWriter
 
 	var tempLogger *Logger
-	if silent && activeLogger() == nil {
+	if logger == nil && silent && activeLogger() == nil {
 		if l, err := NewLogger(); err == nil {
 			setLogger(l)
 			tempLogger = l
+			logger = l
 		}
 	}
 	defer func() {
@@ -558,21 +881,29 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 			_ = closeLogger()
 		}
 	}()
-	defer setLogPath()
-	if logger := activeLogger(); logger != nil {
+	defer func() {
+		if result.LogPath != "" || logger == nil {
+			return
+		}
+		result.LogPath = logger.Path()
+	}()
+	if logger == nil {
+		logger = activeLogger()
+	}
+	if logger != nil {
 		result.LogPath = logger.Path()
 	}
 
 	if !silent {
-		stdoutLogger = newLogWriter("CODEX_STDOUT: ", codexLogLineLimit)
-		stderrLogger = newLogWriter("CODEX_STDERR: ", codexLogLineLimit)
+		// Note: Empty prefix ensures backend output is logged as-is without any wrapper format.
+		// This preserves the original stdout/stderr content from codex/claude/gemini backends.
+		// Trade-off: Reduces distinguishability between stdout/stderr in logs, but maintains
+		// output fidelity which is critical for debugging backend-specific issues.
+		stdoutLogger = newLogWriter("", codexLogLineLimit)
+		stderrLogger = newLogWriter("", codexLogLineLimit)
 	}
 
 	ctx := parentCtx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
@@ -584,6 +915,12 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 
 	cmd := newCommandRunner(ctx, commandName, codexArgs...)
 
+	if cfg.Backend == "claude" {
+		if env := loadMinimalEnvSettings(); len(env) > 0 {
+			cmd.SetEnv(env)
+		}
+	}
+
 	// For backends that don't support -C flag (claude, gemini), set working directory via cmd.Dir
 	// Codex passes workdir via -C flag, so we skip setting Dir for it to avoid conflicts
 	if cfg.Mode != "resume" && commandName != "codex" && cfg.WorkDir != "" {
@@ -594,8 +931,17 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	if stderrLogger != nil {
 		stderrWriters = append(stderrWriters, stderrLogger)
 	}
+
+	// For gemini backend, filter noisy stderr output
+	var stderrFilter *filteringWriter
 	if !silent {
-		stderrWriters = append([]io.Writer{os.Stderr}, stderrWriters...)
+		stderrOut := io.Writer(os.Stderr)
+		if cfg.Backend == "gemini" {
+			stderrFilter = newFilteringWriter(os.Stderr, geminiNoisePatterns)
+			stderrOut = stderrFilter
+			defer stderrFilter.Flush()
+		}
+		stderrWriters = append([]io.Writer{stderrOut}, stderrWriters...)
 	}
 	if len(stderrWriters) == 1 {
 		cmd.SetStderr(stderrWriters[0])
@@ -631,6 +977,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	// Start parse goroutine BEFORE starting the command to avoid race condition
 	// where fast-completing commands close stdout before parser starts reading
 	messageSeen := make(chan struct{}, 1)
+	completeSeen := make(chan struct{}, 1)
 	parseCh := make(chan parseResult, 1)
 	go func() {
 		msg, tid := parseJSONStreamInternal(stdoutReader, logWarnFn, logInfoFn, func() {
@@ -638,7 +985,16 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 			case messageSeen <- struct{}{}:
 			default:
 			}
+		}, func() {
+			select {
+			case completeSeen <- struct{}{}:
+			default:
+			}
 		})
+		select {
+		case completeSeen <- struct{}{}:
+		default:
+		}
 		parseCh <- parseResult{message: msg, threadID: tid}
 	}()
 
@@ -659,7 +1015,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	logInfoFn(fmt.Sprintf("Starting %s with PID: %d", commandName, cmd.Process().Pid()))
-	if logger := activeLogger(); logger != nil {
+	if logger != nil {
 		logInfoFn(fmt.Sprintf("Log capturing to: %s", logger.Path()))
 	}
 
@@ -675,17 +1031,63 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
 
-	var waitErr error
-	var forceKillTimer *forceKillTimer
-	var ctxCancelled bool
+	var (
+		waitErr              error
+		forceKillTimer       *forceKillTimer
+		ctxCancelled         bool
+		messageTimer         *time.Timer
+		messageTimerCh       <-chan time.Time
+		forcedAfterComplete  bool
+		terminated           bool
+		messageSeenObserved  bool
+		completeSeenObserved bool
+	)
 
-	select {
-	case waitErr = <-waitCh:
-	case <-ctx.Done():
-		ctxCancelled = true
-		logErrorFn(cancelReason(commandName, ctx))
-		forceKillTimer = terminateCommandFn(cmd)
-		waitErr = <-waitCh
+waitLoop:
+	for {
+		select {
+		case waitErr = <-waitCh:
+			break waitLoop
+		case <-ctx.Done():
+			ctxCancelled = true
+			logErrorFn(cancelReason(commandName, ctx))
+			if !terminated {
+				if timer := terminateCommandFn(cmd); timer != nil {
+					forceKillTimer = timer
+					terminated = true
+				}
+			}
+			waitErr = <-waitCh
+			break waitLoop
+		case <-messageTimerCh:
+			forcedAfterComplete = true
+			messageTimerCh = nil
+			if !terminated {
+				logWarnFn(fmt.Sprintf("%s output parsed; terminating lingering backend", commandName))
+				if timer := terminateCommandFn(cmd); timer != nil {
+					forceKillTimer = timer
+					terminated = true
+				}
+			}
+		case <-completeSeen:
+			completeSeenObserved = true
+			if messageTimer != nil {
+				continue
+			}
+			messageTimer = time.NewTimer(postMessageTerminateDelay)
+			messageTimerCh = messageTimer.C
+		case <-messageSeen:
+			messageSeenObserved = true
+		}
+	}
+
+	if messageTimer != nil {
+		if !messageTimer.Stop() {
+			select {
+			case <-messageTimer.C:
+			default:
+			}
+		}
 	}
 
 	if forceKillTimer != nil {
@@ -693,10 +1095,14 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	var parsed parseResult
-	if ctxCancelled {
+	switch {
+	case ctxCancelled:
 		closeWithReason(stdout, stdoutCloseReasonCtx)
 		parsed = <-parseCh
-	} else {
+	case messageSeenObserved || completeSeenObserved:
+		closeWithReason(stdout, stdoutCloseReasonWait)
+		parsed = <-parseCh
+	default:
 		drainTimer := time.NewTimer(stdoutDrainTimeout)
 		defer drainTimer.Stop()
 
@@ -704,6 +1110,11 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		case parsed = <-parseCh:
 			closeWithReason(stdout, stdoutCloseReasonWait)
 		case <-messageSeen:
+			messageSeenObserved = true
+			closeWithReason(stdout, stdoutCloseReasonWait)
+			parsed = <-parseCh
+		case <-completeSeen:
+			completeSeenObserved = true
 			closeWithReason(stdout, stdoutCloseReasonWait)
 			parsed = <-parseCh
 		case <-drainTimer.C:
@@ -724,17 +1135,21 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	if waitErr != nil {
-		if exitErr, ok := waitErr.(*exec.ExitError); ok {
-			code := exitErr.ExitCode()
-			logErrorFn(fmt.Sprintf("%s exited with status %d", commandName, code))
-			result.ExitCode = code
-			result.Error = attachStderr(fmt.Sprintf("%s exited with status %d", commandName, code))
+		if forcedAfterComplete && parsed.message != "" {
+			logWarnFn(fmt.Sprintf("%s terminated after delivering output", commandName))
+		} else {
+			if exitErr, ok := waitErr.(*exec.ExitError); ok {
+				code := exitErr.ExitCode()
+				logErrorFn(fmt.Sprintf("%s exited with status %d", commandName, code))
+				result.ExitCode = code
+				result.Error = attachStderr(fmt.Sprintf("%s exited with status %d", commandName, code))
+				return result
+			}
+			logErrorFn(commandName + " error: " + waitErr.Error())
+			result.ExitCode = 1
+			result.Error = attachStderr(commandName + " error: " + waitErr.Error())
 			return result
 		}
-		logErrorFn(commandName + " error: " + waitErr.Error())
-		result.ExitCode = 1
-		result.Error = attachStderr(commandName + " error: " + waitErr.Error())
-		return result
 	}
 
 	message := parsed.message
@@ -756,8 +1171,8 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	result.ExitCode = 0
 	result.Message = message
 	result.SessionID = threadID
-	if logger := activeLogger(); logger != nil {
-		result.LogPath = logger.Path()
+	if result.LogPath == "" && injectedLogger != nil {
+		result.LogPath = injectedLogger.Path()
 	}
 
 	return result

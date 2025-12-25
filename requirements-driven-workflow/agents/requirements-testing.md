@@ -199,6 +199,10 @@ func TestAPIEndpoint(t *testing.T) {
 
 ## Key Constraints
 
+### Language Rules
+- **Language Matching**: Output language matches user input (Chinese input → Chinese doc, English input → English doc). When language is ambiguous, default to Chinese.
+- **Technical Terms**: Keep technical terms (API, E2E, CI/CD, Mock, etc.) in English; translate explanatory text only.
+
 ### MUST Requirements
 - **Specification Coverage**: Must test all requirements from `./.claude/specs/{feature_name}/requirements-spec.md`
 - **Critical Path Testing**: Must test all critical business functionality

@@ -39,18 +39,42 @@ codeagent-wrapper --backend gemini "simple task"
 
 ## Backends
 
-| Backend | Command | Description |
-|---------|---------|-------------|
-| codex | `--backend codex` | OpenAI Codex (default) |
-| claude | `--backend claude` | Anthropic Claude |
-| gemini | `--backend gemini` | Google Gemini |
+| Backend | Command | Description | Best For |
+|---------|---------|-------------|----------|
+| codex | `--backend codex` | OpenAI Codex (default) | Code analysis, complex development |
+| claude | `--backend claude` | Anthropic Claude | Simple tasks, documentation, prompts |
+| gemini | `--backend gemini` | Google Gemini | UI/UX prototyping |
+
+### Backend Selection Guide
+
+**Codex** (default):
+- Deep code understanding and complex logic implementation
+- Large-scale refactoring with precise dependency tracking
+- Algorithm optimization and performance tuning
+- Example: "Analyze the call graph of @src/core and refactor the module dependency structure"
+
+**Claude**:
+- Quick feature implementation with clear requirements
+- Technical documentation, API specs, README generation
+- Professional prompt engineering (e.g., product requirements, design specs)
+- Example: "Generate a comprehensive README for @package.json with installation, usage, and API docs"
+
+**Gemini**:
+- UI component scaffolding and layout prototyping
+- Design system implementation with style consistency
+- Interactive element generation with accessibility support
+- Example: "Create a responsive dashboard layout with sidebar navigation and data visualization cards"
+
+**Backend Switching**:
+- Start with Codex for analysis, switch to Claude for documentation, then Gemini for UI implementation
+- Use per-task backend selection in parallel mode to optimize for each task's strengths
 
 ## Parameters
 
 - `task` (required): Task description, supports `@file` references
 - `working_dir` (optional): Working directory (default: current)
 - `--backend` (optional): Select AI backend (codex/claude/gemini, default: codex)
-  - **Note**: Claude backend defaults to `--dangerously-skip-permissions` for automation compatibility
+  - **Note**: Claude backend only adds `--dangerously-skip-permissions` when explicitly enabled
 
 ## Return Format
 
@@ -77,11 +101,12 @@ EOF
 
 ## Parallel Execution
 
-**With global backend**:
+**Default (summary mode - context-efficient):**
 ```bash
-codeagent-wrapper --parallel --backend claude <<'EOF'
+codeagent-wrapper --parallel <<'EOF'
 ---TASK---
 id: task1
+backend: codex
 workdir: /path/to/dir
 ---CONTENT---
 task content
@@ -92,6 +117,17 @@ dependencies: task1
 dependent task
 EOF
 ```
+
+**Full output mode (for debugging):**
+```bash
+codeagent-wrapper --parallel --full-output <<'EOF'
+...
+EOF
+```
+
+**Output Modes:**
+- **Summary (default)**: Structured report with changes, output, verification, and review summary.
+- **Full (`--full-output`)**: Complete task messages. Use only when debugging specific failures.
 
 **With per-task backend**:
 ```bash
@@ -123,9 +159,9 @@ Set `CODEAGENT_MAX_PARALLEL_WORKERS` to limit concurrent tasks (default: unlimit
 ## Environment Variables
 
 - `CODEX_TIMEOUT`: Override timeout in milliseconds (default: 7200000 = 2 hours)
-- `CODEAGENT_SKIP_PERMISSIONS`: Control permission checks
-  - For **Claude** backend: Set to `true`/`1` to **disable** `--dangerously-skip-permissions` (default: enabled)
-  - For **Codex/Gemini** backends: Set to `true`/`1` to enable permission skipping (default: disabled)
+- `CODEAGENT_SKIP_PERMISSIONS`: Control Claude CLI permission checks
+  - For **Claude** backend: Set to `true`/`1` to add `--dangerously-skip-permissions` (default: disabled)
+  - For **Codex/Gemini** backends: Currently has no effect
 - `CODEAGENT_MAX_PARALLEL_WORKERS`: Limit concurrent tasks in parallel mode (default: unlimited, recommended: 8)
 
 ## Invocation Pattern
@@ -158,9 +194,8 @@ Bash tool parameters:
 
 ## Security Best Practices
 
-- **Claude Backend**: Defaults to `--dangerously-skip-permissions` for automation workflows
-  - To enforce permission checks with Claude: Set `CODEAGENT_SKIP_PERMISSIONS=true`
-- **Codex/Gemini Backends**: Permission checks enabled by default
+- **Claude Backend**: Permission checks enabled by default
+  - To skip checks: set `CODEAGENT_SKIP_PERMISSIONS=true` or pass `--skip-permissions`
 - **Concurrency Limits**: Set `CODEAGENT_MAX_PARALLEL_WORKERS` in production to prevent resource exhaustion
 - **Automation Context**: This wrapper is designed for AI-driven automation where permission prompts would block execution
 

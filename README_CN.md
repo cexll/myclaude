@@ -2,7 +2,7 @@
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-5.2.2-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-5.2-green)](https://github.com/cexll/myclaude)
 
 > AI 驱动的开发自动化 - 多后端执行架构 (Codex/Claude/Gemini)
 
@@ -152,14 +152,38 @@ python3 install.py --force
 
 ```
 ~/.claude/
-├── CLAUDE.md              # 核心指令和角色定义
-├── commands/              # 斜杠命令 (/dev, /code 等)
-├── agents/                # 智能体定义
+├── bin/
+│   └── codeagent-wrapper    # 主可执行文件
+├── CLAUDE.md                # 核心指令和角色定义
+├── commands/                # 斜杠命令 (/dev, /code 等)
+├── agents/                  # 智能体定义
 ├── skills/
 │   └── codex/
-│       └── SKILL.md       # Codex 集成技能
-└── installed_modules.json # 安装状态
+│       └── SKILL.md         # Codex 集成技能
+├── config.json              # 配置文件
+└── installed_modules.json   # 安装状态
 ```
+
+### 自定义安装目录
+
+默认情况下，myclaude 安装到 `~/.claude`。您可以使用 `INSTALL_DIR` 环境变量自定义安装目录：
+
+```bash
+# 安装到自定义目录
+INSTALL_DIR=/opt/myclaude bash install.sh
+
+# 相应更新您的 PATH
+export PATH="/opt/myclaude/bin:$PATH"
+```
+
+**目录结构：**
+- `$INSTALL_DIR/bin/` - codeagent-wrapper 可执行文件
+- `$INSTALL_DIR/skills/` - 技能定义
+- `$INSTALL_DIR/config.json` - 配置文件
+- `$INSTALL_DIR/commands/` - 斜杠命令定义
+- `$INSTALL_DIR/agents/` - 智能体定义
+
+**注意：** 使用自定义安装目录时，请确保将 `$INSTALL_DIR/bin` 添加到您的 `PATH` 环境变量中。
 
 ### 配置
 
@@ -283,11 +307,14 @@ setx PATH "%USERPROFILE%\bin;%PATH%"
 
 **Codex wrapper 未找到：**
 ```bash
-# 检查 PATH
-echo $PATH | grep -q "$HOME/bin" || echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+# 安装程序会自动添加 PATH，检查是否已添加
+if [[ ":$PATH:" != *":$HOME/.claude/bin:"* ]]; then
+    echo "PATH not configured. Reinstalling..."
+    bash install.sh
+fi
 
-# 重新安装
-bash install.sh
+# 或手动添加（幂等性命令）
+[[ ":$PATH:" != *":$HOME/.claude/bin:"* ]] && echo 'export PATH="$HOME/.claude/bin:$PATH"' >> ~/.zshrc
 ```
 
 **权限被拒绝：**

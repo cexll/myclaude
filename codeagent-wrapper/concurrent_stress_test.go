@@ -13,6 +13,16 @@ import (
 	"time"
 )
 
+func stripTimestampPrefix(line string) string {
+	if !strings.HasPrefix(line, "[") {
+		return line
+	}
+	if idx := strings.Index(line, "] "); idx >= 0 {
+		return line[idx+2:]
+	}
+	return line
+}
+
 // TestConcurrentStressLogger 高并发压力测试
 func TestConcurrentStressLogger(t *testing.T) {
 	if testing.Short() {
@@ -76,10 +86,11 @@ func TestConcurrentStressLogger(t *testing.T) {
 	t.Logf("Successfully wrote %d/%d logs (%.1f%%)",
 		actualCount, totalExpected, float64(actualCount)/float64(totalExpected)*100)
 
-	// 验证日志格式
-	formatRE := regexp.MustCompile(`^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\] \[PID:\d+\] INFO: goroutine-`)
+	// 验证日志格式（纯文本，无前缀）
+	formatRE := regexp.MustCompile(`^goroutine-\d+-msg-\d+$`)
 	for i, line := range lines[:min(10, len(lines))] {
-		if !formatRE.MatchString(line) {
+		msg := stripTimestampPrefix(line)
+		if !formatRE.MatchString(msg) {
 			t.Errorf("line %d has invalid format: %s", i, line)
 		}
 	}
@@ -291,18 +302,15 @@ func TestLoggerOrderPreservation(t *testing.T) {
 	sequences := make(map[int][]int) // goroutine ID -> sequence numbers
 
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := stripTimestampPrefix(scanner.Text())
 		var gid, seq int
-		parts := strings.SplitN(line, " INFO: ", 2)
-		if len(parts) != 2 {
-			t.Errorf("invalid log format: %s", line)
+		// Parse format: G0-SEQ0001 (without INFO: prefix)
+		_, err := fmt.Sscanf(line, "G%d-SEQ%04d", &gid, &seq)
+		if err != nil {
+			t.Errorf("invalid log format: %s (error: %v)", line, err)
 			continue
 		}
-		if _, err := fmt.Sscanf(parts[1], "G%d-SEQ%d", &gid, &seq); err == nil {
-			sequences[gid] = append(sequences[gid], seq)
-		} else {
-			t.Errorf("failed to parse sequence from line: %s", line)
-		}
+		sequences[gid] = append(sequences[gid], seq)
 	}
 
 	// 验证每个 goroutine 内部顺序

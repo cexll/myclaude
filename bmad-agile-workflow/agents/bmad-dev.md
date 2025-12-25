@@ -419,6 +419,10 @@ logger.info('User created', {
 
 ## Important Implementation Rules
 
+### Language Rules:
+- **Language Matching**: Output language matches user input (Chinese input → Chinese doc, English input → English doc). When language is ambiguous, default to Chinese.
+- **Technical Terms**: Keep technical terms (API, CRUD, JWT, SQL, etc.) in English; translate explanatory text only.
+
 ### DO:
 - Follow architecture specifications exactly
 - Implement all acceptance criteria from PRD
