@@ -307,11 +307,14 @@ setx PATH "%USERPROFILE%\bin;%PATH%"
 
 **Codex wrapper 未找到：**
 ```bash
-# 检查 PATH
-echo $PATH | grep -q "$HOME/.claude/bin" || echo 'export PATH="$HOME/.claude/bin:$PATH"' >> ~/.zshrc
+# 安装程序会自动添加 PATH，检查是否已添加
+if [[ ":$PATH:" != *":$HOME/.claude/bin:"* ]]; then
+    echo "PATH not configured. Reinstalling..."
+    bash install.sh
+fi
 
-# 重新安装
-bash install.sh
+# 或手动添加（幂等性命令）
+[[ ":$PATH:" != *":$HOME/.claude/bin:"* ]] && echo 'export PATH="$HOME/.claude/bin:$PATH"' >> ~/.zshrc
 ```
 
 **权限被拒绝：**

@@ -371,11 +371,14 @@ setx PATH "%USERPROFILE%\bin;%PATH%"
 
 **Codex wrapper not found:**
 ```bash
-# Check PATH
-echo $PATH | grep -q "$HOME/.claude/bin" || echo 'export PATH="$HOME/.claude/bin:$PATH"' >> ~/.zshrc
+# Installer auto-adds PATH, check if configured
+if [[ ":$PATH:" != *":$HOME/.claude/bin:"* ]]; then
+    echo "PATH not configured. Reinstalling..."
+    bash install.sh
+fi
 
-# Reinstall
-bash install.sh
+# Or manually add (idempotent command)
+[[ ":$PATH:" != *":$HOME/.claude/bin:"* ]] && echo 'export PATH="$HOME/.claude/bin:$PATH"' >> ~/.zshrc
 ```
 
 **Permission denied:**
