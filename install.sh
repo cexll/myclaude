@@ -48,11 +48,28 @@ else
     exit 1
 fi
 
-if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
+# Auto-add to shell config files with idempotency
+if [[ ":${PATH}:" != *":${BIN_DIR}:"* ]]; then
     echo ""
     echo "WARNING: ${BIN_DIR} is not in your PATH"
-    echo "Add this line to your ~/.bashrc or ~/.zshrc (then restart your shell):"
-    echo ""
-    echo "    export PATH=\"${BIN_DIR}:\$PATH\""
+
+    # Detect shell config file
+    if [ -n "$ZSH_VERSION" ]; then
+        RC_FILE="$HOME/.zshrc"
+    else
+        RC_FILE="$HOME/.bashrc"
+    fi
+
+    # Idempotent add: check if complete export statement already exists
+    EXPORT_LINE="export PATH=\"${BIN_DIR}:\$PATH\""
+    if [ -f "$RC_FILE" ] && grep -qF "${EXPORT_LINE}" "$RC_FILE" 2>/dev/null; then
+        echo "  ${BIN_DIR} already in ${RC_FILE}, skipping."
+    else
+        echo "  Adding to ${RC_FILE}..."
+        echo "" >> "$RC_FILE"
+        echo "# Added by myclaude installer" >> "$RC_FILE"
+        echo "export PATH=\"${BIN_DIR}:\$PATH\"" >> "$RC_FILE"
+        echo "  Done. Run 'source ${RC_FILE}' or restart shell."
+    fi
     echo ""
 fi
