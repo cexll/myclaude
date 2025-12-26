@@ -271,8 +271,8 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 			continue
 		}
 
-		// Unknown event format
-		warnFn(fmt.Sprintf("Unknown event format: %s", truncateBytes(line, 100)))
+		// Unknown event format from other backends (turn.started/assistant/user); ignore.
+		continue
 	}
 
 	switch {
