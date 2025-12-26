@@ -462,9 +462,83 @@ claude -r <session_id> "test"
 
 ---
 
-## Documentation
+## FAQ (Frequently Asked Questions)
 
-### Core Guides
+### Q1: `codeagent-wrapper` execution fails with "Unknown event format"
+
+**Problem:**
+```
+Unknown event format: {"type":"turn.started"}
+Unknown event format: {"type":"assistant", ...}
+```
+
+**Solution:**
+This is a logging event format display issue and does not affect actual functionality. It will be fixed in the next version. You can ignore these log outputs.
+
+**Related Issue:** [#96](https://github.com/cexll/myclaude/issues/96)
+
+---
+
+### Q2: Gemini cannot read files ignored by `.gitignore`
+
+**Problem:**
+When using `codeagent-wrapper --backend gemini`, files in directories like `.claude/` that are ignored by `.gitignore` cannot be read.
+
+**Solution:**
+- **Option 1:** Remove `.claude/` from your `.gitignore` file
+- **Option 2:** Ensure files that need to be read are not in `.gitignore` list
+
+**Related Issue:** [#75](https://github.com/cexll/myclaude/issues/75)
+
+---
+
+### Q3: `/dev` command parallel execution is very slow
+
+**Problem:**
+Using `/dev` command for simple features takes too long (over 30 minutes) with no visibility into task progress.
+
+**Solution:**
+1. **Check logs:** Review `C:\Users\User\AppData\Local\Temp\codeagent-wrapper-*.log` to identify bottlenecks
+2. **Adjust backend:**
+   - Try faster models like `gpt-5.1-codex-max`
+   - Running in WSL may be significantly faster
+3. **Workspace:** Use a single repository instead of monorepo with multiple sub-projects
+
+**Related Issue:** [#77](https://github.com/cexll/myclaude/issues/77)
+
+---
+
+### Q4: Codex permission denied with new Go version
+
+**Problem:**
+After upgrading to the new Go-based Codex implementation, execution fails with permission denied errors.
+
+**Solution:**
+Add the following configuration to `~/.codex/config.yaml` (Windows: `c:\user\.codex\config.toml`):
+```yaml
+model = "gpt-5.1-codex-max"
+model_reasoning_effort = "high"
+model_reasoning_summary = "detailed"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+disable_response_storage = true
+network_access = true
+```
+
+**Key settings:**
+- `approval_policy = "never"` - Remove approval restrictions
+- `sandbox_mode = "workspace-write"` - Allow workspace write access
+- `network_access = true` - Enable network access
+
+**Related Issue:** [#31](https://github.com/cexll/myclaude/issues/31)
+
+---
+
+**Still having issues?** Visit [GitHub Issues](https://github.com/cexll/myclaude/issues) to search or report new issues.
+
+---
+
+## Documentation
 - **[Codeagent-Wrapper Guide](docs/CODEAGENT-WRAPPER.md)** - Multi-backend execution wrapper
 - **[Hooks Documentation](docs/HOOKS.md)** - Custom hooks and automation
 
