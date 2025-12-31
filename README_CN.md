@@ -282,8 +282,10 @@ $Env:PATH = "$HOME\bin;$Env:PATH"
 ```
 
 ```batch
-REM cmd.exe - 永久添加（当前用户）
-setx PATH "%USERPROFILE%\bin;%PATH%"
+REM cmd.exe - 永久添加（当前用户）（建议使用上面的 PowerShell 方法）
+REM 警告：此命令会展开 %PATH% 包含系统 PATH，导致重复
+REM 注意：使用 reg add 而非 setx 以避免 1024 字符截断限制
+reg add "HKCU\Environment" /v Path /t REG_EXPAND_SZ /d "%USERPROFILE%\bin;%PATH%" /f
 ```
 
 ---

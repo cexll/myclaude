@@ -117,11 +117,18 @@ if "!ALREADY_IN_USERPATH!"=="1" (
             set "USER_PATH_NEW=!PCT!USERPROFILE!PCT!\bin"
         )
         rem Persist update to HKCU\Environment\Path (user scope)
-        setx Path "!USER_PATH_NEW!" >nul
-        if errorlevel 1 (
-            echo WARNING: Failed to append %%USERPROFILE%%\bin to your user PATH.
+        rem Use reg add instead of setx to avoid 1024-character limit
+        echo(!USER_PATH_NEW! | findstr /C:"\"" /C:"!" >nul
+        if not errorlevel 1 (
+            echo WARNING: Your PATH contains quotes or exclamation marks that may cause issues.
+            echo Skipping automatic PATH update. Please add %%USERPROFILE%%\bin to your PATH manually.
         ) else (
-            echo Added %%USERPROFILE%%\bin to your user PATH.
+            reg add "HKCU\Environment" /v Path /t REG_EXPAND_SZ /d "!USER_PATH_NEW!" /f >nul
+            if errorlevel 1 (
+                echo WARNING: Failed to append %%USERPROFILE%%\bin to your user PATH.
+            ) else (
+                echo Added %%USERPROFILE%%\bin to your user PATH.
+            )
         )
     )
 )

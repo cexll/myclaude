@@ -346,8 +346,10 @@ $Env:PATH = "$HOME\bin;$Env:PATH"
 ```
 
 ```batch
-REM cmd.exe - persistent for current user
-setx PATH "%USERPROFILE%\bin;%PATH%"
+REM cmd.exe - persistent for current user (use PowerShell method above instead)
+REM WARNING: This expands %PATH% which includes system PATH, causing duplication
+REM Note: Using reg add instead of setx to avoid 1024-character truncation limit
+reg add "HKCU\Environment" /v Path /t REG_EXPAND_SZ /d "%USERPROFILE%\bin;%PATH%" /f
 ```
 
 ---
