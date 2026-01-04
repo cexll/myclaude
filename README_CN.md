@@ -408,6 +408,28 @@ network_access = true
 
 ---
 
+### Q5: 执行时遇到权限拒绝或沙箱限制
+
+**问题描述：**
+运行 codeagent-wrapper 时出现权限错误或沙箱限制。
+
+**解决方案：**
+设置以下环境变量：
+```bash
+export CODEX_BYPASS_SANDBOX=true
+export CODEAGENT_SKIP_PERMISSIONS=true
+```
+
+或添加到 shell 配置文件（`~/.zshrc` 或 `~/.bashrc`）：
+```bash
+echo 'export CODEX_BYPASS_SANDBOX=true' >> ~/.zshrc
+echo 'export CODEAGENT_SKIP_PERMISSIONS=true' >> ~/.zshrc
+```
+
+**注意：** 这些设置会绕过安全限制，请仅在可信环境中使用。
+
+---
+
 **仍有疑问？** 请访问 [GitHub Issues](https://github.com/cexll/myclaude/issues) 搜索或提交新问题。
 
 ---

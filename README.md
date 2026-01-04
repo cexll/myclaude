@@ -536,6 +536,28 @@ network_access = true
 
 ---
 
+### Q5: Permission denied or sandbox restrictions during execution
+
+**Problem:**
+Execution fails with permission errors or sandbox restrictions when running codeagent-wrapper.
+
+**Solution:**
+Set the following environment variables:
+```bash
+export CODEX_BYPASS_SANDBOX=true
+export CODEAGENT_SKIP_PERMISSIONS=true
+```
+
+Or add them to your shell profile (`~/.zshrc` or `~/.bashrc`):
+```bash
+echo 'export CODEX_BYPASS_SANDBOX=true' >> ~/.zshrc
+echo 'export CODEAGENT_SKIP_PERMISSIONS=true' >> ~/.zshrc
+```
+
+**Note:** These settings bypass security restrictions. Use with caution in trusted environments only.
+
+---
+
 **Still having issues?** Visit [GitHub Issues](https://github.com/cexll/myclaude/issues) to search or report new issues.
 
 ---
