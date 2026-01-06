@@ -1139,6 +1139,65 @@ func TestBackendParseArgs_BackendFlag(t *testing.T) {
 	}
 }
 
+func TestBackendParseArgs_ModelFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "model flag",
+			args: []string{"codeagent-wrapper", "--model", "opus", "task"},
+			want: "opus",
+		},
+		{
+			name: "model equals syntax",
+			args: []string{"codeagent-wrapper", "--model=opus", "task"},
+			want: "opus",
+		},
+		{
+			name: "model trimmed",
+			args: []string{"codeagent-wrapper", "--model", "  opus  ", "task"},
+			want: "opus",
+		},
+		{
+			name: "model with resume mode",
+			args: []string{"codeagent-wrapper", "--model", "sonnet", "resume", "sid", "task"},
+			want: "sonnet",
+		},
+		{
+			name:    "missing model value",
+			args:    []string{"codeagent-wrapper", "--model"},
+			wantErr: true,
+		},
+		{
+			name:    "model equals missing value",
+			args:    []string{"codeagent-wrapper", "--model=", "task"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Args = tt.args
+			cfg, err := parseArgs()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.Model != tt.want {
+				t.Fatalf("Model = %q, want %q", cfg.Model, tt.want)
+			}
+		})
+	}
+}
+
 func TestBackendParseArgs_SkipPermissions(t *testing.T) {
 	const envKey = "CODEAGENT_SKIP_PERMISSIONS"
 	t.Cleanup(func() { os.Unsetenv(envKey) })
@@ -1276,6 +1335,26 @@ do something`
 	}
 }
 
+func TestParallelParseConfig_Model(t *testing.T) {
+	input := `---TASK---
+id: task-1
+model: opus
+---CONTENT---
+do something`
+
+	cfg, err := parseParallelConfig([]byte(input))
+	if err != nil {
+		t.Fatalf("parseParallelConfig() unexpected error: %v", err)
+	}
+	if len(cfg.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(cfg.Tasks))
+	}
+	task := cfg.Tasks[0]
+	if task.Model != "opus" {
+		t.Fatalf("model = %q, want opus", task.Model)
+	}
+}
+
 func TestParallelParseConfig_EmptySessionID(t *testing.T) {
 	input := `---TASK---
 id: task-1
@@ -1356,6 +1435,120 @@ code with special chars: $var "quotes"`
 	if len(cfg.Tasks) != 2 {
 		t.Fatalf("expected 2 tasks, got %d", len(cfg.Tasks))
 	}
+}
+
+func TestClaudeModel_DefaultsFromSettings(t *testing.T) {
+	defer resetTestHooks()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	dir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	settingsModel := "claude-opus-4-5-20250929"
+	path := filepath.Join(dir, "settings.json")
+	data := []byte(fmt.Sprintf(`{"model":%q,"env":{"FOO":"bar"}}`, settingsModel))
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	makeRunner := func(gotName *string, gotArgs *[]string, fake **fakeCmd) func(context.Context, string, ...string) commandRunner {
+		return func(ctx context.Context, name string, args ...string) commandRunner {
+			*gotName = name
+			*gotArgs = append([]string(nil), args...)
+			cmd := newFakeCmd(fakeCmdConfig{
+				PID: 123,
+				StdoutPlan: []fakeStdoutEvent{
+					{Data: "{\"type\":\"result\",\"session_id\":\"sid\",\"result\":\"ok\"}\n"},
+				},
+			})
+			*fake = cmd
+			return cmd
+		}
+	}
+
+	t.Run("new mode inherits model when unset", func(t *testing.T) {
+		var (
+			gotName string
+			gotArgs []string
+			fake    *fakeCmd
+		)
+		origRunner := newCommandRunner
+		newCommandRunner = makeRunner(&gotName, &gotArgs, &fake)
+		t.Cleanup(func() { newCommandRunner = origRunner })
+
+		res := runCodexTaskWithContext(context.Background(), TaskSpec{Task: "hi", Mode: "new", WorkDir: defaultWorkdir}, ClaudeBackend{}, nil, false, true, 5)
+		if res.ExitCode != 0 || res.Message != "ok" {
+			t.Fatalf("unexpected result: %+v", res)
+		}
+		if gotName != "claude" {
+			t.Fatalf("command = %q, want claude", gotName)
+		}
+		found := false
+		for i := 0; i+1 < len(gotArgs); i++ {
+			if gotArgs[i] == "--model" && gotArgs[i+1] == settingsModel {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected --model %q in args, got %v", settingsModel, gotArgs)
+		}
+		if fake == nil || fake.env["FOO"] != "bar" {
+			t.Fatalf("expected env to include FOO=bar, got %v", fake.env)
+		}
+	})
+
+	t.Run("explicit model overrides settings", func(t *testing.T) {
+		var (
+			gotName string
+			gotArgs []string
+			fake    *fakeCmd
+		)
+		origRunner := newCommandRunner
+		newCommandRunner = makeRunner(&gotName, &gotArgs, &fake)
+		t.Cleanup(func() { newCommandRunner = origRunner })
+
+		res := runCodexTaskWithContext(context.Background(), TaskSpec{Task: "hi", Mode: "new", WorkDir: defaultWorkdir, Model: "sonnet"}, ClaudeBackend{}, nil, false, true, 5)
+		if res.ExitCode != 0 || res.Message != "ok" {
+			t.Fatalf("unexpected result: %+v", res)
+		}
+		found := false
+		for i := 0; i+1 < len(gotArgs); i++ {
+			if gotArgs[i] == "--model" && gotArgs[i+1] == "sonnet" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected --model sonnet in args, got %v", gotArgs)
+		}
+	})
+
+	t.Run("resume mode does not inherit model by default", func(t *testing.T) {
+		var (
+			gotName string
+			gotArgs []string
+			fake    *fakeCmd
+		)
+		origRunner := newCommandRunner
+		newCommandRunner = makeRunner(&gotName, &gotArgs, &fake)
+		t.Cleanup(func() { newCommandRunner = origRunner })
+
+		res := runCodexTaskWithContext(context.Background(), TaskSpec{Task: "hi", Mode: "resume", SessionID: "sid-123", WorkDir: defaultWorkdir}, ClaudeBackend{}, nil, false, true, 5)
+		if res.ExitCode != 0 || res.Message != "ok" {
+			t.Fatalf("unexpected result: %+v", res)
+		}
+		for i := 0; i < len(gotArgs); i++ {
+			if gotArgs[i] == "--model" {
+				t.Fatalf("did not expect --model in resume args, got %v", gotArgs)
+			}
+		}
+	})
 }
 
 func TestRunShouldUseStdin(t *testing.T) {
@@ -2944,6 +3137,50 @@ do two`)
 	}
 	if !secondOK || secondBackend != "gemini" {
 		t.Fatalf("second backend = %q (present=%v), want gemini", secondBackend, secondOK)
+	}
+}
+
+func TestParallelModelPropagation(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
+
+	orig := runCodexTaskFn
+	var mu sync.Mutex
+	seen := make(map[string]string)
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		mu.Lock()
+		seen[task.ID] = task.Model
+		mu.Unlock()
+		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: "ok"}
+	}
+	t.Cleanup(func() { runCodexTaskFn = orig })
+
+	stdinReader = strings.NewReader(`---TASK---
+id: first
+---CONTENT---
+do one
+
+---TASK---
+id: second
+model: opus
+---CONTENT---
+do two`)
+	os.Args = []string{"codeagent-wrapper", "--parallel", "--model", "sonnet"}
+
+	if code := run(); code != 0 {
+		t.Fatalf("run exit = %d, want 0", code)
+	}
+
+	mu.Lock()
+	firstModel, firstOK := seen["first"]
+	secondModel, secondOK := seen["second"]
+	mu.Unlock()
+
+	if !firstOK || firstModel != "sonnet" {
+		t.Fatalf("first model = %q (present=%v), want sonnet", firstModel, firstOK)
+	}
+	if !secondOK || secondModel != "opus" {
+		t.Fatalf("second model = %q (present=%v), want opus", secondModel, secondOK)
 	}
 }
 

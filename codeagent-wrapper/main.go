@@ -178,6 +178,7 @@ func run() (exitCode int) {
 
 		if parallelIndex != -1 {
 			backendName := defaultBackendName
+			model := ""
 			fullOutput := false
 			var extras []string
 
@@ -202,13 +203,27 @@ func run() (exitCode int) {
 						return 1
 					}
 					backendName = value
+				case arg == "--model":
+					if i+1 >= len(args) {
+						fmt.Fprintln(os.Stderr, "ERROR: --model flag requires a value")
+						return 1
+					}
+					model = args[i+1]
+					i++
+				case strings.HasPrefix(arg, "--model="):
+					value := strings.TrimPrefix(arg, "--model=")
+					if value == "" {
+						fmt.Fprintln(os.Stderr, "ERROR: --model flag requires a value")
+						return 1
+					}
+					model = value
 				default:
 					extras = append(extras, arg)
 				}
 			}
 
 			if len(extras) > 0 {
-				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend and --full-output are allowed.")
+				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend, --model and --full-output are allowed.")
 				fmt.Fprintln(os.Stderr, "Usage examples:")
 				fmt.Fprintf(os.Stderr, "  %s --parallel < tasks.txt\n", name)
 				fmt.Fprintf(os.Stderr, "  echo '...' | %s --parallel\n", name)
@@ -237,9 +252,13 @@ func run() (exitCode int) {
 			}
 
 			cfg.GlobalBackend = backendName
+			model = strings.TrimSpace(model)
 			for i := range cfg.Tasks {
 				if strings.TrimSpace(cfg.Tasks[i].Backend) == "" {
 					cfg.Tasks[i].Backend = backendName
+				}
+				if strings.TrimSpace(cfg.Tasks[i].Model) == "" && model != "" {
+					cfg.Tasks[i].Model = model
 				}
 			}
 
@@ -409,6 +428,7 @@ func run() (exitCode int) {
 		WorkDir:   cfg.WorkDir,
 		Mode:      cfg.Mode,
 		SessionID: cfg.SessionID,
+		Model:     cfg.Model,
 		UseStdin:  useStdin,
 	}
 

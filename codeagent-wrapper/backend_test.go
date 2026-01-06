@@ -63,6 +63,42 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	})
 }
 
+func TestBackendBuildArgs_Model(t *testing.T) {
+	t.Run("claude includes --model when set", func(t *testing.T) {
+		backend := ClaudeBackend{}
+		cfg := &Config{Mode: "new", Model: "opus"}
+		got := backend.BuildArgs(cfg, "todo")
+		want := []string{"-p", "--setting-sources", "", "--model", "opus", "--output-format", "stream-json", "--verbose", "todo"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("gemini includes -m when set", func(t *testing.T) {
+		backend := GeminiBackend{}
+		cfg := &Config{Mode: "new", Model: "gemini-3-pro-preview"}
+		got := backend.BuildArgs(cfg, "task")
+		want := []string{"-o", "stream-json", "-y", "-m", "gemini-3-pro-preview", "-p", "task"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("codex includes --model when set", func(t *testing.T) {
+		const key = "CODEX_BYPASS_SANDBOX"
+		t.Cleanup(func() { os.Unsetenv(key) })
+		os.Unsetenv(key)
+
+		backend := CodexBackend{}
+		cfg := &Config{Mode: "new", WorkDir: "/tmp", Model: "o3"}
+		got := backend.BuildArgs(cfg, "task")
+		want := []string{"e", "--model", "o3", "--skip-git-repo-check", "-C", "/tmp", "--json", "task"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+}
+
 func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 	t.Run("gemini new mode defaults workdir", func(t *testing.T) {
 		backend := GeminiBackend{}

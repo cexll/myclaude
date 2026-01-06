@@ -15,6 +15,7 @@ type Config struct {
 	Task               string
 	SessionID          string
 	WorkDir            string
+	Model              string
 	ExplicitStdin      bool
 	Timeout            int
 	Backend            string
@@ -36,6 +37,7 @@ type TaskSpec struct {
 	Dependencies []string        `json:"dependencies,omitempty"`
 	SessionID    string          `json:"session_id,omitempty"`
 	Backend      string          `json:"backend,omitempty"`
+	Model        string          `json:"model,omitempty"`
 	Mode         string          `json:"-"`
 	UseStdin     bool            `json:"-"`
 	Context      context.Context `json:"-"`
@@ -152,6 +154,8 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 				task.Mode = "resume"
 			case "backend":
 				task.Backend = value
+			case "model":
+				task.Model = value
 			case "dependencies":
 				for _, dep := range strings.Split(value, ",") {
 					dep = strings.TrimSpace(dep)
@@ -198,6 +202,7 @@ func parseArgs() (*Config, error) {
 	}
 
 	backendName := defaultBackendName
+	model := ""
 	skipPermissions := envFlagEnabled("CODEAGENT_SKIP_PERMISSIONS")
 	filtered := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -220,6 +225,20 @@ func parseArgs() (*Config, error) {
 		case arg == "--skip-permissions", arg == "--dangerously-skip-permissions":
 			skipPermissions = true
 			continue
+		case arg == "--model":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--model flag requires a value")
+			}
+			model = args[i+1]
+			i++
+			continue
+		case strings.HasPrefix(arg, "--model="):
+			value := strings.TrimPrefix(arg, "--model=")
+			if value == "" {
+				return nil, fmt.Errorf("--model flag requires a value")
+			}
+			model = value
+			continue
 		case strings.HasPrefix(arg, "--skip-permissions="):
 			skipPermissions = parseBoolFlag(strings.TrimPrefix(arg, "--skip-permissions="), skipPermissions)
 			continue
@@ -235,7 +254,7 @@ func parseArgs() (*Config, error) {
 	}
 	args = filtered
 
-	cfg := &Config{WorkDir: defaultWorkdir, Backend: backendName, SkipPermissions: skipPermissions}
+	cfg := &Config{WorkDir: defaultWorkdir, Backend: backendName, SkipPermissions: skipPermissions, Model: strings.TrimSpace(model)}
 	cfg.MaxParallelWorkers = resolveMaxParallelWorkers()
 
 	if args[0] == "resume" {

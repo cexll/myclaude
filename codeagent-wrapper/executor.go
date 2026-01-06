@@ -744,6 +744,10 @@ func buildCodexArgs(cfg *Config, targetArg string) []string {
 		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 	}
 
+	if model := strings.TrimSpace(cfg.Model); model != "" {
+		args = append(args, "--model", model)
+	}
+
 	args = append(args, "--skip-git-repo-check")
 
 	if isResume {
@@ -788,6 +792,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		Task:      taskSpec.Task,
 		SessionID: taskSpec.SessionID,
 		WorkDir:   taskSpec.WorkDir,
+		Model:     taskSpec.Model,
 		Backend:   defaultBackendName,
 	}
 
@@ -814,6 +819,15 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		result.ExitCode = 1
 		result.Error = "resume mode requires non-empty session_id"
 		return result
+	}
+
+	var claudeEnv map[string]string
+	if cfg.Backend == "claude" {
+		settings := loadMinimalClaudeSettings()
+		claudeEnv = settings.Env
+		if cfg.Mode != "resume" && strings.TrimSpace(cfg.Model) == "" && settings.Model != "" {
+			cfg.Model = settings.Model
+		}
 	}
 
 	useStdin := taskSpec.UseStdin
@@ -915,10 +929,8 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 
 	cmd := newCommandRunner(ctx, commandName, codexArgs...)
 
-	if cfg.Backend == "claude" {
-		if env := loadMinimalEnvSettings(); len(env) > 0 {
-			cmd.SetEnv(env)
-		}
+	if cfg.Backend == "claude" && len(claudeEnv) > 0 {
+		cmd.SetEnv(claudeEnv)
 	}
 
 	// For backends that don't support -C flag (claude, gemini), set working directory via cmd.Dir
