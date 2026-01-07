@@ -163,6 +163,10 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 				isCodex = true
 			}
 		}
+		// Codex-specific event types without thread_id or item
+		if !isCodex && (event.Type == "turn.started" || event.Type == "turn.completed") {
+			isCodex = true
+		}
 		isClaude := event.Subtype != "" || event.Result != ""
 		if !isClaude && event.Type == "result" && event.SessionID != "" && event.Status == "" {
 			isClaude = true
@@ -192,6 +196,10 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 					threadID = event.ThreadID
 				}
 				infoFn(fmt.Sprintf("thread.completed event thread_id=%s", event.ThreadID))
+				notifyComplete()
+
+			case "turn.completed":
+				infoFn("turn.completed event")
 				notifyComplete()
 
 			case "item.completed":
