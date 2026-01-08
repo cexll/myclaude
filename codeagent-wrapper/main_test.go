@@ -318,6 +318,9 @@ func newFakeProcess(pid int) *fakeProcess {
 }
 
 func (p *fakeProcess) Pid() int {
+	if runtime.GOOS == "windows" {
+		return 0
+	}
 	return p.pid
 }
 

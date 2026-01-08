@@ -990,6 +990,9 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		result.ExitCode = 1
 		result.Error = attachStderr("failed to create stdout pipe: " + err.Error())
 		closeWithReason(stderr, "stdout-pipe-failed")
+		if stdinPipe != nil {
+			_ = stdinPipe.Close()
+		}
 		return result
 	}
 
@@ -1027,6 +1030,9 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	if err := cmd.Start(); err != nil {
 		closeWithReason(stdout, "start-failed")
 		closeWithReason(stderr, "start-failed")
+		if stdinPipe != nil {
+			_ = stdinPipe.Close()
+		}
 		if strings.Contains(err.Error(), "executable file not found") {
 			msg := fmt.Sprintf("%s command not found in PATH", commandName)
 			logErrorFn(msg)
@@ -1167,13 +1173,7 @@ waitLoop:
 	// Wait for stderr drain so stderrBuf / stderrLogger are not accessed concurrently.
 	// Important: cmd.Wait can block on internal stderr copying if cmd.Stderr is a non-file writer.
 	// We use StderrPipe and drain ourselves to avoid that deadlock class (common when children inherit pipes).
-	stderrDrained := false
-	select {
-	case <-stderrDone:
-		stderrDrained = true
-	case <-time.After(500 * time.Millisecond):
-		logWarnFn(fmt.Sprintf("%s stderr drain timed out; continuing", commandName))
-	}
+	<-stderrDone
 
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		if errors.Is(ctxErr, context.DeadlineExceeded) {
@@ -1216,7 +1216,7 @@ waitLoop:
 	if stdoutLogger != nil {
 		stdoutLogger.Flush()
 	}
-	if stderrLogger != nil && stderrDrained {
+	if stderrLogger != nil {
 		stderrLogger.Flush()
 	}
 
