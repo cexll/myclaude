@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -32,7 +33,12 @@ type execFakeProcess struct {
 	mu      sync.Mutex
 }
 
-func (p *execFakeProcess) Pid() int { return p.pid }
+func (p *execFakeProcess) Pid() int {
+	if runtime.GOOS == "windows" {
+		return 0
+	}
+	return p.pid
+}
 func (p *execFakeProcess) Kill() error {
 	p.killed.Add(1)
 	return nil
@@ -84,6 +90,7 @@ func (rc *reasonReadCloser) record(reason string) {
 
 type execFakeRunner struct {
 	stdout          io.ReadCloser
+	stderr          io.ReadCloser
 	process         processHandle
 	stdin           io.WriteCloser
 	dir             string
@@ -92,6 +99,7 @@ type execFakeRunner struct {
 	waitDelay       time.Duration
 	startErr        error
 	stdoutErr       error
+	stderrErr       error
 	stdinErr        error
 	allowNilProcess bool
 	started         atomic.Bool
@@ -118,6 +126,15 @@ func (f *execFakeRunner) StdoutPipe() (io.ReadCloser, error) {
 		f.stdout = io.NopCloser(strings.NewReader(""))
 	}
 	return f.stdout, nil
+}
+func (f *execFakeRunner) StderrPipe() (io.ReadCloser, error) {
+	if f.stderrErr != nil {
+		return nil, f.stderrErr
+	}
+	if f.stderr == nil {
+		f.stderr = io.NopCloser(strings.NewReader(""))
+	}
+	return f.stderr, nil
 }
 func (f *execFakeRunner) StdinPipe() (io.WriteCloser, error) {
 	if f.stdinErr != nil {
@@ -163,6 +180,9 @@ func TestExecutorHelperCoverage(t *testing.T) {
 		if _, err := rc.StdoutPipe(); err == nil {
 			t.Fatalf("expected error for nil command")
 		}
+		if _, err := rc.StderrPipe(); err == nil {
+			t.Fatalf("expected error for nil command")
+		}
 		if _, err := rc.StdinPipe(); err == nil {
 			t.Fatalf("expected error for nil command")
 		}
@@ -182,11 +202,14 @@ func TestExecutorHelperCoverage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("StdoutPipe error: %v", err)
 		}
+		stderrPipe, err := rcProc.StderrPipe()
+		if err != nil {
+			t.Fatalf("StderrPipe error: %v", err)
+		}
 		stdinPipe, err := rcProc.StdinPipe()
 		if err != nil {
 			t.Fatalf("StdinPipe error: %v", err)
 		}
-		rcProc.SetStderr(io.Discard)
 		if err := rcProc.Start(); err != nil {
 			t.Fatalf("Start failed: %v", err)
 		}
@@ -200,6 +223,7 @@ func TestExecutorHelperCoverage(t *testing.T) {
 		_ = procHandle.Kill()
 		_ = rcProc.Wait()
 		_, _ = io.ReadAll(stdoutPipe)
+		_, _ = io.ReadAll(stderrPipe)
 
 		rp := &realProcess{}
 		if rp.Pid() != 0 {
@@ -1250,7 +1274,7 @@ func TestExecutorSignalAndTermination(t *testing.T) {
 	proc.mu.Lock()
 	signalled := len(proc.signals)
 	proc.mu.Unlock()
-	if signalled == 0 {
+	if runtime.GOOS != "windows" && signalled == 0 {
 		t.Fatalf("process did not receive signal")
 	}
 	if proc.killed.Load() == 0 {

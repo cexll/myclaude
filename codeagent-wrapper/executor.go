@@ -23,6 +23,7 @@ type commandRunner interface {
 	Start() error
 	Wait() error
 	StdoutPipe() (io.ReadCloser, error)
+	StderrPipe() (io.ReadCloser, error)
 	StdinPipe() (io.WriteCloser, error)
 	SetStderr(io.Writer)
 	SetDir(string)
@@ -61,6 +62,13 @@ func (r *realCmd) StdoutPipe() (io.ReadCloser, error) {
 		return nil, errors.New("command is nil")
 	}
 	return r.cmd.StdoutPipe()
+}
+
+func (r *realCmd) StderrPipe() (io.ReadCloser, error) {
+	if r.cmd == nil {
+		return nil, errors.New("command is nil")
+	}
+	return r.cmd.StderrPipe()
 }
 
 func (r *realCmd) StdinPipe() (io.WriteCloser, error) {
@@ -951,33 +959,40 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		if cfg.Backend == "gemini" {
 			stderrFilter = newFilteringWriter(os.Stderr, geminiNoisePatterns)
 			stderrOut = stderrFilter
-			defer stderrFilter.Flush()
 		}
 		stderrWriters = append([]io.Writer{stderrOut}, stderrWriters...)
 	}
-	if len(stderrWriters) == 1 {
-		cmd.SetStderr(stderrWriters[0])
-	} else {
-		cmd.SetStderr(io.MultiWriter(stderrWriters...))
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		logErrorFn("Failed to create stderr pipe: " + err.Error())
+		result.ExitCode = 1
+		result.Error = attachStderr("failed to create stderr pipe: " + err.Error())
+		return result
 	}
 
 	var stdinPipe io.WriteCloser
-	var err error
 	if useStdin {
 		stdinPipe, err = cmd.StdinPipe()
 		if err != nil {
 			logErrorFn("Failed to create stdin pipe: " + err.Error())
 			result.ExitCode = 1
 			result.Error = attachStderr("failed to create stdin pipe: " + err.Error())
+			closeWithReason(stderr, "stdin-pipe-failed")
 			return result
 		}
 	}
+
+	stderrDone := make(chan error, 1)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		logErrorFn("Failed to create stdout pipe: " + err.Error())
 		result.ExitCode = 1
 		result.Error = attachStderr("failed to create stdout pipe: " + err.Error())
+		closeWithReason(stderr, "stdout-pipe-failed")
+		if stdinPipe != nil {
+			_ = stdinPipe.Close()
+		}
 		return result
 	}
 
@@ -1013,6 +1028,11 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	logInfoFn(fmt.Sprintf("Starting %s with args: %s %s...", commandName, commandName, strings.Join(codexArgs[:min(5, len(codexArgs))], " ")))
 
 	if err := cmd.Start(); err != nil {
+		closeWithReason(stdout, "start-failed")
+		closeWithReason(stderr, "start-failed")
+		if stdinPipe != nil {
+			_ = stdinPipe.Close()
+		}
 		if strings.Contains(err.Error(), "executable file not found") {
 			msg := fmt.Sprintf("%s command not found in PATH", commandName)
 			logErrorFn(msg)
@@ -1030,6 +1050,15 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	if logger != nil {
 		logInfoFn(fmt.Sprintf("Log capturing to: %s", logger.Path()))
 	}
+
+	// Start stderr drain AFTER we know the command started, but BEFORE cmd.Wait can close the pipe.
+	go func() {
+		_, copyErr := io.Copy(io.MultiWriter(stderrWriters...), stderr)
+		if stderrFilter != nil {
+			stderrFilter.Flush()
+		}
+		stderrDone <- copyErr
+	}()
 
 	if useStdin && stdinPipe != nil {
 		logInfoFn(fmt.Sprintf("Writing %d chars to stdin...", len(taskSpec.Task)))
@@ -1081,6 +1110,11 @@ waitLoop:
 					terminated = true
 				}
 			}
+			// Close pipes to unblock stream readers, then wait for process exit.
+			closeWithReason(stdout, "terminate")
+			closeWithReason(stderr, "terminate")
+			waitErr = <-waitCh
+			break waitLoop
 		case <-completeSeen:
 			completeSeenObserved = true
 			if messageTimer != nil {
@@ -1134,6 +1168,12 @@ waitLoop:
 			parsed = <-parseCh
 		}
 	}
+
+	closeWithReason(stderr, stdoutCloseReasonWait)
+	// Wait for stderr drain so stderrBuf / stderrLogger are not accessed concurrently.
+	// Important: cmd.Wait can block on internal stderr copying if cmd.Stderr is a non-file writer.
+	// We use StderrPipe and drain ourselves to avoid that deadlock class (common when children inherit pipes).
+	<-stderrDone
 
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		if errors.Is(ctxErr, context.DeadlineExceeded) {
@@ -1209,7 +1249,7 @@ func forwardSignals(ctx context.Context, cmd commandRunner, logErrorFn func(stri
 		case sig := <-sigCh:
 			logErrorFn(fmt.Sprintf("Received signal: %v", sig))
 			if proc := cmd.Process(); proc != nil {
-				_ = proc.Signal(syscall.SIGTERM)
+				_ = sendTermSignal(proc)
 				time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
 					if p := cmd.Process(); p != nil {
 						_ = p.Kill()
@@ -1279,7 +1319,7 @@ func terminateCommand(cmd commandRunner) *forceKillTimer {
 		return nil
 	}
 
-	_ = proc.Signal(syscall.SIGTERM)
+	_ = sendTermSignal(proc)
 
 	done := make(chan struct{}, 1)
 	timer := time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
@@ -1301,7 +1341,7 @@ func terminateProcess(cmd commandRunner) *time.Timer {
 		return nil
 	}
 
-	_ = proc.Signal(syscall.SIGTERM)
+	_ = sendTermSignal(proc)
 
 	return time.AfterFunc(time.Duration(forceKillDelay.Load())*time.Second, func() {
 		if p := cmd.Process(); p != nil {
