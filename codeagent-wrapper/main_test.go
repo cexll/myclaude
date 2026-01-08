@@ -2096,6 +2096,16 @@ func TestBackendParseJSONStream_GeminiEvents(t *testing.T) {
 	}
 }
 
+func TestBackendParseJSONStream_GeminiInitEventSessionID(t *testing.T) {
+	input := `{"type":"init","session_id":"gemini-abc123"}`
+
+	_, threadID := parseJSONStream(strings.NewReader(input))
+
+	if threadID != "gemini-abc123" {
+		t.Fatalf("threadID=%q, want %q", threadID, "gemini-abc123")
+	}
+}
+
 func TestBackendParseJSONStream_GeminiEvents_DeltaFalseStillDetected(t *testing.T) {
 	input := `{"type":"init","session_id":"xyz789"}
 {"type":"message","content":"Hi","delta":false,"session_id":"xyz789"}

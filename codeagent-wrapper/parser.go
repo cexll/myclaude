@@ -171,7 +171,7 @@ func parseJSONStreamInternal(r io.Reader, warnFn func(string), infoFn func(strin
 		if !isClaude && event.Type == "result" && event.SessionID != "" && event.Status == "" {
 			isClaude = true
 		}
-		isGemini := event.Role != "" || event.Delta != nil || event.Status != ""
+		isGemini := (event.Type == "init" && event.SessionID != "") || event.Role != "" || event.Delta != nil || event.Status != ""
 
 		// Handle Codex events
 		if isCodex {
