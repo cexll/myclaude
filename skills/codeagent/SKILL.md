@@ -19,7 +19,7 @@ Execute codeagent-wrapper commands with pluggable AI backends (Codex, Claude, Ge
 
 **HEREDOC syntax** (recommended):
 ```bash
-codeagent-wrapper - [working_dir] <<'EOF'
+codeagent-wrapper --backend codex - [working_dir] <<'EOF'
 <task content here>
 EOF
 ```
@@ -33,7 +33,7 @@ EOF
 
 **Simple tasks**:
 ```bash
-codeagent-wrapper "simple task" [working_dir]
+codeagent-wrapper --backend codex "simple task" [working_dir]
 codeagent-wrapper --backend gemini "simple task"
 ```
 
@@ -73,7 +73,7 @@ codeagent-wrapper --backend gemini "simple task"
 
 - `task` (required): Task description, supports `@file` references
 - `working_dir` (optional): Working directory (default: current)
-- `--backend` (optional): Select AI backend (codex/claude/gemini, default: codex)
+- `--backend` (required): Select AI backend (codex/claude/gemini)
   - **Note**: Claude backend only adds `--dangerously-skip-permissions` when explicitly enabled
 
 ## Return Format
@@ -88,8 +88,8 @@ SESSION_ID: 019a7247-ac9d-71f3-89e2-a823dbd8fd14
 ## Resume Session
 
 ```bash
-# Resume with default backend
-codeagent-wrapper resume <session_id> - <<'EOF'
+# Resume with codex backend
+codeagent-wrapper --backend codex resume <session_id> - <<'EOF'
 <follow-up task>
 EOF
 
@@ -174,6 +174,8 @@ Bash tool parameters:
   EOF
 - timeout: 7200000
 - description: <brief description>
+
+Note: --backend is required (codex/claude/gemini)
 ```
 
 **Parallel Tasks**:
@@ -190,7 +192,35 @@ Bash tool parameters:
   EOF
 - timeout: 7200000
 - description: <brief description>
+
+Note: Global --backend is required; per-task backend is optional
 ```
+
+## Critical Rules
+
+**NEVER kill codeagent processes.** Long-running tasks are normal. Instead:
+
+1. **Check task status via log file**:
+   ```bash
+   # View real-time output
+   tail -f /tmp/claude/<workdir>/tasks/<task_id>.output
+
+   # Check if task is still running
+   cat /tmp/claude/<workdir>/tasks/<task_id>.output | tail -50
+   ```
+
+2. **Wait with timeout**:
+   ```bash
+   # Use TaskOutput tool with block=true and timeout
+   TaskOutput(task_id="<id>", block=true, timeout=300000)
+   ```
+
+3. **Check process without killing**:
+   ```bash
+   ps aux | grep codeagent-wrapper | grep -v grep
+   ```
+
+**Why:** codeagent tasks often take 2-10 minutes. Killing them wastes API costs and loses progress.
 
 ## Security Best Practices
 
