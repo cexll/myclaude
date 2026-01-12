@@ -1290,11 +1290,85 @@ func TestBackendParseArgs_ModelFlag(t *testing.T) {
 	}
 }
 
+func TestBackendParseArgs_PromptFileFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "prompt file flag",
+			args: []string{"codeagent-wrapper", "--prompt-file", "/tmp/prompt.md", "task"},
+			want: "/tmp/prompt.md",
+		},
+		{
+			name: "prompt file equals syntax",
+			args: []string{"codeagent-wrapper", "--prompt-file=/tmp/prompt.md", "task"},
+			want: "/tmp/prompt.md",
+		},
+		{
+			name: "prompt file trimmed",
+			args: []string{"codeagent-wrapper", "--prompt-file", "  /tmp/prompt.md  ", "task"},
+			want: "/tmp/prompt.md",
+		},
+		{
+			name:    "prompt file missing value",
+			args:    []string{"codeagent-wrapper", "--prompt-file"},
+			wantErr: true,
+		},
+		{
+			name:    "prompt file equals missing value",
+			args:    []string{"codeagent-wrapper", "--prompt-file=", "task"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Args = tt.args
+			cfg, err := parseArgs()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.PromptFile != tt.want {
+				t.Fatalf("PromptFile = %q, want %q", cfg.PromptFile, tt.want)
+			}
+		})
+	}
+}
+
+func TestBackendParseArgs_PromptFileOverridesAgent(t *testing.T) {
+	defer resetTestHooks()
+
+	os.Args = []string{"codeagent-wrapper", "--prompt-file", "/tmp/custom.md", "--agent", "sisyphus", "task"}
+	cfg, err := parseArgs()
+	if err != nil {
+		t.Fatalf("parseArgs() unexpected error: %v", err)
+	}
+	if cfg.PromptFile != "/tmp/custom.md" {
+		t.Fatalf("PromptFile = %q, want %q", cfg.PromptFile, "/tmp/custom.md")
+	}
+
+	os.Args = []string{"codeagent-wrapper", "--agent", "sisyphus", "--prompt-file", "/tmp/custom.md", "task"}
+	cfg, err = parseArgs()
+	if err != nil {
+		t.Fatalf("parseArgs() unexpected error: %v", err)
+	}
+	if cfg.PromptFile != "/tmp/custom.md" {
+		t.Fatalf("PromptFile = %q, want %q", cfg.PromptFile, "/tmp/custom.md")
+	}
+}
+
 func TestBackendParseArgs_SkipPermissions(t *testing.T) {
 	const envKey = "CODEAGENT_SKIP_PERMISSIONS"
-	t.Cleanup(func() { os.Unsetenv(envKey) })
-
-	os.Setenv(envKey, "true")
+	t.Setenv(envKey, "true")
 	os.Args = []string{"codeagent-wrapper", "task"}
 	cfg, err := parseArgs()
 	if err != nil {
@@ -1365,19 +1439,17 @@ func TestBackendParseBoolFlag(t *testing.T) {
 
 func TestBackendEnvFlagEnabled(t *testing.T) {
 	const key = "TEST_FLAG_ENABLED"
-	t.Cleanup(func() { os.Unsetenv(key) })
-
-	os.Unsetenv(key)
+	t.Setenv(key, "")
 	if envFlagEnabled(key) {
 		t.Fatalf("envFlagEnabled should be false when unset")
 	}
 
-	os.Setenv(key, "true")
+	t.Setenv(key, "true")
 	if !envFlagEnabled(key) {
 		t.Fatalf("envFlagEnabled should be true for 'true'")
 	}
 
-	os.Setenv(key, "no")
+	t.Setenv(key, "no")
 	if envFlagEnabled(key) {
 		t.Fatalf("envFlagEnabled should be false for 'no'")
 	}
@@ -1672,10 +1744,94 @@ func TestRunShouldUseStdin(t *testing.T) {
 	}
 }
 
+func TestRun_PromptFilePrefixesTask(t *testing.T) {
+	t.Run("absolute path", func(t *testing.T) {
+		defer resetTestHooks()
+		cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
+
+		selectBackendFn = func(name string) (Backend, error) {
+			return testBackend{
+				name:    name,
+				command: "echo",
+				argsFn: func(cfg *Config, targetArg string) []string {
+					return []string{targetArg}
+				},
+			}, nil
+		}
+
+		var gotTask string
+		runTaskFn = func(task TaskSpec, silent bool, timeout int) TaskResult {
+			gotTask = task.Task
+			return TaskResult{ExitCode: 0, Message: "ok"}
+		}
+
+		isTerminalFn = func() bool { return true }
+		stdinReader = strings.NewReader("")
+
+		promptPath := filepath.Join(t.TempDir(), "prompt.md")
+		prompt := "LINE1\nLINE2\n"
+		if err := os.WriteFile(promptPath, []byte(prompt), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		os.Args = []string{"codeagent-wrapper", "--prompt-file", promptPath, "do"}
+		if code := run(); code != 0 {
+			t.Fatalf("run() exit=%d, want 0", code)
+		}
+
+		want := "<agent-prompt>\nLINE1\nLINE2\n</agent-prompt>\n\ndo"
+		if gotTask != want {
+			t.Fatalf("task mismatch:\n got=%q\nwant=%q", gotTask, want)
+		}
+	})
+
+	t.Run("tilde expansion", func(t *testing.T) {
+		defer resetTestHooks()
+		cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
+
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
+
+		selectBackendFn = func(name string) (Backend, error) {
+			return testBackend{
+				name:    name,
+				command: "echo",
+				argsFn: func(cfg *Config, targetArg string) []string {
+					return []string{targetArg}
+				},
+			}, nil
+		}
+
+		var gotTask string
+		runTaskFn = func(task TaskSpec, silent bool, timeout int) TaskResult {
+			gotTask = task.Task
+			return TaskResult{ExitCode: 0, Message: "ok"}
+		}
+
+		isTerminalFn = func() bool { return true }
+		stdinReader = strings.NewReader("")
+
+		promptPath := filepath.Join(home, "prompt.md")
+		if err := os.WriteFile(promptPath, []byte("P\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		os.Args = []string{"codeagent-wrapper", "--prompt-file", "~/prompt.md", "do"}
+		if code := run(); code != 0 {
+			t.Fatalf("run() exit=%d, want 0", code)
+		}
+
+		want := "<agent-prompt>\nP\n</agent-prompt>\n\ndo"
+		if gotTask != want {
+			t.Fatalf("task mismatch:\n got=%q\nwant=%q", gotTask, want)
+		}
+	})
+}
+
 func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 	const key = "CODEX_BYPASS_SANDBOX"
-	t.Cleanup(func() { os.Unsetenv(key) })
-	os.Unsetenv(key)
+	t.Setenv(key, "false")
 
 	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
 	args := buildCodexArgs(cfg, "my task")
@@ -1698,8 +1854,7 @@ func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 
 func TestRunBuildCodexArgs_ResumeMode(t *testing.T) {
 	const key = "CODEX_BYPASS_SANDBOX"
-	t.Cleanup(func() { os.Unsetenv(key) })
-	os.Unsetenv(key)
+	t.Setenv(key, "false")
 
 	cfg := &Config{Mode: "resume", SessionID: "session-abc"}
 	args := buildCodexArgs(cfg, "-")
@@ -1723,8 +1878,7 @@ func TestRunBuildCodexArgs_ResumeMode(t *testing.T) {
 
 func TestRunBuildCodexArgs_ResumeMode_EmptySessionHandledGracefully(t *testing.T) {
 	const key = "CODEX_BYPASS_SANDBOX"
-	t.Cleanup(func() { os.Unsetenv(key) })
-	os.Unsetenv(key)
+	t.Setenv(key, "false")
 
 	cfg := &Config{Mode: "resume", SessionID: "   ", WorkDir: "/test/dir"}
 	args := buildCodexArgs(cfg, "task")
@@ -1964,8 +2118,7 @@ func TestRunResolveTimeout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("CODEX_TIMEOUT", tt.envVal)
-			defer os.Unsetenv("CODEX_TIMEOUT")
+			t.Setenv("CODEX_TIMEOUT", tt.envVal)
 			got := resolveTimeout()
 			if got != tt.want {
 				t.Errorf("resolveTimeout() with env=%q = %v, want %v", tt.envVal, got, tt.want)
@@ -2305,10 +2458,10 @@ func TestRunGetEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Unsetenv(tt.key)
 			if tt.setEnv {
-				os.Setenv(tt.key, tt.envVal)
-				defer os.Unsetenv(tt.key)
+				t.Setenv(tt.key, tt.envVal)
+			} else {
+				t.Setenv(tt.key, "")
 			}
 
 			got := getEnv(tt.key, tt.defaultVal)
@@ -3412,7 +3565,7 @@ func TestVersionFlag(t *testing.T) {
 		}
 	})
 
-	want := "codeagent-wrapper version 5.4.0\n"
+	want := "codeagent-wrapper version 5.5.0\n"
 
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
@@ -3428,7 +3581,7 @@ func TestVersionShortFlag(t *testing.T) {
 		}
 	})
 
-	want := "codeagent-wrapper version 5.4.0\n"
+	want := "codeagent-wrapper version 5.5.0\n"
 
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
@@ -3444,7 +3597,7 @@ func TestVersionLegacyAlias(t *testing.T) {
 		}
 	})
 
-	want := "codex-wrapper version 5.4.0\n"
+	want := "codex-wrapper version 5.5.0\n"
 
 	if output != want {
 		t.Fatalf("output = %q, want %q", output, want)
@@ -4638,12 +4791,7 @@ func TestResolveMaxParallelWorkers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.envValue != "" {
-				os.Setenv("CODEAGENT_MAX_PARALLEL_WORKERS", tt.envValue)
-			} else {
-				os.Unsetenv("CODEAGENT_MAX_PARALLEL_WORKERS")
-			}
-			defer os.Unsetenv("CODEAGENT_MAX_PARALLEL_WORKERS")
+			t.Setenv("CODEAGENT_MAX_PARALLEL_WORKERS", tt.envValue)
 
 			got := resolveMaxParallelWorkers()
 			if got != tt.want {

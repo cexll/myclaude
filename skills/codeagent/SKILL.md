@@ -26,7 +26,7 @@ EOF
 
 **With backend selection**:
 ```bash
-codeagent-wrapper --backend claude - <<'EOF'
+codeagent-wrapper --backend claude - . <<'EOF'
 <task content here>
 EOF
 ```
@@ -34,7 +34,7 @@ EOF
 **Simple tasks**:
 ```bash
 codeagent-wrapper --backend codex "simple task" [working_dir]
-codeagent-wrapper --backend gemini "simple task"
+codeagent-wrapper --backend gemini "simple task" [working_dir]
 ```
 
 ## Backends

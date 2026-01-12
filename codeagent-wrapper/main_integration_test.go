@@ -641,7 +641,6 @@ func TestRunParallelTimeoutPropagation(t *testing.T) {
 	t.Cleanup(func() {
 		runCodexTaskFn = origRun
 		resetTestHooks()
-		os.Unsetenv("CODEX_TIMEOUT")
 	})
 
 	var receivedTimeout int
@@ -650,7 +649,7 @@ func TestRunParallelTimeoutPropagation(t *testing.T) {
 		return TaskResult{TaskID: task.ID, ExitCode: 124, Error: "timeout"}
 	}
 
-	os.Setenv("CODEX_TIMEOUT", "1")
+	t.Setenv("CODEX_TIMEOUT", "1")
 	input := `---TASK---
 id: T
 ---CONTENT---

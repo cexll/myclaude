@@ -282,8 +282,7 @@ func TestExecutorHelperCoverage(t *testing.T) {
 
 	t.Run("generateFinalOutputAndArgs", func(t *testing.T) {
 		const key = "CODEX_BYPASS_SANDBOX"
-		t.Cleanup(func() { os.Unsetenv(key) })
-		os.Unsetenv(key)
+		t.Setenv(key, "false")
 
 		out := generateFinalOutput([]TaskResult{
 			{TaskID: "ok", ExitCode: 0},
@@ -358,8 +357,7 @@ func TestExecutorHelperCoverage(t *testing.T) {
 		runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
 			return TaskResult{TaskID: task.ID, ExitCode: 0, Message: "done"}
 		}
-		os.Setenv("CODEAGENT_MAX_PARALLEL_WORKERS", "1")
-		defer os.Unsetenv("CODEAGENT_MAX_PARALLEL_WORKERS")
+		t.Setenv("CODEAGENT_MAX_PARALLEL_WORKERS", "1")
 
 		results := executeConcurrent([][]TaskSpec{{{ID: "wrap"}}}, 1)
 		if len(results) != 1 || results[0].TaskID != "wrap" {

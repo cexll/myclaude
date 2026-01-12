@@ -236,6 +236,13 @@ func defaultRunCodexTaskFn(task TaskSpec, timeout int) TaskResult {
 	if task.Mode == "" {
 		task.Mode = "new"
 	}
+	if strings.TrimSpace(task.PromptFile) != "" {
+		prompt, err := readAgentPromptFile(task.PromptFile, false)
+		if err != nil {
+			return TaskResult{TaskID: task.ID, ExitCode: 1, Error: "failed to read prompt file: " + err.Error()}
+		}
+		task.Task = wrapTaskWithAgentPrompt(prompt, task.Task)
+	}
 	if task.UseStdin || shouldUseStdin(task.Task, false) {
 		task.UseStdin = true
 	}
@@ -747,8 +754,8 @@ func buildCodexArgs(cfg *Config, targetArg string) []string {
 
 	args := []string{"e"}
 
-	if envFlagEnabled("CODEX_BYPASS_SANDBOX") {
-		logWarn("CODEX_BYPASS_SANDBOX=true: running without approval/sandbox protection")
+	if cfg.Yolo || envFlagEnabled("CODEX_BYPASS_SANDBOX") {
+		logWarn("YOLO mode or CODEX_BYPASS_SANDBOX=true: running without approval/sandbox protection")
 		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 	}
 

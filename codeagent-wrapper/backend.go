@@ -111,7 +111,7 @@ func buildClaudeArgs(cfg *Config, targetArg string) []string {
 		return nil
 	}
 	args := []string{"-p"}
-	if cfg.SkipPermissions {
+	if cfg.SkipPermissions || cfg.Yolo {
 		args = append(args, "--dangerously-skip-permissions")
 	}
 
@@ -144,6 +144,22 @@ func (GeminiBackend) Command() string {
 }
 func (GeminiBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	return buildGeminiArgs(cfg, targetArg)
+}
+
+type OpencodeBackend struct{}
+
+func (OpencodeBackend) Name() string    { return "opencode" }
+func (OpencodeBackend) Command() string { return "opencode" }
+func (OpencodeBackend) BuildArgs(cfg *Config, targetArg string) []string {
+	args := []string{"run"}
+	if model := strings.TrimSpace(cfg.Model); model != "" {
+		args = append(args, "-m", model)
+	}
+	if cfg.Mode == "resume" && cfg.SessionID != "" {
+		args = append(args, "-s", cfg.SessionID)
+	}
+	args = append(args, "--format", "json", targetArg)
+	return args
 }
 
 func buildGeminiArgs(cfg *Config, targetArg string) []string {

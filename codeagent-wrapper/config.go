@@ -19,7 +19,11 @@ type Config struct {
 	ExplicitStdin      bool
 	Timeout            int
 	Backend            string
+	Agent              string
+	PromptFile         string
+	PromptFileExplicit bool
 	SkipPermissions    bool
+	Yolo               bool
 	MaxParallelWorkers int
 }
 
@@ -38,6 +42,8 @@ type TaskSpec struct {
 	SessionID    string          `json:"session_id,omitempty"`
 	Backend      string          `json:"backend,omitempty"`
 	Model        string          `json:"model,omitempty"`
+	Agent        string          `json:"agent,omitempty"`
+	PromptFile   string          `json:"prompt_file,omitempty"`
 	Mode         string          `json:"-"`
 	UseStdin     bool            `json:"-"`
 	Context      context.Context `json:"-"`
@@ -63,9 +69,10 @@ type TaskResult struct {
 }
 
 var backendRegistry = map[string]Backend{
-	"codex":  CodexBackend{},
-	"claude": ClaudeBackend{},
-	"gemini": GeminiBackend{},
+	"codex":    CodexBackend{},
+	"claude":   ClaudeBackend{},
+	"gemini":   GeminiBackend{},
+	"opencode": OpencodeBackend{},
 }
 
 func selectBackend(name string) (Backend, error) {
@@ -105,6 +112,23 @@ func parseBoolFlag(val string, defaultValue bool) bool {
 	}
 }
 
+func validateAgentName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("agent name is empty")
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-', r == '_':
+		default:
+			return fmt.Errorf("agent name %q contains invalid character %q", name, r)
+		}
+	}
+	return nil
+}
+
 func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {
@@ -132,6 +156,7 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 		content := strings.TrimSpace(parts[1])
 
 		task := TaskSpec{WorkDir: defaultWorkdir}
+		agentSpecified := false
 		for _, line := range strings.Split(meta, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" {
@@ -156,6 +181,9 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 				task.Backend = value
 			case "model":
 				task.Model = value
+			case "agent":
+				agentSpecified = true
+				task.Agent = value
 			case "dependencies":
 				for _, dep := range strings.Split(value, ",") {
 					dep = strings.TrimSpace(dep)
@@ -168,6 +196,23 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 
 		if task.Mode == "" {
 			task.Mode = "new"
+		}
+
+		if agentSpecified {
+			if strings.TrimSpace(task.Agent) == "" {
+				return nil, fmt.Errorf("task block #%d has empty agent field", taskIndex)
+			}
+			if err := validateAgentName(task.Agent); err != nil {
+				return nil, fmt.Errorf("task block #%d invalid agent name: %w", taskIndex, err)
+			}
+			backend, model, promptFile, _ := resolveAgentConfig(task.Agent)
+			if task.Backend == "" {
+				task.Backend = backend
+			}
+			if task.Model == "" {
+				task.Model = model
+			}
+			task.PromptFile = promptFile
 		}
 
 		if task.ID == "" {
@@ -203,11 +248,73 @@ func parseArgs() (*Config, error) {
 
 	backendName := defaultBackendName
 	model := ""
+	agentName := ""
+	promptFile := ""
+	promptFileExplicit := false
+	yolo := false
 	skipPermissions := envFlagEnabled("CODEAGENT_SKIP_PERMISSIONS")
 	filtered := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
+		case arg == "--agent":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--agent flag requires a value")
+			}
+			value := strings.TrimSpace(args[i+1])
+			if value == "" {
+				return nil, fmt.Errorf("--agent flag requires a value")
+			}
+			if err := validateAgentName(value); err != nil {
+				return nil, fmt.Errorf("--agent flag invalid value: %w", err)
+			}
+			resolvedBackend, resolvedModel, resolvedPromptFile, resolvedYolo := resolveAgentConfig(value)
+			backendName = resolvedBackend
+			model = resolvedModel
+			if !promptFileExplicit {
+				promptFile = resolvedPromptFile
+			}
+			yolo = resolvedYolo
+			agentName = value
+			i++
+			continue
+		case strings.HasPrefix(arg, "--agent="):
+			value := strings.TrimSpace(strings.TrimPrefix(arg, "--agent="))
+			if value == "" {
+				return nil, fmt.Errorf("--agent flag requires a value")
+			}
+			if err := validateAgentName(value); err != nil {
+				return nil, fmt.Errorf("--agent flag invalid value: %w", err)
+			}
+			resolvedBackend, resolvedModel, resolvedPromptFile, resolvedYolo := resolveAgentConfig(value)
+			backendName = resolvedBackend
+			model = resolvedModel
+			if !promptFileExplicit {
+				promptFile = resolvedPromptFile
+			}
+			yolo = resolvedYolo
+			agentName = value
+			continue
+		case arg == "--prompt-file":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--prompt-file flag requires a value")
+			}
+			value := strings.TrimSpace(args[i+1])
+			if value == "" {
+				return nil, fmt.Errorf("--prompt-file flag requires a value")
+			}
+			promptFile = value
+			promptFileExplicit = true
+			i++
+			continue
+		case strings.HasPrefix(arg, "--prompt-file="):
+			value := strings.TrimSpace(strings.TrimPrefix(arg, "--prompt-file="))
+			if value == "" {
+				return nil, fmt.Errorf("--prompt-file flag requires a value")
+			}
+			promptFile = value
+			promptFileExplicit = true
+			continue
 		case arg == "--backend":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("--backend flag requires a value")
@@ -254,7 +361,7 @@ func parseArgs() (*Config, error) {
 	}
 	args = filtered
 
-	cfg := &Config{WorkDir: defaultWorkdir, Backend: backendName, SkipPermissions: skipPermissions, Model: strings.TrimSpace(model)}
+	cfg := &Config{WorkDir: defaultWorkdir, Backend: backendName, Agent: agentName, PromptFile: promptFile, PromptFileExplicit: promptFileExplicit, SkipPermissions: skipPermissions, Yolo: yolo, Model: strings.TrimSpace(model)}
 	cfg.MaxParallelWorkers = resolveMaxParallelWorkers()
 
 	if args[0] == "resume" {

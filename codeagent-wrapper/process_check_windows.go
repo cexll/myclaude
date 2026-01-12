@@ -17,10 +17,10 @@ const (
 )
 
 var (
-	findProcess       = os.FindProcess
-	kernel32          = syscall.NewLazyDLL("kernel32.dll")
-	getProcessTimes   = kernel32.NewProc("GetProcessTimes")
-	fileTimeToUnixFn  = fileTimeToUnix
+	findProcess      = os.FindProcess
+	kernel32         = syscall.NewLazyDLL("kernel32.dll")
+	getProcessTimes  = kernel32.NewProc("GetProcessTimes")
+	fileTimeToUnixFn = fileTimeToUnix
 )
 
 // isProcessRunning returns true if a process with the given pid is running on Windows.

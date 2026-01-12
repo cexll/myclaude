@@ -30,4 +30,3 @@ func TestBackendParseJSONStream_UnknownEventsAreSilent(t *testing.T) {
 		}
 	}
 }
-

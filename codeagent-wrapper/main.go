@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -14,7 +15,7 @@ import (
 )
 
 const (
-	version               = "5.4.0"
+	version               = "5.5.0"
 	defaultWorkdir        = "."
 	defaultTimeout        = 7200 // seconds (2 hours)
 	defaultCoverageTarget = 90.0
@@ -372,6 +373,15 @@ func run() (exitCode int) {
 		}
 	}
 
+	if strings.TrimSpace(cfg.PromptFile) != "" {
+		prompt, err := readAgentPromptFile(cfg.PromptFile, cfg.PromptFileExplicit)
+		if err != nil {
+			logError("Failed to read prompt file: " + err.Error())
+			return 1
+		}
+		taskText = wrapTaskWithAgentPrompt(prompt, taskText)
+	}
+
 	useStdin := cfg.ExplicitStdin || shouldUseStdin(taskText, piped)
 
 	targetArg := taskText
@@ -446,6 +456,91 @@ func run() (exitCode int) {
 	return 0
 }
 
+func readAgentPromptFile(path string, allowOutsideClaudeDir bool) (string, error) {
+	raw := strings.TrimSpace(path)
+	if raw == "" {
+		return "", nil
+	}
+
+	expanded := raw
+	if raw == "~" || strings.HasPrefix(raw, "~/") || strings.HasPrefix(raw, "~\\") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if raw == "~" {
+			expanded = home
+		} else {
+			expanded = home + raw[1:]
+		}
+	}
+
+	absPath, err := filepath.Abs(expanded)
+	if err != nil {
+		return "", err
+	}
+	absPath = filepath.Clean(absPath)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		if !allowOutsideClaudeDir {
+			return "", err
+		}
+		logWarn(fmt.Sprintf("Failed to resolve home directory for prompt file validation: %v; proceeding without restriction", err))
+	} else {
+		allowedDir := filepath.Clean(filepath.Join(home, ".claude"))
+		allowedAbs, err := filepath.Abs(allowedDir)
+		if err == nil {
+			allowedDir = filepath.Clean(allowedAbs)
+		}
+
+		isWithinDir := func(path, dir string) bool {
+			rel, err := filepath.Rel(dir, path)
+			if err != nil {
+				return false
+			}
+			rel = filepath.Clean(rel)
+			if rel == "." {
+				return true
+			}
+			if rel == ".." {
+				return false
+			}
+			prefix := ".." + string(os.PathSeparator)
+			return !strings.HasPrefix(rel, prefix)
+		}
+
+		if !allowOutsideClaudeDir {
+			if !isWithinDir(absPath, allowedDir) {
+				logWarn(fmt.Sprintf("Refusing to read prompt file outside %s: %s", allowedDir, absPath))
+				return "", fmt.Errorf("prompt file must be under %s", allowedDir)
+			}
+			resolvedPath, errPath := filepath.EvalSymlinks(absPath)
+			resolvedBase, errBase := filepath.EvalSymlinks(allowedDir)
+			if errPath == nil && errBase == nil {
+				resolvedPath = filepath.Clean(resolvedPath)
+				resolvedBase = filepath.Clean(resolvedBase)
+				if !isWithinDir(resolvedPath, resolvedBase) {
+					logWarn(fmt.Sprintf("Refusing to read prompt file outside %s (resolved): %s", resolvedBase, resolvedPath))
+					return "", fmt.Errorf("prompt file must be under %s", resolvedBase)
+				}
+			}
+		} else if !isWithinDir(absPath, allowedDir) {
+			logWarn(fmt.Sprintf("Reading prompt file outside %s: %s", allowedDir, absPath))
+		}
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(data), "\r\n"), nil
+}
+
+func wrapTaskWithAgentPrompt(prompt string, task string) string {
+	return "<agent-prompt>\n" + prompt + "\n</agent-prompt>\n\n" + task
+}
+
 func setLogger(l *Logger) {
 	loggerPtr.Store(l)
 }
@@ -496,6 +591,7 @@ func printHelp() {
 Usage:
     %[1]s "task" [workdir]
     %[1]s --backend claude "task" [workdir]
+    %[1]s --prompt-file /path/to/prompt.md "task" [workdir]
     %[1]s - [workdir]              Read task from stdin
     %[1]s resume <session_id> "task" [workdir]
     %[1]s resume <session_id> - [workdir]

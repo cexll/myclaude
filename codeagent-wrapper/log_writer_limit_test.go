@@ -36,4 +36,3 @@ func TestLogWriterWriteLimitsBuffer(t *testing.T) {
 		t.Fatalf("log output missing truncated entry, got %q", string(data))
 	}
 }
-

@@ -86,8 +86,7 @@ func TestBackendBuildArgs_Model(t *testing.T) {
 
 	t.Run("codex includes --model when set", func(t *testing.T) {
 		const key = "CODEX_BYPASS_SANDBOX"
-		t.Cleanup(func() { os.Unsetenv(key) })
-		os.Unsetenv(key)
+		t.Setenv(key, "false")
 
 		backend := CodexBackend{}
 		cfg := &Config{Mode: "new", WorkDir: "/tmp", Model: "o3"}
@@ -139,8 +138,7 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 
 	t.Run("codex build args omits bypass flag by default", func(t *testing.T) {
 		const key = "CODEX_BYPASS_SANDBOX"
-		t.Cleanup(func() { os.Unsetenv(key) })
-		os.Unsetenv(key)
+		t.Setenv(key, "false")
 
 		backend := CodexBackend{}
 		cfg := &Config{Mode: "new", WorkDir: "/tmp"}
@@ -153,8 +151,7 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 
 	t.Run("codex build args includes bypass flag when enabled", func(t *testing.T) {
 		const key = "CODEX_BYPASS_SANDBOX"
-		t.Cleanup(func() { os.Unsetenv(key) })
-		os.Setenv(key, "true")
+		t.Setenv(key, "true")
 
 		backend := CodexBackend{}
 		cfg := &Config{Mode: "new", WorkDir: "/tmp"}
