@@ -108,6 +108,60 @@
           "description": "Copy development commands documentation"
         }
       ]
+    },
+    "omo": {
+      "enabled": false,
+      "description": "OmO multi-agent orchestration with Sisyphus coordinator",
+      "operations": [
+        {
+          "type": "copy_file",
+          "source": "skills/omo/SKILL.md",
+          "target": "skills/omo/SKILL.md",
+          "description": "Install omo skill"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/sisyphus.md",
+          "target": "skills/omo/references/sisyphus.md",
+          "description": "Install sisyphus agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/oracle.md",
+          "target": "skills/omo/references/oracle.md",
+          "description": "Install oracle agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/librarian.md",
+          "target": "skills/omo/references/librarian.md",
+          "description": "Install librarian agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/explore.md",
+          "target": "skills/omo/references/explore.md",
+          "description": "Install explore agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/frontend-ui-ux-engineer.md",
+          "target": "skills/omo/references/frontend-ui-ux-engineer.md",
+          "description": "Install frontend-ui-ux-engineer agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/document-writer.md",
+          "target": "skills/omo/references/document-writer.md",
+          "description": "Install document-writer agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/develop.md",
+          "target": "skills/omo/references/develop.md",
+          "description": "Install develop agent prompt"
+        }
+      ]
     }
   }
 }
