@@ -637,9 +637,13 @@ func (f *fakeCmd) StdinContents() string {
 func createFakeCodexScript(t *testing.T, threadID, message string) string {
 	t.Helper()
 	scriptPath := filepath.Join(t.TempDir(), "codex.sh")
+	// Add small sleep to ensure parser goroutine has time to read stdout before
+	// the process exits and closes the pipe. This prevents race conditions in CI
+	// where fast shell script execution can close stdout before parsing completes.
 	script := fmt.Sprintf(`#!/bin/sh
 printf '%%s\n' '{"type":"thread.started","thread_id":"%s"}'
 printf '%%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}'
+sleep 0.05
 `, threadID, message)
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("failed to create fake codex script: %v", err)
