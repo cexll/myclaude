@@ -112,6 +112,15 @@ func parseBoolFlag(val string, defaultValue bool) bool {
 	}
 }
 
+// envFlagDefaultTrue returns true unless the env var is explicitly set to false/0/no/off.
+func envFlagDefaultTrue(key string) bool {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return true
+	}
+	return parseBoolFlag(val, true)
+}
+
 func validateAgentName(name string) error {
 	if strings.TrimSpace(name) == "" {
 		return fmt.Errorf("agent name is empty")

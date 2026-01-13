@@ -11,7 +11,8 @@ import (
 func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	backend := ClaudeBackend{}
 
-	t.Run("new mode omits skip-permissions by default", func(t *testing.T) {
+	t.Run("new mode omits skip-permissions when env disabled", func(t *testing.T) {
+		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 		cfg := &Config{Mode: "new", WorkDir: "/repo"}
 		got := backend.BuildArgs(cfg, "todo")
 		want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
@@ -20,8 +21,8 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 		}
 	})
 
-	t.Run("new mode can opt-in skip-permissions", func(t *testing.T) {
-		cfg := &Config{Mode: "new", SkipPermissions: true}
+	t.Run("new mode includes skip-permissions by default", func(t *testing.T) {
+		cfg := &Config{Mode: "new", SkipPermissions: false}
 		got := backend.BuildArgs(cfg, "-")
 		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "-"}
 		if !reflect.DeepEqual(got, want) {
@@ -30,6 +31,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	})
 
 	t.Run("resume mode includes session id", func(t *testing.T) {
+		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 		cfg := &Config{Mode: "resume", SessionID: "sid-123", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "resume-task")
 		want := []string{"-p", "--setting-sources", "", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
@@ -39,6 +41,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	})
 
 	t.Run("resume mode without session still returns base flags", func(t *testing.T) {
+		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 		cfg := &Config{Mode: "resume", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "follow-up")
 		want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "follow-up"}
@@ -65,6 +68,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 
 func TestBackendBuildArgs_Model(t *testing.T) {
 	t.Run("claude includes --model when set", func(t *testing.T) {
+		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 		backend := ClaudeBackend{}
 		cfg := &Config{Mode: "new", Model: "opus"}
 		got := backend.BuildArgs(cfg, "todo")
@@ -78,7 +82,7 @@ func TestBackendBuildArgs_Model(t *testing.T) {
 		backend := GeminiBackend{}
 		cfg := &Config{Mode: "new", Model: "gemini-3-pro-preview"}
 		got := backend.BuildArgs(cfg, "task")
-		want := []string{"-o", "stream-json", "-y", "-m", "gemini-3-pro-preview", "-p", "task"}
+		want := []string{"-o", "stream-json", "-y", "-m", "gemini-3-pro-preview", "task"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -103,7 +107,7 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 		backend := GeminiBackend{}
 		cfg := &Config{Mode: "new", WorkDir: "/workspace"}
 		got := backend.BuildArgs(cfg, "task")
-		want := []string{"-o", "stream-json", "-y", "-p", "task"}
+		want := []string{"-o", "stream-json", "-y", "task"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -113,7 +117,7 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 		backend := GeminiBackend{}
 		cfg := &Config{Mode: "resume", SessionID: "sid-999"}
 		got := backend.BuildArgs(cfg, "resume")
-		want := []string{"-o", "stream-json", "-y", "-r", "sid-999", "-p", "resume"}
+		want := []string{"-o", "stream-json", "-y", "-r", "sid-999", "resume"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -123,7 +127,7 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 		backend := GeminiBackend{}
 		cfg := &Config{Mode: "resume"}
 		got := backend.BuildArgs(cfg, "resume")
-		want := []string{"-o", "stream-json", "-y", "-p", "resume"}
+		want := []string{"-o", "stream-json", "-y", "resume"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -133,6 +137,16 @@ func TestClaudeBuildArgs_GeminiAndCodexModes(t *testing.T) {
 		backend := GeminiBackend{}
 		if backend.BuildArgs(nil, "ignored") != nil {
 			t.Fatalf("nil config should return nil args")
+		}
+	})
+
+	t.Run("gemini stdin mode uses -p flag", func(t *testing.T) {
+		backend := GeminiBackend{}
+		cfg := &Config{Mode: "new"}
+		got := backend.BuildArgs(cfg, "-")
+		want := []string{"-o", "stream-json", "-y", "-p", "-"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
 		}
 	})
 

@@ -1925,7 +1925,7 @@ func TestRunBuildCodexArgs_BypassSandboxEnvTrue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read log file: %v", err)
 	}
-	if !strings.Contains(string(data), "CODEX_BYPASS_SANDBOX=true") {
+	if !strings.Contains(string(data), "CODEX_BYPASS_SANDBOX enabled") {
 		t.Fatalf("expected bypass warning log, got: %s", string(data))
 	}
 }
@@ -1982,6 +1982,7 @@ func TestBackendSelectBackend_DefaultOnEmpty(t *testing.T) {
 }
 
 func TestBackendBuildArgs_CodexBackend(t *testing.T) {
+	t.Setenv("CODEX_BYPASS_SANDBOX", "false")
 	backend := CodexBackend{}
 	cfg := &Config{Mode: "new", WorkDir: "/test/dir"}
 	got := backend.BuildArgs(cfg, "task")
@@ -2003,6 +2004,7 @@ func TestBackendBuildArgs_CodexBackend(t *testing.T) {
 }
 
 func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
+	t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 	backend := ClaudeBackend{}
 	cfg := &Config{Mode: "new", WorkDir: defaultWorkdir}
 	got := backend.BuildArgs(cfg, "todo")
@@ -2022,6 +2024,7 @@ func TestBackendBuildArgs_ClaudeBackend(t *testing.T) {
 }
 
 func TestClaudeBackendBuildArgs_OutputValidation(t *testing.T) {
+	t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 	backend := ClaudeBackend{}
 	cfg := &Config{Mode: "resume"}
 	target := "ensure-flags"
@@ -2042,7 +2045,7 @@ func TestBackendBuildArgs_GeminiBackend(t *testing.T) {
 	backend := GeminiBackend{}
 	cfg := &Config{Mode: "new"}
 	got := backend.BuildArgs(cfg, "task")
-	want := []string{"-o", "stream-json", "-y", "-p", "task"}
+	want := []string{"-o", "stream-json", "-y", "task"}
 	if len(got) != len(want) {
 		t.Fatalf("length mismatch")
 	}
@@ -2063,7 +2066,7 @@ func TestGeminiBackendBuildArgs_OutputValidation(t *testing.T) {
 	target := "prompt-data"
 
 	args := backend.BuildArgs(cfg, target)
-	expected := []string{"-o", "stream-json", "-y", "-p"}
+	expected := []string{"-o", "stream-json", "-y"}
 
 	if len(args) != len(expected)+1 {
 		t.Fatalf("args length=%d, want %d", len(args), len(expected)+1)

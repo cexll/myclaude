@@ -322,6 +322,8 @@ Error: dependency backend_1701234567 failed
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CODEX_TIMEOUT` | 7200000 | Timeout in milliseconds |
+| `CODEX_BYPASS_SANDBOX` | true | Bypass Codex sandbox/approval. Set `false` to disable |
+| `CODEAGENT_SKIP_PERMISSIONS` | true | Skip Claude permission prompts. Set `false` to disable |
 
 ## Troubleshooting
 
