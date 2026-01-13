@@ -23,11 +23,11 @@ OmO (Oh-My-OpenCode) is a multi-agent orchestration skill that uses Sisyphus as 
 ## How It Works
 
 1. `/omo` loads Sisyphus as the entry point
-2. Sisyphus analyzes your request via Intent Gate
+2. Sisyphus analyzes your request via routing signals
 3. Based on task type, Sisyphus either:
-   - Executes directly (simple tasks)
-   - Delegates to specialized agents (complex tasks)
-   - Fires parallel agents (exploration)
+   - Answers directly (analysis/explanation tasks - no code changes)
+   - Delegates to specialized agents (implementation tasks)
+   - Fires parallel agents (exploration + research)
 
 ## Examples
 
@@ -44,11 +44,23 @@ OmO (Oh-My-OpenCode) is a multi-agent orchestration skill that uses Sisyphus as 
 
 ## Agent Delegation
 
-Sisyphus delegates via codeagent-wrapper:
+Sisyphus delegates via codeagent-wrapper with full Context Pack:
 
 ```bash
 codeagent-wrapper --agent oracle - . <<'EOF'
-Analyze the authentication architecture.
+## Original User Request
+Analyze the authentication architecture and recommend improvements.
+
+## Context Pack (include anything relevant; write "None" if absent)
+- Explore output: [paste explore output if available]
+- Librarian output: None
+- Oracle output: None
+
+## Current Task
+Review auth architecture, identify risks, propose minimal improvements.
+
+## Acceptance Criteria
+Output: recommendation, action plan, risk assessment, effort estimate.
 EOF
 ```
 
