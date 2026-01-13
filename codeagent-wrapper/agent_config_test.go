@@ -19,17 +19,17 @@ func TestResolveAgentConfig_Defaults(t *testing.T) {
 		wantModel      string
 		wantPromptFile string
 	}{
-		{"sisyphus", "claude", "claude-sonnet-4-20250514", "~/.claude/skills/omo/references/sisyphus.md"},
-		{"oracle", "claude", "claude-sonnet-4-20250514", "~/.claude/skills/omo/references/oracle.md"},
-		{"librarian", "claude", "claude-sonnet-4-5-20250514", "~/.claude/skills/omo/references/librarian.md"},
-		{"explore", "opencode", "opencode/grok-code", "~/.claude/skills/omo/references/explore.md"},
-		{"frontend-ui-ux-engineer", "gemini", "gemini-3-pro-preview", "~/.claude/skills/omo/references/frontend-ui-ux-engineer.md"},
-		{"document-writer", "gemini", "gemini-3-flash-preview", "~/.claude/skills/omo/references/document-writer.md"},
-	}
+			{"sisyphus", "claude", "claude-sonnet-4-20250514", "~/.claude/skills/omo/references/sisyphus.md"},
+			{"oracle", "claude", "claude-sonnet-4-20250514", "~/.claude/skills/omo/references/oracle.md"},
+			{"librarian", "claude", "claude-sonnet-4-5-20250514", "~/.claude/skills/omo/references/librarian.md"},
+			{"explore", "opencode", "opencode/grok-code", "~/.claude/skills/omo/references/explore.md"},
+			{"frontend-ui-ux-engineer", "gemini", "", "~/.claude/skills/omo/references/frontend-ui-ux-engineer.md"},
+			{"document-writer", "gemini", "", "~/.claude/skills/omo/references/document-writer.md"},
+		}
 
 	for _, tt := range tests {
 		t.Run(tt.agent, func(t *testing.T) {
-			backend, model, promptFile, _ := resolveAgentConfig(tt.agent)
+			backend, model, promptFile, _, _ := resolveAgentConfig(tt.agent)
 			if backend != tt.wantBackend {
 				t.Errorf("backend = %q, want %q", backend, tt.wantBackend)
 			}
@@ -48,7 +48,7 @@ func TestResolveAgentConfig_UnknownAgent(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	backend, model, promptFile, _ := resolveAgentConfig("unknown-agent")
+	backend, model, promptFile, _, _ := resolveAgentConfig("unknown-agent")
 	if backend != "opencode" {
 		t.Errorf("unknown agent backend = %q, want %q", backend, "opencode")
 	}

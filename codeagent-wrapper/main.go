@@ -434,12 +434,13 @@ func run() (exitCode int) {
 	logInfo(fmt.Sprintf("%s running...", cfg.Backend))
 
 	taskSpec := TaskSpec{
-		Task:      taskText,
-		WorkDir:   cfg.WorkDir,
-		Mode:      cfg.Mode,
-		SessionID: cfg.SessionID,
-		Model:     cfg.Model,
-		UseStdin:  useStdin,
+		Task:            taskText,
+		WorkDir:         cfg.WorkDir,
+		Mode:            cfg.Mode,
+		SessionID:       cfg.SessionID,
+		Model:           cfg.Model,
+		ReasoningEffort: cfg.ReasoningEffort,
+		UseStdin:        useStdin,
 	}
 
 	result := runTaskFn(taskSpec, false, cfg.Timeout)

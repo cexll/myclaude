@@ -16,6 +16,7 @@ type Config struct {
 	SessionID          string
 	WorkDir            string
 	Model              string
+	ReasoningEffort    string
 	ExplicitStdin      bool
 	Timeout            int
 	Backend            string
@@ -35,18 +36,19 @@ type ParallelConfig struct {
 
 // TaskSpec describes an individual task entry in the parallel config
 type TaskSpec struct {
-	ID           string          `json:"id"`
-	Task         string          `json:"task"`
-	WorkDir      string          `json:"workdir,omitempty"`
-	Dependencies []string        `json:"dependencies,omitempty"`
-	SessionID    string          `json:"session_id,omitempty"`
-	Backend      string          `json:"backend,omitempty"`
-	Model        string          `json:"model,omitempty"`
-	Agent        string          `json:"agent,omitempty"`
-	PromptFile   string          `json:"prompt_file,omitempty"`
-	Mode         string          `json:"-"`
-	UseStdin     bool            `json:"-"`
-	Context      context.Context `json:"-"`
+	ID              string          `json:"id"`
+	Task            string          `json:"task"`
+	WorkDir         string          `json:"workdir,omitempty"`
+	Dependencies    []string        `json:"dependencies,omitempty"`
+	SessionID       string          `json:"session_id,omitempty"`
+	Backend         string          `json:"backend,omitempty"`
+	Model           string          `json:"model,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	Agent           string          `json:"agent,omitempty"`
+	PromptFile      string          `json:"prompt_file,omitempty"`
+	Mode            string          `json:"-"`
+	UseStdin        bool            `json:"-"`
+	Context         context.Context `json:"-"`
 }
 
 // TaskResult captures the execution outcome of a task
@@ -190,6 +192,8 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 				task.Backend = value
 			case "model":
 				task.Model = value
+			case "reasoning_effort":
+				task.ReasoningEffort = value
 			case "agent":
 				agentSpecified = true
 				task.Agent = value
@@ -214,12 +218,15 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 			if err := validateAgentName(task.Agent); err != nil {
 				return nil, fmt.Errorf("task block #%d invalid agent name: %w", taskIndex, err)
 			}
-			backend, model, promptFile, _ := resolveAgentConfig(task.Agent)
+			backend, model, promptFile, reasoning, _ := resolveAgentConfig(task.Agent)
 			if task.Backend == "" {
 				task.Backend = backend
 			}
 			if task.Model == "" {
 				task.Model = model
+			}
+			if task.ReasoningEffort == "" {
+				task.ReasoningEffort = reasoning
 			}
 			task.PromptFile = promptFile
 		}
@@ -257,6 +264,7 @@ func parseArgs() (*Config, error) {
 
 	backendName := defaultBackendName
 	model := ""
+	reasoningEffort := ""
 	agentName := ""
 	promptFile := ""
 	promptFileExplicit := false
@@ -277,11 +285,14 @@ func parseArgs() (*Config, error) {
 			if err := validateAgentName(value); err != nil {
 				return nil, fmt.Errorf("--agent flag invalid value: %w", err)
 			}
-			resolvedBackend, resolvedModel, resolvedPromptFile, resolvedYolo := resolveAgentConfig(value)
+			resolvedBackend, resolvedModel, resolvedPromptFile, resolvedReasoning, resolvedYolo := resolveAgentConfig(value)
 			backendName = resolvedBackend
 			model = resolvedModel
 			if !promptFileExplicit {
 				promptFile = resolvedPromptFile
+			}
+			if reasoningEffort == "" {
+				reasoningEffort = resolvedReasoning
 			}
 			yolo = resolvedYolo
 			agentName = value
@@ -295,11 +306,14 @@ func parseArgs() (*Config, error) {
 			if err := validateAgentName(value); err != nil {
 				return nil, fmt.Errorf("--agent flag invalid value: %w", err)
 			}
-			resolvedBackend, resolvedModel, resolvedPromptFile, resolvedYolo := resolveAgentConfig(value)
+			resolvedBackend, resolvedModel, resolvedPromptFile, resolvedReasoning, resolvedYolo := resolveAgentConfig(value)
 			backendName = resolvedBackend
 			model = resolvedModel
 			if !promptFileExplicit {
 				promptFile = resolvedPromptFile
+			}
+			if reasoningEffort == "" {
+				reasoningEffort = resolvedReasoning
 			}
 			yolo = resolvedYolo
 			agentName = value
@@ -355,6 +369,24 @@ func parseArgs() (*Config, error) {
 			}
 			model = value
 			continue
+		case arg == "--reasoning-effort":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--reasoning-effort flag requires a value")
+			}
+			value := strings.TrimSpace(args[i+1])
+			if value == "" {
+				return nil, fmt.Errorf("--reasoning-effort flag requires a value")
+			}
+			reasoningEffort = value
+			i++
+			continue
+		case strings.HasPrefix(arg, "--reasoning-effort="):
+			value := strings.TrimSpace(strings.TrimPrefix(arg, "--reasoning-effort="))
+			if value == "" {
+				return nil, fmt.Errorf("--reasoning-effort flag requires a value")
+			}
+			reasoningEffort = value
+			continue
 		case strings.HasPrefix(arg, "--skip-permissions="):
 			skipPermissions = parseBoolFlag(strings.TrimPrefix(arg, "--skip-permissions="), skipPermissions)
 			continue
@@ -370,7 +402,7 @@ func parseArgs() (*Config, error) {
 	}
 	args = filtered
 
-	cfg := &Config{WorkDir: defaultWorkdir, Backend: backendName, Agent: agentName, PromptFile: promptFile, PromptFileExplicit: promptFileExplicit, SkipPermissions: skipPermissions, Yolo: yolo, Model: strings.TrimSpace(model)}
+	cfg := &Config{WorkDir: defaultWorkdir, Backend: backendName, Agent: agentName, PromptFile: promptFile, PromptFileExplicit: promptFileExplicit, SkipPermissions: skipPermissions, Yolo: yolo, Model: strings.TrimSpace(model), ReasoningEffort: strings.TrimSpace(reasoningEffort)}
 	cfg.MaxParallelWorkers = resolveMaxParallelWorkers()
 
 	if args[0] == "resume" {

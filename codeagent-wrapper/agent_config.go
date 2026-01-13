@@ -13,6 +13,7 @@ type AgentModelConfig struct {
 	PromptFile  string `json:"prompt_file,omitempty"`
 	Description string `json:"description,omitempty"`
 	Yolo        bool   `json:"yolo,omitempty"`
+	Reasoning   string `json:"reasoning,omitempty"`
 }
 
 type ModelsConfig struct {
@@ -25,15 +26,15 @@ var defaultModelsConfig = ModelsConfig{
 	DefaultBackend: "opencode",
 	DefaultModel:   "opencode/grok-code",
 	Agents: map[string]AgentModelConfig{
-		"sisyphus":                {Backend: "claude", Model: "claude-sonnet-4-20250514", PromptFile: "~/.claude/skills/omo/references/sisyphus.md", Description: "Primary orchestrator"},
-		"oracle":                  {Backend: "claude", Model: "claude-sonnet-4-20250514", PromptFile: "~/.claude/skills/omo/references/oracle.md", Description: "Technical advisor"},
-		"librarian":               {Backend: "claude", Model: "claude-sonnet-4-5-20250514", PromptFile: "~/.claude/skills/omo/references/librarian.md", Description: "Researcher"},
-		"explore":                 {Backend: "opencode", Model: "opencode/grok-code", PromptFile: "~/.claude/skills/omo/references/explore.md", Description: "Code search"},
-		"develop":                 {Backend: "codex", Model: "", PromptFile: "~/.claude/skills/omo/references/develop.md", Description: "Code development"},
-		"frontend-ui-ux-engineer": {Backend: "gemini", Model: "gemini-3-pro-preview", PromptFile: "~/.claude/skills/omo/references/frontend-ui-ux-engineer.md", Description: "Frontend engineer"},
-		"document-writer":         {Backend: "gemini", Model: "gemini-3-flash-preview", PromptFile: "~/.claude/skills/omo/references/document-writer.md", Description: "Documentation"},
-	},
-}
+			"sisyphus":                {Backend: "claude", Model: "claude-sonnet-4-20250514", PromptFile: "~/.claude/skills/omo/references/sisyphus.md", Description: "Primary orchestrator"},
+			"oracle":                  {Backend: "claude", Model: "claude-sonnet-4-20250514", PromptFile: "~/.claude/skills/omo/references/oracle.md", Description: "Technical advisor"},
+			"librarian":               {Backend: "claude", Model: "claude-sonnet-4-5-20250514", PromptFile: "~/.claude/skills/omo/references/librarian.md", Description: "Researcher"},
+			"explore":                 {Backend: "opencode", Model: "opencode/grok-code", PromptFile: "~/.claude/skills/omo/references/explore.md", Description: "Code search"},
+			"develop":                 {Backend: "codex", Model: "", PromptFile: "~/.claude/skills/omo/references/develop.md", Description: "Code development"},
+			"frontend-ui-ux-engineer": {Backend: "gemini", Model: "", PromptFile: "~/.claude/skills/omo/references/frontend-ui-ux-engineer.md", Description: "Frontend engineer"},
+			"document-writer":         {Backend: "gemini", Model: "", PromptFile: "~/.claude/skills/omo/references/document-writer.md", Description: "Documentation"},
+		},
+	}
 
 func loadModelsConfig() *ModelsConfig {
 	home, err := os.UserHomeDir()
@@ -70,10 +71,10 @@ func loadModelsConfig() *ModelsConfig {
 	return &cfg
 }
 
-func resolveAgentConfig(agentName string) (backend, model, promptFile string, yolo bool) {
+func resolveAgentConfig(agentName string) (backend, model, promptFile, reasoning string, yolo bool) {
 	cfg := loadModelsConfig()
 	if agent, ok := cfg.Agents[agentName]; ok {
-		return agent.Backend, agent.Model, agent.PromptFile, agent.Yolo
+		return agent.Backend, agent.Model, agent.PromptFile, agent.Reasoning, agent.Yolo
 	}
-	return cfg.DefaultBackend, cfg.DefaultModel, "", false
+	return cfg.DefaultBackend, cfg.DefaultModel, "", "", false
 }

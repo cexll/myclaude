@@ -1290,6 +1290,65 @@ func TestBackendParseArgs_ModelFlag(t *testing.T) {
 	}
 }
 
+func TestBackendParseArgs_ReasoningEffortFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "reasoning-effort flag",
+			args: []string{"codeagent-wrapper", "--reasoning-effort", "low", "task"},
+			want: "low",
+		},
+		{
+			name: "reasoning-effort equals syntax",
+			args: []string{"codeagent-wrapper", "--reasoning-effort=medium", "task"},
+			want: "medium",
+		},
+		{
+			name: "reasoning-effort trimmed",
+			args: []string{"codeagent-wrapper", "--reasoning-effort", "  high  ", "task"},
+			want: "high",
+		},
+		{
+			name: "reasoning-effort with resume mode",
+			args: []string{"codeagent-wrapper", "--reasoning-effort", "low", "resume", "sid", "task"},
+			want: "low",
+		},
+		{
+			name:    "missing reasoning-effort value",
+			args:    []string{"codeagent-wrapper", "--reasoning-effort"},
+			wantErr: true,
+		},
+		{
+			name:    "reasoning-effort equals missing value",
+			args:    []string{"codeagent-wrapper", "--reasoning-effort=", "task"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Args = tt.args
+			cfg, err := parseArgs()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.ReasoningEffort != tt.want {
+				t.Fatalf("ReasoningEffort = %q, want %q", cfg.ReasoningEffort, tt.want)
+			}
+		})
+	}
+}
+
 func TestBackendParseArgs_PromptFileFlag(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1829,6 +1888,28 @@ func TestRun_PromptFilePrefixesTask(t *testing.T) {
 	})
 }
 
+func TestRun_PassesReasoningEffortToTaskSpec(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
+
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+
+	var got TaskSpec
+	runTaskFn = func(task TaskSpec, silent bool, timeout int) TaskResult {
+		got = task
+		return TaskResult{ExitCode: 0, Message: "ok"}
+	}
+
+	os.Args = []string{"codeagent-wrapper", "--reasoning-effort", "high", "task"}
+	if code := run(); code != 0 {
+		t.Fatalf("run exit = %d, want 0", code)
+	}
+	if got.ReasoningEffort != "high" {
+		t.Fatalf("ReasoningEffort = %q, want %q", got.ReasoningEffort, "high")
+	}
+}
+
 func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 	const key = "CODEX_BYPASS_SANDBOX"
 	t.Setenv(key, "false")
@@ -1849,6 +1930,64 @@ func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 		if args[i] != expected[i] {
 			t.Fatalf("args[%d]=%s, want %s", i, args[i], expected[i])
 		}
+	}
+}
+
+func TestRunBuildCodexArgs_NewMode_WithReasoningEffort(t *testing.T) {
+	const key = "CODEX_BYPASS_SANDBOX"
+	t.Setenv(key, "false")
+
+	cfg := &Config{Mode: "new", WorkDir: "/test/dir", ReasoningEffort: "high"}
+	args := buildCodexArgs(cfg, "my task")
+	expected := []string{
+		"e",
+		"--reasoning-effort", "high",
+		"--skip-git-repo-check",
+		"-C", "/test/dir",
+		"--json",
+		"my task",
+	}
+	if len(args) != len(expected) {
+		t.Fatalf("len mismatch")
+	}
+	for i := range args {
+		if args[i] != expected[i] {
+			t.Fatalf("args[%d]=%s, want %s", i, args[i], expected[i])
+		}
+	}
+}
+
+func TestRunCodexTaskWithContext_CodexReasoningEffort(t *testing.T) {
+	defer resetTestHooks()
+	t.Setenv("CODEX_BYPASS_SANDBOX", "false")
+
+	var gotArgs []string
+	origRunner := newCommandRunner
+	newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+		gotArgs = append([]string(nil), args...)
+		return newFakeCmd(fakeCmdConfig{
+			PID: 123,
+			StdoutPlan: []fakeStdoutEvent{
+				{Data: "{\"type\":\"result\",\"session_id\":\"sid\",\"result\":\"ok\"}\n"},
+			},
+		})
+	}
+	t.Cleanup(func() { newCommandRunner = origRunner })
+
+	res := runCodexTaskWithContext(context.Background(), TaskSpec{Task: "hi", Mode: "new", WorkDir: defaultWorkdir, ReasoningEffort: "high"}, nil, nil, false, true, 5)
+	if res.ExitCode != 0 || res.Message != "ok" {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+
+	found := false
+	for i := 0; i+1 < len(gotArgs); i++ {
+		if gotArgs[i] == "--reasoning-effort" && gotArgs[i+1] == "high" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected --reasoning-effort high in args, got %v", gotArgs)
 	}
 }
 

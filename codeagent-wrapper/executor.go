@@ -764,6 +764,10 @@ func buildCodexArgs(cfg *Config, targetArg string) []string {
 		args = append(args, "--model", model)
 	}
 
+	if reasoningEffort := strings.TrimSpace(cfg.ReasoningEffort); reasoningEffort != "" {
+		args = append(args, "--reasoning-effort", reasoningEffort)
+	}
+
 	args = append(args, "--skip-git-repo-check")
 
 	if isResume {
@@ -804,12 +808,13 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	logger := injectedLogger
 
 	cfg := &Config{
-		Mode:      taskSpec.Mode,
-		Task:      taskSpec.Task,
-		SessionID: taskSpec.SessionID,
-		WorkDir:   taskSpec.WorkDir,
-		Model:     taskSpec.Model,
-		Backend:   defaultBackendName,
+		Mode:            taskSpec.Mode,
+		Task:            taskSpec.Task,
+		SessionID:       taskSpec.SessionID,
+		WorkDir:         taskSpec.WorkDir,
+		Model:           taskSpec.Model,
+		ReasoningEffort: taskSpec.ReasoningEffort,
+		Backend:         defaultBackendName,
 	}
 
 	commandName := codexCommand
@@ -844,6 +849,12 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		if cfg.Mode != "resume" && strings.TrimSpace(cfg.Model) == "" && settings.Model != "" {
 			cfg.Model = settings.Model
 		}
+	}
+
+	// Load gemini env from ~/.gemini/.env if exists
+	var geminiEnv map[string]string
+	if cfg.Backend == "gemini" {
+		geminiEnv = loadGeminiEnv()
 	}
 
 	useStdin := taskSpec.UseStdin
@@ -947,6 +958,9 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 
 	if cfg.Backend == "claude" && len(claudeEnv) > 0 {
 		cmd.SetEnv(claudeEnv)
+	}
+	if cfg.Backend == "gemini" && len(geminiEnv) > 0 {
+		cmd.SetEnv(geminiEnv)
 	}
 
 	// For backends that don't support -C flag (claude, gemini), set working directory via cmd.Dir
