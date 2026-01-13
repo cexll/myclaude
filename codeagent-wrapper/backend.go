@@ -106,6 +106,51 @@ func loadMinimalEnvSettings() map[string]string {
 	return settings.Env
 }
 
+// loadGeminiEnv loads environment variables from ~/.gemini/.env
+// Supports GEMINI_API_KEY, GEMINI_MODEL, GOOGLE_GEMINI_BASE_URL
+// Also sets GEMINI_API_KEY_AUTH_MECHANISM=bearer for third-party API compatibility
+func loadGeminiEnv() map[string]string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
+	}
+
+	envPath := filepath.Join(home, ".gemini", ".env")
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return nil
+	}
+
+	env := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.IndexByte(line, '=')
+		if idx <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		value := strings.TrimSpace(line[idx+1:])
+		if key != "" && value != "" {
+			env[key] = value
+		}
+	}
+
+	// Set bearer auth mechanism for third-party API compatibility
+	if _, ok := env["GEMINI_API_KEY"]; ok {
+		if _, hasAuth := env["GEMINI_API_KEY_AUTH_MECHANISM"]; !hasAuth {
+			env["GEMINI_API_KEY_AUTH_MECHANISM"] = "bearer"
+		}
+	}
+
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
+
 func buildClaudeArgs(cfg *Config, targetArg string) []string {
 	if cfg == nil {
 		return nil
