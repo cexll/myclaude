@@ -184,6 +184,10 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 			case "id":
 				task.ID = value
 			case "workdir":
+				// Validate workdir: "-" is not a valid directory
+				if value == "-" {
+					return nil, fmt.Errorf("task block #%d has invalid workdir: '-' is not a valid directory path", taskIndex)
+				}
 				task.WorkDir = value
 			case "session_id":
 				task.SessionID = value
@@ -417,6 +421,10 @@ func parseArgs() (*Config, error) {
 		cfg.Task = args[2]
 		cfg.ExplicitStdin = (args[2] == "-")
 		if len(args) > 3 {
+			// Validate workdir: "-" is not a valid directory
+			if args[3] == "-" {
+				return nil, fmt.Errorf("invalid workdir: '-' is not a valid directory path")
+			}
 			cfg.WorkDir = args[3]
 		}
 	} else {
@@ -424,6 +432,10 @@ func parseArgs() (*Config, error) {
 		cfg.Task = args[0]
 		cfg.ExplicitStdin = (args[0] == "-")
 		if len(args) > 1 {
+			// Validate workdir: "-" is not a valid directory
+			if args[1] == "-" {
+				return nil, fmt.Errorf("invalid workdir: '-' is not a valid directory path")
+			}
 			cfg.WorkDir = args[1]
 		}
 	}

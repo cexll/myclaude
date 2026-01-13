@@ -1095,6 +1095,11 @@ func TestBackendParseArgs_NewMode(t *testing.T) {
 			args: []string{"codeagent-wrapper", "-", "/some/dir"},
 			want: &Config{Mode: "new", Task: "-", WorkDir: "/some/dir", ExplicitStdin: true, Backend: defaultBackendName},
 		},
+		{
+			name:    "stdin with dash workdir rejected",
+			args:    []string{"codeagent-wrapper", "-", "-"},
+			wantErr: true,
+		},
 		{name: "no args", args: []string{"codeagent-wrapper"}, wantErr: true},
 	}
 
@@ -1156,6 +1161,7 @@ func TestBackendParseArgs_ResumeMode(t *testing.T) {
 		{name: "resume missing task", args: []string{"codeagent-wrapper", "resume", "session-123"}, wantErr: true},
 		{name: "resume empty session_id", args: []string{"codeagent-wrapper", "resume", "", "task"}, wantErr: true},
 		{name: "resume whitespace session_id", args: []string{"codeagent-wrapper", "resume", "   ", "task"}, wantErr: true},
+		{name: "resume with dash workdir rejected", args: []string{"codeagent-wrapper", "resume", "session-123", "task", "-"}, wantErr: true},
 	}
 
 	for _, tt := range tests {
