@@ -121,12 +121,6 @@
         },
         {
           "type": "copy_file",
-          "source": "skills/omo/references/sisyphus.md",
-          "target": "skills/omo/references/sisyphus.md",
-          "description": "Install sisyphus agent prompt"
-        },
-        {
-          "type": "copy_file",
           "source": "skills/omo/references/oracle.md",
           "target": "skills/omo/references/oracle.md",
           "description": "Install oracle agent prompt"
