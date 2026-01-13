@@ -160,7 +160,7 @@ Required features:
 - `-p` - Prompt input flag
 - `-r <session_id>` - Resume sessions
 
-**Security Note:** The wrapper only adds `--dangerously-skip-permissions` for Claude when explicitly enabled (e.g. `--skip-permissions` / `CODEAGENT_SKIP_PERMISSIONS=true`). Keep it disabled unless you understand the risk.
+**Security Note:** The wrapper adds `--dangerously-skip-permissions` for Claude by default. Set `CODEAGENT_SKIP_PERMISSIONS=false` to disable if you need permission prompts.
 
 **Verify Claude CLI is installed:**
 ```bash
@@ -536,25 +536,26 @@ network_access = true
 
 ---
 
-### Q5: Permission denied or sandbox restrictions during execution
+### Q5: How to disable default bypass/skip-permissions mode
 
-**Problem:**
-Execution fails with permission errors or sandbox restrictions when running codeagent-wrapper.
+**Background:**
+By default, codeagent-wrapper enables bypass mode for both Codex and Claude backends:
+- `CODEX_BYPASS_SANDBOX=true` - Bypasses Codex sandbox restrictions
+- `CODEAGENT_SKIP_PERMISSIONS=true` - Skips Claude permission prompts
 
-**Solution:**
-Set the following environment variables:
+**To disable (if you need sandbox/permission protection):**
 ```bash
-export CODEX_BYPASS_SANDBOX=true
-export CODEAGENT_SKIP_PERMISSIONS=true
+export CODEX_BYPASS_SANDBOX=false
+export CODEAGENT_SKIP_PERMISSIONS=false
 ```
 
-Or add them to your shell profile (`~/.zshrc` or `~/.bashrc`):
+Or add to your shell profile (`~/.zshrc` or `~/.bashrc`):
 ```bash
-echo 'export CODEX_BYPASS_SANDBOX=true' >> ~/.zshrc
-echo 'export CODEAGENT_SKIP_PERMISSIONS=true' >> ~/.zshrc
+echo 'export CODEX_BYPASS_SANDBOX=false' >> ~/.zshrc
+echo 'export CODEAGENT_SKIP_PERMISSIONS=false' >> ~/.zshrc
 ```
 
-**Note:** These settings bypass security restrictions. Use with caution in trusted environments only.
+**Note:** Disabling bypass mode will require manual approval for certain operations.
 
 ---
 
