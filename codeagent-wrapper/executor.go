@@ -17,6 +17,7 @@ import (
 )
 
 const postMessageTerminateDelay = 1 * time.Second
+const forceKillWaitTimeout = 5 * time.Second
 
 // commandRunner abstracts exec.Cmd for testability
 type commandRunner interface {
@@ -1109,7 +1110,8 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 waitLoop:
 	for {
 		select {
-		case waitErr = <-waitCh:
+		case err := <-waitCh:
+			waitErr = err
 			break waitLoop
 		case <-ctx.Done():
 			ctxCancelled = true
@@ -1120,8 +1122,17 @@ waitLoop:
 					terminated = true
 				}
 			}
-			waitErr = <-waitCh
-			break waitLoop
+			for {
+				select {
+				case err := <-waitCh:
+					waitErr = err
+					break waitLoop
+				case <-time.After(forceKillWaitTimeout):
+					if proc := cmd.Process(); proc != nil {
+						_ = proc.Kill()
+					}
+				}
+			}
 		case <-messageTimerCh:
 			forcedAfterComplete = true
 			messageTimerCh = nil
@@ -1135,8 +1146,17 @@ waitLoop:
 			// Close pipes to unblock stream readers, then wait for process exit.
 			closeWithReason(stdout, "terminate")
 			closeWithReason(stderr, "terminate")
-			waitErr = <-waitCh
-			break waitLoop
+			for {
+				select {
+				case err := <-waitCh:
+					waitErr = err
+					break waitLoop
+				case <-time.After(forceKillWaitTimeout):
+					if proc := cmd.Process(); proc != nil {
+						_ = proc.Kill()
+					}
+				}
+			}
 		case <-completeSeen:
 			completeSeenObserved = true
 			if messageTimer != nil {
