@@ -766,7 +766,7 @@ func buildCodexArgs(cfg *Config, targetArg string) []string {
 	}
 
 	if reasoningEffort := strings.TrimSpace(cfg.ReasoningEffort); reasoningEffort != "" {
-		args = append(args, "--reasoning-effort", reasoningEffort)
+		args = append(args, "-c", "model_reasoning_effort="+reasoningEffort)
 	}
 
 	args = append(args, "--skip-git-repo-check")

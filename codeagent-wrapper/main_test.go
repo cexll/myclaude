@@ -1970,7 +1970,7 @@ func TestRunBuildCodexArgs_NewMode_WithReasoningEffort(t *testing.T) {
 	args := buildCodexArgs(cfg, "my task")
 	expected := []string{
 		"e",
-		"--reasoning-effort", "high",
+		"-c", "model_reasoning_effort=high",
 		"--skip-git-repo-check",
 		"-C", "/test/dir",
 		"--json",
@@ -2010,13 +2010,13 @@ func TestRunCodexTaskWithContext_CodexReasoningEffort(t *testing.T) {
 
 	found := false
 	for i := 0; i+1 < len(gotArgs); i++ {
-		if gotArgs[i] == "--reasoning-effort" && gotArgs[i+1] == "high" {
+		if gotArgs[i] == "-c" && gotArgs[i+1] == "model_reasoning_effort=high" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected --reasoning-effort high in args, got %v", gotArgs)
+		t.Fatalf("expected -c model_reasoning_effort=high in args, got %v", gotArgs)
 	}
 }
 
