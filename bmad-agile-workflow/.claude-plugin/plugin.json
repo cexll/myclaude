@@ -1,0 +1,9 @@
+{
+  "name": "bmad",
+  "description": "Full BMAD agile workflow with role-based agents (PO, Architect, SM, Dev, QA) and interactive approval gates",
+  "version": "5.6.1",
+  "author": {
+    "name": "cexll",
+    "email": "cexll@cexll.com"
+  }
+}

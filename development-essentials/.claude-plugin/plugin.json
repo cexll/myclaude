@@ -1,0 +1,9 @@
+{
+  "name": "essentials",
+  "description": "Essential development commands for coding, debugging, testing, optimization, and documentation",
+  "version": "5.6.1",
+  "author": {
+    "name": "cexll",
+    "email": "cexll@cexll.com"
+  }
+}

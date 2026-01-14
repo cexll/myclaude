@@ -1,0 +1,9 @@
+{
+  "name": "requirements",
+  "description": "Requirements-driven development workflow with quality gates for practical feature implementation",
+  "version": "5.6.1",
+  "author": {
+    "name": "cexll",
+    "email": "cexll@cexll.com"
+  }
+}

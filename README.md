@@ -35,6 +35,41 @@ python3 install.py --install-dir ~/.claude
 
 ## Workflows Overview
 
+### 0. OmO Multi-Agent Orchestrator (Recommended for Complex Tasks)
+
+**Intelligent multi-agent orchestration that routes tasks to specialized agents based on risk signals.**
+
+```bash
+/omo "analyze and fix this authentication bug"
+```
+
+**Agent Hierarchy:**
+| Agent | Role | Backend | Model |
+|-------|------|---------|-------|
+| `oracle` | Technical advisor | Claude | claude-opus-4-5 |
+| `librarian` | External research | Claude | claude-sonnet-4-5 |
+| `explore` | Codebase search | OpenCode | grok-code |
+| `develop` | Code implementation | Codex | gpt-5.2 |
+| `frontend-ui-ux-engineer` | UI/UX specialist | Gemini | gemini-3-pro |
+| `document-writer` | Documentation | Gemini | gemini-3-flash |
+
+**Routing Signals (Not Fixed Pipeline):**
+- Code location unclear → `explore`
+- External library/API → `librarian`
+- Risky/multi-file change → `oracle`
+- Implementation needed → `develop` / `frontend-ui-ux-engineer`
+
+**Common Recipes:**
+- Explain code: `explore`
+- Small fix with known location: `develop` directly
+- Bug fix, location unknown: `explore → develop`
+- Cross-cutting refactor: `explore → oracle → develop`
+- External API integration: `explore + librarian → oracle → develop`
+
+**Best For:** Complex bug investigation, multi-file refactoring, architecture decisions
+
+---
+
 ### 1. Dev Workflow (Recommended)
 
 **The primary workflow for most development tasks.**

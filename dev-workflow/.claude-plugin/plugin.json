@@ -1,0 +1,9 @@
+{
+  "name": "dev",
+  "description": "Lightweight development workflow with requirements clarification, parallel codex execution, and mandatory 90% test coverage",
+  "version": "5.6.1",
+  "author": {
+    "name": "cexll",
+    "email": "cexll@cexll.com"
+  }
+}

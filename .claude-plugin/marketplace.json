@@ -1,209 +1,47 @@
 {
-  "name": "claude-code-dev-workflows",
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "myclaude",
+  "version": "5.6.1",
+  "description": "Professional multi-agent development workflows with OmO orchestration, Requirements-Driven and BMAD methodologies",
   "owner": {
-    "name": "Claude Code Dev Workflows",
-    "email": "contact@example.com",
-    "url": "https://github.com/cexll/myclaude"
-  },
-  "metadata": {
-    "description": "Professional multi-agent development workflows with Requirements-Driven and BMAD methodologies, featuring 16+ specialized agents and 12+ commands",
-    "version": "1.0.0"
+    "name": "cexll",
+    "email": "evanxian9@gmail.com"
   },
   "plugins": [
     {
-      "name": "requirements-driven-development",
-      "source": "./requirements-driven-workflow/",
-      "description": "Streamlined requirements-driven development workflow with 90% quality gates for practical feature implementation",
-      "version": "1.0.0",
-      "author": {
-        "name": "Claude Code Dev Workflows",
-        "url": "https://github.com/cexll/myclaude"
-      },
-      "homepage": "https://github.com/cexll/myclaude",
-      "repository": "https://github.com/cexll/myclaude",
-      "license": "MIT",
-      "keywords": [
-        "requirements",
-        "workflow",
-        "automation",
-        "quality-gates",
-        "feature-development",
-        "agile",
-        "specifications"
-      ],
-      "category": "workflows",
-      "strict": false,
-      "commands": [
-        "./commands/requirements-pilot.md"
-      ],
-      "agents": [
-        "./agents/requirements-generate.md",
-        "./agents/requirements-code.md",
-        "./agents/requirements-testing.md",
-        "./agents/requirements-review.md"
-      ]
+      "name": "omo",
+      "description": "Multi-agent orchestration for code analysis, bug investigation, fix planning, and implementation with intelligent routing to specialized agents",
+      "version": "5.6.1",
+      "source": "./skills/omo",
+      "category": "development"
     },
     {
-      "name": "bmad-agile-workflow",
-      "source": "./bmad-agile-workflow/",
+      "name": "dev",
+      "description": "Lightweight development workflow with requirements clarification, parallel codex execution, and mandatory 90% test coverage",
+      "version": "5.6.1",
+      "source": "./dev-workflow",
+      "category": "development"
+    },
+    {
+      "name": "requirements",
+      "description": "Requirements-driven development workflow with quality gates for practical feature implementation",
+      "version": "5.6.1",
+      "source": "./requirements-driven-workflow",
+      "category": "development"
+    },
+    {
+      "name": "bmad",
       "description": "Full BMAD agile workflow with role-based agents (PO, Architect, SM, Dev, QA) and interactive approval gates",
-      "version": "1.0.0",
-      "author": {
-        "name": "Claude Code Dev Workflows",
-        "url": "https://github.com/cexll/myclaude"
-      },
-      "homepage": "https://github.com/cexll/myclaude",
-      "repository": "https://github.com/cexll/myclaude",
-      "license": "MIT",
-      "keywords": [
-        "bmad",
-        "agile",
-        "scrum",
-        "product-owner",
-        "architect",
-        "developer",
-        "qa",
-        "workflow-orchestration"
-      ],
-      "category": "workflows",
-      "strict": false,
-      "commands": [
-        "./commands/bmad-pilot.md"
-      ],
-      "agents": [
-        "./agents/bmad-po.md",
-        "./agents/bmad-architect.md",
-        "./agents/bmad-sm.md",
-        "./agents/bmad-dev.md",
-        "./agents/bmad-qa.md",
-        "./agents/bmad-orchestrator.md",
-        "./agents/bmad-review.md"
-      ]
+      "version": "5.6.1",
+      "source": "./bmad-agile-workflow",
+      "category": "development"
     },
     {
-      "name": "development-essentials",
-      "source": "./development-essentials/",
+      "name": "dev-kit",
       "description": "Essential development commands for coding, debugging, testing, optimization, and documentation",
-      "version": "1.0.0",
-      "author": {
-        "name": "Claude Code Dev Workflows",
-        "url": "https://github.com/cexll/myclaude"
-      },
-      "homepage": "https://github.com/cexll/myclaude",
-      "repository": "https://github.com/cexll/myclaude",
-      "license": "MIT",
-      "keywords": [
-        "code",
-        "debug",
-        "test",
-        "optimize",
-        "review",
-        "bugfix",
-        "refactor",
-        "documentation"
-      ],
-      "category": "essentials",
-      "strict": false,
-      "commands": [
-        "./commands/code.md",
-        "./commands/debug.md",
-        "./commands/test.md",
-        "./commands/optimize.md",
-        "./commands/review.md",
-        "./commands/bugfix.md",
-        "./commands/refactor.md",
-        "./commands/docs.md",
-        "./commands/ask.md",
-        "./commands/think.md"
-      ],
-      "agents": [
-        "./agents/code.md",
-        "./agents/bugfix.md",
-        "./agents/bugfix-verify.md",
-        "./agents/optimize.md",
-        "./agents/debug.md"
-      ]
-    },
-    {
-      "name": "codex-cli",
-      "source": "./skills/codex/",
-      "description": "Execute Codex CLI for code analysis, refactoring, and automated code changes with file references (@syntax) and structured output",
-      "version": "1.0.0",
-      "author": {
-        "name": "Claude Code Dev Workflows",
-        "url": "https://github.com/cexll/myclaude"
-      },
-      "homepage": "https://github.com/cexll/myclaude",
-      "repository": "https://github.com/cexll/myclaude",
-      "license": "MIT",
-      "keywords": [
-        "codex",
-        "code-analysis",
-        "refactoring",
-        "automation",
-        "gpt-5",
-        "ai-coding"
-      ],
-      "category": "essentials",
-      "strict": false,
-      "skills": [
-        "./SKILL.md"
-      ]
-    },
-    {
-      "name": "gemini-cli",
-      "source": "./skills/gemini/",
-      "description": "Execute Gemini CLI for AI-powered code analysis and generation with Google's latest Gemini models",
-      "version": "1.0.0",
-      "author": {
-        "name": "Claude Code Dev Workflows",
-        "url": "https://github.com/cexll/myclaude"
-      },
-      "homepage": "https://github.com/cexll/myclaude",
-      "repository": "https://github.com/cexll/myclaude",
-      "license": "MIT",
-      "keywords": [
-        "gemini",
-        "google-ai",
-        "code-analysis",
-        "code-generation",
-        "ai-reasoning"
-      ],
-      "category": "essentials",
-      "strict": false,
-      "skills": [
-        "./SKILL.md"
-      ]
-    },
-    {
-      "name": "dev-workflow",
-      "source": "./dev-workflow/",
-      "description": "Minimal lightweight development workflow with requirements clarification, parallel codex execution, and mandatory 90% test coverage",
-      "version": "1.0.0",
-      "author": {
-        "name": "Claude Code Dev Workflows",
-        "url": "https://github.com/cexll/myclaude"
-      },
-      "homepage": "https://github.com/cexll/myclaude",
-      "repository": "https://github.com/cexll/myclaude",
-      "license": "MIT",
-      "keywords": [
-        "dev",
-        "workflow",
-        "codex",
-        "testing",
-        "coverage",
-        "concurrent",
-        "lightweight"
-      ],
-      "category": "workflows",
-      "strict": false,
-      "commands": [
-        "./commands/dev.md"
-      ],
-      "agents": [
-        "./agents/dev-plan-generator.md"
-      ]
+      "version": "5.6.1",
+      "source": "./development-essentials",
+      "category": "productivity"
     }
   ]
 }
