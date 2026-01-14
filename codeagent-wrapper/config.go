@@ -46,6 +46,7 @@ type TaskSpec struct {
 	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
 	Agent           string          `json:"agent,omitempty"`
 	PromptFile      string          `json:"prompt_file,omitempty"`
+	SkipPermissions bool            `json:"skip_permissions,omitempty"`
 	Mode            string          `json:"-"`
 	UseStdin        bool            `json:"-"`
 	Context         context.Context `json:"-"`
@@ -201,6 +202,12 @@ func parseParallelConfig(data []byte) (*ParallelConfig, error) {
 			case "agent":
 				agentSpecified = true
 				task.Agent = value
+			case "skip_permissions", "skip-permissions":
+				if value == "" {
+					task.SkipPermissions = true
+					continue
+				}
+				task.SkipPermissions = parseBoolFlag(value, false)
 			case "dependencies":
 				for _, dep := range strings.Split(value, ",") {
 					dep = strings.TrimSpace(dep)

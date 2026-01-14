@@ -1587,6 +1587,26 @@ do something`
 	}
 }
 
+func TestParallelParseConfig_SkipPermissions(t *testing.T) {
+	input := `---TASK---
+id: task-1
+skip_permissions: true
+---CONTENT---
+do something`
+
+	cfg, err := parseParallelConfig([]byte(input))
+	if err != nil {
+		t.Fatalf("parseParallelConfig() unexpected error: %v", err)
+	}
+	if len(cfg.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(cfg.Tasks))
+	}
+	task := cfg.Tasks[0]
+	if !task.SkipPermissions {
+		t.Fatalf("SkipPermissions = %v, want true", task.SkipPermissions)
+	}
+}
+
 func TestParallelParseConfig_EmptySessionID(t *testing.T) {
 	input := `---TASK---
 id: task-1
@@ -4009,6 +4029,30 @@ dependencies: first
 ---CONTENT---
 do two`)
 		os.Args = []string{"codeagent-wrapper", "--parallel"}
+		if code := run(); code != 0 {
+			t.Fatalf("run exit = %d, want 0", code)
+		}
+	})
+
+	t.Run("parallelSkipPermissions", func(t *testing.T) {
+		defer resetTestHooks()
+		cleanupHook = func() {}
+		cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
+		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
+
+		runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+			if !task.SkipPermissions {
+				return TaskResult{TaskID: task.ID, ExitCode: 1, Error: "SkipPermissions not propagated"}
+			}
+			return TaskResult{TaskID: task.ID, ExitCode: 0, Message: "ok"}
+		}
+
+		stdinReader = strings.NewReader(`---TASK---
+id: only
+backend: claude
+---CONTENT---
+do one`)
+		os.Args = []string{"codeagent-wrapper", "--parallel", "--skip-permissions"}
 		if code := run(); code != 0 {
 			t.Fatalf("run exit = %d, want 0", code)
 		}

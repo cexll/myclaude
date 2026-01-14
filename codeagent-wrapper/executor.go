@@ -815,6 +815,7 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		WorkDir:         taskSpec.WorkDir,
 		Model:           taskSpec.Model,
 		ReasoningEffort: taskSpec.ReasoningEffort,
+		SkipPermissions: taskSpec.SkipPermissions,
 		Backend:         defaultBackendName,
 	}
 

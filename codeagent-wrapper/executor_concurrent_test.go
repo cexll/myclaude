@@ -625,6 +625,27 @@ func TestExecutorRunCodexTaskWithContext(t *testing.T) {
 		}
 	})
 
+	t.Run("claudeSkipPermissionsPropagatesFromTaskSpec", func(t *testing.T) {
+		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
+		var gotArgs []string
+		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+			gotArgs = append([]string(nil), args...)
+			return &execFakeRunner{
+				stdout:  newReasonReadCloser(`{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`),
+				process: &execFakeProcess{pid: 15},
+			}
+		}
+
+		_ = closeLogger()
+		res := runCodexTaskWithContext(context.Background(), TaskSpec{ID: "task-skip", Task: "payload", WorkDir: ".", SkipPermissions: true}, ClaudeBackend{}, nil, false, false, 1)
+		if res.ExitCode != 0 || res.Error != "" {
+			t.Fatalf("unexpected result: %+v", res)
+		}
+		if !slices.Contains(gotArgs, "--dangerously-skip-permissions") {
+			t.Fatalf("expected --dangerously-skip-permissions in args, got %v", gotArgs)
+		}
+	})
+
 	t.Run("missingMessage", func(t *testing.T) {
 		newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
 			return &execFakeRunner{

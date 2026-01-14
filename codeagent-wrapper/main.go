@@ -177,6 +177,7 @@ func run() (exitCode int) {
 			backendName := defaultBackendName
 			model := ""
 			fullOutput := false
+			skipPermissions := envFlagEnabled("CODEAGENT_SKIP_PERMISSIONS")
 			var extras []string
 
 			for i := 0; i < len(args); i++ {
@@ -214,13 +215,19 @@ func run() (exitCode int) {
 						return 1
 					}
 					model = value
+				case arg == "--skip-permissions", arg == "--dangerously-skip-permissions":
+					skipPermissions = true
+				case strings.HasPrefix(arg, "--skip-permissions="):
+					skipPermissions = parseBoolFlag(strings.TrimPrefix(arg, "--skip-permissions="), skipPermissions)
+				case strings.HasPrefix(arg, "--dangerously-skip-permissions="):
+					skipPermissions = parseBoolFlag(strings.TrimPrefix(arg, "--dangerously-skip-permissions="), skipPermissions)
 				default:
 					extras = append(extras, arg)
 				}
 			}
 
 			if len(extras) > 0 {
-				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend, --model and --full-output are allowed.")
+				fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend, --model, --full-output and --skip-permissions are allowed.")
 				fmt.Fprintln(os.Stderr, "Usage examples:")
 				fmt.Fprintf(os.Stderr, "  %s --parallel < tasks.txt\n", name)
 				fmt.Fprintf(os.Stderr, "  echo '...' | %s --parallel\n", name)
@@ -257,6 +264,7 @@ func run() (exitCode int) {
 				if strings.TrimSpace(cfg.Tasks[i].Model) == "" && model != "" {
 					cfg.Tasks[i].Model = model
 				}
+				cfg.Tasks[i].SkipPermissions = cfg.Tasks[i].SkipPermissions || skipPermissions
 			}
 
 			timeoutSec := resolveTimeout()
@@ -436,6 +444,7 @@ func run() (exitCode int) {
 		SessionID:       cfg.SessionID,
 		Model:           cfg.Model,
 		ReasoningEffort: cfg.ReasoningEffort,
+		SkipPermissions: cfg.SkipPermissions,
 		UseStdin:        useStdin,
 	}
 
