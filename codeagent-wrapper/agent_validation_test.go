@@ -14,7 +14,7 @@ func TestValidateAgentName(t *testing.T) {
 		input   string
 		wantErr bool
 	}{
-		{name: "simple", input: "sisyphus", wantErr: false},
+		{name: "simple", input: "develop", wantErr: false},
 		{name: "upper", input: "ABC", wantErr: false},
 		{name: "digits", input: "a1", wantErr: false},
 		{name: "dash underscore", input: "a-b_c", wantErr: false},

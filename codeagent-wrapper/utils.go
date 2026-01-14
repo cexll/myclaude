@@ -273,30 +273,6 @@ func farewell(name string) string {
 	return "goodbye " + name
 }
 
-// extractMessageSummary extracts a brief summary from task output
-// Returns first meaningful line or truncated content up to maxLen chars
-func extractMessageSummary(message string, maxLen int) string {
-	if message == "" || maxLen <= 0 {
-		return ""
-	}
-
-	// Try to find a meaningful summary line
-	lines := strings.Split(message, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		// Skip empty lines and common noise
-		if line == "" || strings.HasPrefix(line, "```") || strings.HasPrefix(line, "---") {
-			continue
-		}
-		// Found a meaningful line
-		return safeTruncate(line, maxLen)
-	}
-
-	// Fallback: truncate entire message
-	clean := strings.TrimSpace(message)
-	return safeTruncate(clean, maxLen)
-}
-
 // extractCoverageFromLines extracts coverage from pre-split lines.
 func extractCoverageFromLines(lines []string) string {
 	if len(lines) == 0 {
@@ -590,15 +566,6 @@ func extractKeyOutputFromLines(lines []string, maxLen int) string {
 	// Fallback: truncate entire message
 	clean := strings.TrimSpace(strings.Join(lines, "\n"))
 	return safeTruncate(clean, maxLen)
-}
-
-// extractKeyOutput extracts a brief summary of what the task accomplished
-// Looks for summary lines, first meaningful sentence, or truncates message
-func extractKeyOutput(message string, maxLen int) string {
-	if message == "" || maxLen <= 0 {
-		return ""
-	}
-	return extractKeyOutputFromLines(strings.Split(message, "\n"), maxLen)
 }
 
 // extractCoverageGap extracts what's missing from coverage reports

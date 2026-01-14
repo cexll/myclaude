@@ -36,7 +36,6 @@ func resetTestHooks() {
 	newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
 		return &realCmd{cmd: commandContext(ctx, name, args...)}
 	}
-	jsonMarshal = json.Marshal
 	forceKillDelay.Store(5)
 	closeLogger()
 	executablePathFn = os.Executable
@@ -1410,7 +1409,7 @@ func TestBackendParseArgs_PromptFileFlag(t *testing.T) {
 func TestBackendParseArgs_PromptFileOverridesAgent(t *testing.T) {
 	defer resetTestHooks()
 
-	os.Args = []string{"codeagent-wrapper", "--prompt-file", "/tmp/custom.md", "--agent", "sisyphus", "task"}
+	os.Args = []string{"codeagent-wrapper", "--prompt-file", "/tmp/custom.md", "--agent", "develop", "task"}
 	cfg, err := parseArgs()
 	if err != nil {
 		t.Fatalf("parseArgs() unexpected error: %v", err)
@@ -1419,7 +1418,7 @@ func TestBackendParseArgs_PromptFileOverridesAgent(t *testing.T) {
 		t.Fatalf("PromptFile = %q, want %q", cfg.PromptFile, "/tmp/custom.md")
 	}
 
-	os.Args = []string{"codeagent-wrapper", "--agent", "sisyphus", "--prompt-file", "/tmp/custom.md", "task"}
+	os.Args = []string{"codeagent-wrapper", "--agent", "develop", "--prompt-file", "/tmp/custom.md", "task"}
 	cfg, err = parseArgs()
 	if err != nil {
 		t.Fatalf("parseArgs() unexpected error: %v", err)

@@ -169,32 +169,6 @@ func parseIntegrationOutput(t *testing.T, out string) integrationOutput {
 	return payload
 }
 
-func extractTaskBlock(t *testing.T, output, taskID string) string {
-	t.Helper()
-	header := fmt.Sprintf("--- Task: %s ---", taskID)
-	lines := strings.Split(output, "\n")
-	var block []string
-	collecting := false
-	for _, raw := range lines {
-		trimmed := strings.TrimSpace(raw)
-		if !collecting {
-			if trimmed == header {
-				collecting = true
-				block = append(block, trimmed)
-			}
-			continue
-		}
-		if strings.HasPrefix(trimmed, "--- Task: ") && trimmed != header {
-			break
-		}
-		block = append(block, trimmed)
-	}
-	if len(block) == 0 {
-		t.Fatalf("task block %s not found in output:\n%s", taskID, output)
-	}
-	return strings.Join(block, "\n")
-}
-
 func findResultByID(t *testing.T, payload integrationOutput, id string) TaskResult {
 	t.Helper()
 	for _, res := range payload.Results {

@@ -59,14 +59,6 @@ const (
 	jsonLinePreviewBytes = 256
 )
 
-type codexHeader struct {
-	Type     string `json:"type"`
-	ThreadID string `json:"thread_id,omitempty"`
-	Item     *struct {
-		Type string `json:"type"`
-	} `json:"item,omitempty"`
-}
-
 // UnifiedEvent combines all backend event formats into a single structure
 // to avoid multiple JSON unmarshal operations per event
 type UnifiedEvent struct {

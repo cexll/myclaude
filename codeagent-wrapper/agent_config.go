@@ -26,7 +26,6 @@ var defaultModelsConfig = ModelsConfig{
 	DefaultBackend: "opencode",
 	DefaultModel:   "opencode/grok-code",
 	Agents: map[string]AgentModelConfig{
-			"sisyphus":                {Backend: "claude", Model: "claude-sonnet-4-20250514", PromptFile: "~/.claude/skills/omo/references/sisyphus.md", Description: "Primary orchestrator"},
 			"oracle":                  {Backend: "claude", Model: "claude-sonnet-4-20250514", PromptFile: "~/.claude/skills/omo/references/oracle.md", Description: "Technical advisor"},
 			"librarian":               {Backend: "claude", Model: "claude-sonnet-4-5-20250514", PromptFile: "~/.claude/skills/omo/references/librarian.md", Description: "Researcher"},
 			"explore":                 {Backend: "opencode", Model: "opencode/grok-code", PromptFile: "~/.claude/skills/omo/references/explore.md", Description: "Code search"},
