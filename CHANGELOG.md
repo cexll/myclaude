@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.6.4] - 2026-01-15
+
+### 🚀 Features
+
+- add reasoning effort config for codex backend
+- default to skip-permissions and bypass-sandbox
+- add multi-agent support with yolo mode
+- add omo module for multi-agent orchestration
+- add intelligent backend selection based on task complexity (#61)
+- v5.4.0 structured execution report (#94)
+- add millisecond-precision timestamps to all log entries (#91)
+- skill-install install script and security scan
+- add uninstall scripts with selective module removal
+
+### 🐛 Bug Fixes
+
+- filter codex stderr noise logs
+- use config override for codex reasoning effort
+- propagate SkipPermissions to parallel tasks (#113)
+- add timeout for Windows process termination
+- reject dash as workdir parameter (#118)
+- add sleep in fake script to prevent CI race condition
+- fix gemini env load
+- fix omo
+- fix codeagent skill TaskOutput
+- 修复 Gemini init 事件 session_id 未提取的问题 (#111)
+- Windows 后端退出：taskkill 结束进程树 + turn.completed 支持 (#108)
+- support model parameter for all backends, auto-inject from settings (#105)
+- replace setx with reg add to avoid 1024-char PATH truncation (#101)
+- 移除未知事件格式的日志噪声 (#96)
+- prevent duplicate PATH entries on reinstall (#95)
+- Minor issues #12 and #13 - ASCII mode and performance optimization
+- correct settings.json filename and bump version to v5.2.8
+- allow claude backend to read env from setting.json while preventing recursion (#92)
+- comprehensive security and quality improvements for PR #85 & #87 (#90)
+- Improve backend termination after message and extend timeout (#86)
+- Parser重复解析优化 + 严重bug修复 + PR #86兼容性 (#88)
+- filter noisy stderr output from gemini backend (#83)
+- 修復 wsl install.sh 格式問題 (#78)
+- 修复多 backend 并行日志 PID 混乱并移除包装格式 (#74) (#76)
+
+### 🚜 Refactor
+
+- remove sisyphus agent and unused code
+- streamline agent documentation and remove sisyphus
+
+### 📚 Documentation
+
+- add OmO workflow to README and fix plugin marketplace structure
+- update FAQ for default bypass/skip-permissions behavior
+- 添加 FAQ 常见问题章节
+- update troubleshooting with idempotent PATH commands (#95)
+
+### 💼 Other
+
+- add test-cases skill
+- add browser skill
+- BMADh和Requirements-Driven支持根据语义生成对应的文档 (#82)
+- update all readme
+
 ## [5.2.4] - 2025-12-16
 
 
