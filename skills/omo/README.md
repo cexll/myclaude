@@ -109,7 +109,7 @@ Agent-model mappings are configured in `~/.codeagent/models.json`:
       "model": "gpt-5.2",
       "description": "codex develop",
       "yolo": true,
-      "reasoning": "xhigh"
+      "reasoning": "high"
     }
   }
 }
