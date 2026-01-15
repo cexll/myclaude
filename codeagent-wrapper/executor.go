@@ -983,6 +983,9 @@ func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		if cfg.Backend == "gemini" {
 			stderrFilter = newFilteringWriter(os.Stderr, geminiNoisePatterns)
 			stderrOut = stderrFilter
+		} else if cfg.Backend == "codex" {
+			stderrFilter = newFilteringWriter(os.Stderr, codexNoisePatterns)
+			stderrOut = stderrFilter
 		}
 		stderrWriters = append([]io.Writer{stderrOut}, stderrWriters...)
 	}

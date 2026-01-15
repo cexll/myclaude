@@ -18,6 +18,12 @@ var geminiNoisePatterns = []string{
 	"YOLO mode is enabled",
 }
 
+// codexNoisePatterns contains stderr patterns to filter for codex backend
+var codexNoisePatterns = []string{
+	"ERROR codex_core::codex: needs_follow_up:",
+	"ERROR codex_core::skills::loader:",
+}
+
 // filteringWriter wraps an io.Writer and filters out lines matching patterns
 type filteringWriter struct {
 	w        io.Writer
