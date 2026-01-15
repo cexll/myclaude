@@ -222,6 +222,71 @@ gemini --version
 
 ## Installation
 
+### Plugin Installation
+
+介绍如何在 Claude Code 中安装 myclaude 作为 plugin。
+
+#### Install from Local Directory
+
+使用 `--plugin-dir` 标志加载本地 plugin（开发和测试用）：
+
+```bash
+# Clone the repository
+git clone https://github.com/cexll/myclaude.git
+cd myclaude
+
+# Load plugin directly (no installation needed)
+claude --plugin-dir ./myclaude
+```
+
+#### Install to User Scope
+
+通过 Claude Code 的 plugin 系统安装（推荐用于日常使用）：
+
+```bash
+# Add as local marketplace
+/plugin marketplace add ./myclaude
+
+# Install to user scope (available across all projects)
+/plugin install myclaude@myclaude
+```
+
+#### Install to Project Scope
+
+为团队协作安装到项目范围：
+
+1. 在项目的 `.claude/settings.json` 中添加：
+```json
+{
+  "extraKnownMarketplaces": [
+    {
+      "name": "myclaude",
+      "source": "./path/to/myclaude"
+    }
+  ],
+  "enabledPlugins": ["myclaude@myclaude"]
+}
+```
+
+2. 团队成员信任仓库后会自动提示安装
+
+#### Verify Installation
+
+检查 plugin 是否加载成功：
+
+```bash
+# List installed plugins
+/plugin
+
+# Try workflow commands
+/dev "test task"
+/omo "analyze code"
+```
+
+可用命令：`/dev`, `/omo`, `/code`, `/debug`, `/test`, `/review`, `/optimize`
+
+---
+
 ### Modular Installation (Recommended)
 
 ```bash
