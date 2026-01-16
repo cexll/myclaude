@@ -1,0 +1,37 @@
+{
+  "description": "SPARV auto-hooks for 2-Action save, EHRB detection, and 3-Question reboot test",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash|Read|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f .sparv/state.yaml ] && ${SKILL_PATH}/scripts/save-progress.sh \"${TOOL_NAME:-unknown}\" \"completed\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f .sparv/state.yaml ] && ${SKILL_PATH}/scripts/check-ehrb.sh --diff --dry-run 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f .sparv/state.yaml ] && ${SKILL_PATH}/scripts/reboot-test.sh --strict 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
