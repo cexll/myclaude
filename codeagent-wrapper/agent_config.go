@@ -26,8 +26,8 @@ var defaultModelsConfig = ModelsConfig{
 	DefaultBackend: "opencode",
 	DefaultModel:   "opencode/grok-code",
 	Agents: map[string]AgentModelConfig{
-			"oracle":                  {Backend: "claude", Model: "claude-sonnet-4-20250514", PromptFile: "~/.claude/skills/omo/references/oracle.md", Description: "Technical advisor"},
-			"librarian":               {Backend: "claude", Model: "claude-sonnet-4-5-20250514", PromptFile: "~/.claude/skills/omo/references/librarian.md", Description: "Researcher"},
+			"oracle":                  {Backend: "claude", Model: "claude-opus-4-5-20251101", PromptFile: "~/.claude/skills/omo/references/oracle.md", Description: "Technical advisor"},
+			"librarian":               {Backend: "claude", Model: "claude-sonnet-4-5-20250929", PromptFile: "~/.claude/skills/omo/references/librarian.md", Description: "Researcher"},
 			"explore":                 {Backend: "opencode", Model: "opencode/grok-code", PromptFile: "~/.claude/skills/omo/references/explore.md", Description: "Code search"},
 			"develop":                 {Backend: "codex", Model: "", PromptFile: "~/.claude/skills/omo/references/develop.md", Description: "Code development"},
 			"frontend-ui-ux-engineer": {Backend: "gemini", Model: "", PromptFile: "~/.claude/skills/omo/references/frontend-ui-ux-engineer.md", Description: "Frontend engineer"},
