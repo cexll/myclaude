@@ -1,9 +1,0 @@
-session_id: "20260115220038"
-feature_name: "force-test"
-current_phase: "specify"
-action_count: 0
-consecutive_failures: 0
-max_iterations: 12
-iteration_count: 0
-completion_promise: ""
-ehrb_flags: []
