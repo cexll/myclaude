@@ -188,6 +188,15 @@ func TestOpencodeBackend_BuildArgs(t *testing.T) {
 			t.Errorf("got %v, want %v", got, want)
 		}
 	})
+
+	t.Run("stdin mode omits dash", func(t *testing.T) {
+		cfg := &Config{Mode: "new"}
+		got := backend.BuildArgs(cfg, "-")
+		want := []string{"run", "--format", "json"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
 }
 
 func TestOpencodeBackend_Interface(t *testing.T) {

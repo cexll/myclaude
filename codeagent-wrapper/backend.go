@@ -204,7 +204,10 @@ func (OpencodeBackend) BuildArgs(cfg *Config, targetArg string) []string {
 	if cfg.Mode == "resume" && cfg.SessionID != "" {
 		args = append(args, "-s", cfg.SessionID)
 	}
-	args = append(args, "--format", "json", targetArg)
+	args = append(args, "--format", "json")
+	if targetArg != "-" {
+		args = append(args, targetArg)
+	}
 	return args
 }
 
