@@ -19,8 +19,8 @@ func TestResolveAgentConfig_Defaults(t *testing.T) {
 		wantModel      string
 		wantPromptFile string
 	}{
-			{"oracle", "claude", "claude-sonnet-4-20250514", "~/.claude/skills/omo/references/oracle.md"},
-			{"librarian", "claude", "claude-sonnet-4-5-20250514", "~/.claude/skills/omo/references/librarian.md"},
+			{"oracle", "claude", "claude-opus-4-5-20251101", "~/.claude/skills/omo/references/oracle.md"},
+			{"librarian", "claude", "claude-sonnet-4-5-20250929", "~/.claude/skills/omo/references/librarian.md"},
 			{"explore", "opencode", "opencode/grok-code", "~/.claude/skills/omo/references/explore.md"},
 			{"frontend-ui-ux-engineer", "gemini", "", "~/.claude/skills/omo/references/frontend-ui-ux-engineer.md"},
 			{"document-writer", "gemini", "", "~/.claude/skills/omo/references/document-writer.md"},
