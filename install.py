@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover
     jsonschema = None
 
 DEFAULT_INSTALL_DIR = "~/.claude"
+SETTINGS_FILE = "settings.json"
 
 
 def _ensure_list(ctx: Dict[str, Any], key: str) -> List[Any]:
@@ -89,6 +90,132 @@ def _load_json(path: Path) -> Any:
         raise FileNotFoundError(f"File not found: {path}") from exc
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
+
+
+def _save_json(path: Path, data: Any) -> None:
+    """Save data to JSON file with proper formatting."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+
+# =============================================================================
+# Hooks Management
+# =============================================================================
+
+def load_settings(ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """Load settings.json from install directory."""
+    settings_path = ctx["install_dir"] / SETTINGS_FILE
+    if settings_path.exists():
+        try:
+            return _load_json(settings_path)
+        except (ValueError, FileNotFoundError):
+            return {}
+    return {}
+
+
+def save_settings(ctx: Dict[str, Any], settings: Dict[str, Any]) -> None:
+    """Save settings.json to install directory."""
+    settings_path = ctx["install_dir"] / SETTINGS_FILE
+    _save_json(settings_path, settings)
+
+
+def find_module_hooks(module_name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Find hooks.json for a module if it exists."""
+    # Check for hooks in operations (copy_dir targets)
+    for op in cfg.get("operations", []):
+        if op.get("type") == "copy_dir":
+            target_dir = ctx["install_dir"] / op["target"]
+            hooks_file = target_dir / "hooks" / "hooks.json"
+            if hooks_file.exists():
+                try:
+                    return _load_json(hooks_file)
+                except (ValueError, FileNotFoundError):
+                    pass
+
+    # Also check source directory during install
+    for op in cfg.get("operations", []):
+        if op.get("type") == "copy_dir":
+            source_dir = ctx["config_dir"] / op["source"]
+            hooks_file = source_dir / "hooks" / "hooks.json"
+            if hooks_file.exists():
+                try:
+                    return _load_json(hooks_file)
+                except (ValueError, FileNotFoundError):
+                    pass
+
+    return None
+
+
+def _create_hook_marker(module_name: str) -> str:
+    """Create a marker to identify hooks from a specific module."""
+    return f"__module:{module_name}__"
+
+
+def merge_hooks_to_settings(module_name: str, hooks_config: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+    """Merge module hooks into settings.json."""
+    settings = load_settings(ctx)
+    settings.setdefault("hooks", {})
+
+    module_hooks = hooks_config.get("hooks", {})
+    marker = _create_hook_marker(module_name)
+
+    for hook_type, hook_entries in module_hooks.items():
+        settings["hooks"].setdefault(hook_type, [])
+
+        for entry in hook_entries:
+            # Add marker to identify this hook's source module
+            entry_copy = dict(entry)
+            entry_copy["__module__"] = module_name
+
+            # Check if already exists (avoid duplicates)
+            exists = False
+            for existing in settings["hooks"][hook_type]:
+                if existing.get("__module__") == module_name:
+                    # Same module, check if same hook
+                    if _hooks_equal(existing, entry_copy):
+                        exists = True
+                        break
+
+            if not exists:
+                settings["hooks"][hook_type].append(entry_copy)
+
+    save_settings(ctx, settings)
+    write_log({"level": "INFO", "message": f"Merged hooks for module: {module_name}"}, ctx)
+
+
+def unmerge_hooks_from_settings(module_name: str, ctx: Dict[str, Any]) -> None:
+    """Remove module hooks from settings.json."""
+    settings = load_settings(ctx)
+
+    if "hooks" not in settings:
+        return
+
+    modified = False
+    for hook_type in list(settings["hooks"].keys()):
+        original_len = len(settings["hooks"][hook_type])
+        settings["hooks"][hook_type] = [
+            entry for entry in settings["hooks"][hook_type]
+            if entry.get("__module__") != module_name
+        ]
+        if len(settings["hooks"][hook_type]) < original_len:
+            modified = True
+
+        # Remove empty hook type arrays
+        if not settings["hooks"][hook_type]:
+            del settings["hooks"][hook_type]
+
+    if modified:
+        save_settings(ctx, settings)
+        write_log({"level": "INFO", "message": f"Removed hooks for module: {module_name}"}, ctx)
+
+
+def _hooks_equal(hook1: Dict[str, Any], hook2: Dict[str, Any]) -> bool:
+    """Compare two hooks ignoring the __module__ marker."""
+    h1 = {k: v for k, v in hook1.items() if k != "__module__"}
+    h2 = {k: v for k, v in hook2.items() if k != "__module__"}
+    return h1 == h2
 
 
 def load_config(path: str) -> Dict[str, Any]:
@@ -345,7 +472,7 @@ def interactive_select_modules(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def uninstall_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
-    """Uninstall a module by removing its files."""
+    """Uninstall a module by removing its files and hooks."""
     result: Dict[str, Any] = {
         "module": name,
         "status": "success",
@@ -370,6 +497,13 @@ def uninstall_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dic
             # merge_dir and merge_json are harder to uninstall cleanly, skip
         except Exception as exc:
             write_log({"level": "WARNING", "message": f"Failed to remove {op.get('target', 'unknown')}: {exc}"}, ctx)
+
+    # Remove module hooks from settings.json
+    try:
+        unmerge_hooks_from_settings(name, ctx)
+        result["hooks_removed"] = True
+    except Exception as exc:
+        write_log({"level": "WARNING", "message": f"Failed to remove hooks for {name}: {exc}"}, ctx)
 
     result["removed_paths"] = removed_paths
     return result
@@ -571,6 +705,17 @@ def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[
                 ctx,
             )
             raise
+
+    # Handle hooks: find and merge module hooks into settings.json
+    hooks_config = find_module_hooks(name, cfg, ctx)
+    if hooks_config:
+        try:
+            merge_hooks_to_settings(name, hooks_config, ctx)
+            result["operations"].append({"type": "merge_hooks", "status": "success"})
+            result["has_hooks"] = True
+        except Exception as exc:
+            write_log({"level": "WARNING", "message": f"Failed to merge hooks for {name}: {exc}"}, ctx)
+            result["operations"].append({"type": "merge_hooks", "status": "failed", "error": str(exc)})
 
     return result
 
