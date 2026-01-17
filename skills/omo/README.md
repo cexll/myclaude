@@ -96,12 +96,12 @@ Agent-model mappings are configured in `~/.codeagent/models.json`:
     },
     "frontend-ui-ux-engineer": {
       "backend": "gemini",
-      "model": "gemini-3-pro-high",
+      "model": "gemini-3-pro-preview",
       "description": "Frontend engineer"
     },
     "document-writer": {
       "backend": "gemini",
-      "model": "gemini-3-flash",
+      "model": "gemini-3-flash-preview",
       "description": "Documentation"
     },
     "develop": {
