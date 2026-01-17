@@ -168,6 +168,44 @@
           "description": "Install sparv skill with all scripts and hooks"
         }
       ]
+    },
+    "course": {
+      "enabled": false,
+      "description": "课程开发工作流，包含 dev、产品需求和测试用例技能",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/dev",
+          "target": "skills/dev",
+          "description": "Install dev skill with agents"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/product-requirements/SKILL.md",
+          "target": "skills/product-requirements/SKILL.md",
+          "description": "Install product-requirements skill"
+        },
+        {
+          "type": "copy_dir",
+          "source": "skills/test-cases",
+          "target": "skills/test-cases",
+          "description": "Install test-cases skill with references"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/codeagent/SKILL.md",
+          "target": "skills/codeagent/SKILL.md",
+          "description": "Install codeagent skill"
+        },
+        {
+          "type": "run_command",
+          "command": "bash install.sh",
+          "description": "Install codeagent-wrapper binary",
+          "env": {
+            "INSTALL_DIR": "${install_dir}"
+          }
+        }
+      ]
     }
   }
 }
