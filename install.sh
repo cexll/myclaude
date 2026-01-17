@@ -53,23 +53,32 @@ if [[ ":${PATH}:" != *":${BIN_DIR}:"* ]]; then
     echo ""
     echo "WARNING: ${BIN_DIR} is not in your PATH"
 
-    # Detect shell config file
+    # Detect shell and set config files
     if [ -n "$ZSH_VERSION" ]; then
         RC_FILE="$HOME/.zshrc"
+        PROFILE_FILE="$HOME/.zprofile"
     else
         RC_FILE="$HOME/.bashrc"
+        PROFILE_FILE="$HOME/.profile"
     fi
 
     # Idempotent add: check if complete export statement already exists
     EXPORT_LINE="export PATH=\"${BIN_DIR}:\$PATH\""
-    if [ -f "$RC_FILE" ] && grep -qF "${EXPORT_LINE}" "$RC_FILE" 2>/dev/null; then
-        echo "  ${BIN_DIR} already in ${RC_FILE}, skipping."
-    else
-        echo "  Adding to ${RC_FILE}..."
-        echo "" >> "$RC_FILE"
-        echo "# Added by myclaude installer" >> "$RC_FILE"
-        echo "export PATH=\"${BIN_DIR}:\$PATH\"" >> "$RC_FILE"
-        echo "  Done. Run 'source ${RC_FILE}' or restart shell."
-    fi
+    FILES_TO_UPDATE=("$RC_FILE" "$PROFILE_FILE")
+
+    for FILE in "${FILES_TO_UPDATE[@]}"; do
+        if [ -f "$FILE" ] && grep -qF "${EXPORT_LINE}" "$FILE" 2>/dev/null; then
+            echo "  ${BIN_DIR} already in ${FILE}, skipping."
+        else
+            echo "  Adding to ${FILE}..."
+            echo "" >> "$FILE"
+            echo "# Added by myclaude installer" >> "$FILE"
+            echo "${EXPORT_LINE}" >> "$FILE"
+        fi
+    done
+
+    echo "  Done. Restart your shell or run:"
+    echo "    source ${PROFILE_FILE}"
+    echo "    source ${RC_FILE}"
     echo ""
 fi
