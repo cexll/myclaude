@@ -22,8 +22,8 @@ python3 install.py --module omo
 | librarian | External research | claude | claude-sonnet-4-5-20250929 |
 | explore | Codebase search | opencode | opencode/grok-code |
 | develop | Code implementation | codex | gpt-5.2 |
-| frontend-ui-ux-engineer | UI/UX specialist | gemini | gemini-3-pro-high |
-| document-writer | Documentation | gemini | gemini-3-flash |
+| frontend-ui-ux-engineer | UI/UX specialist | gemini | gemini-3-pro-preview |
+| document-writer | Documentation | gemini | gemini-3-flash-preview |
 
 ## How It Works
 
