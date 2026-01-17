@@ -93,7 +93,7 @@
       ]
     },
     "essentials": {
-      "enabled": true,
+      "enabled": false,
       "description": "Core development commands and utilities",
       "operations": [
         {
@@ -154,6 +154,18 @@
           "source": "skills/omo/references/develop.md",
           "target": "skills/omo/references/develop.md",
           "description": "Install develop agent prompt"
+        }
+      ]
+    },
+    "sparv": {
+      "enabled": false,
+      "description": "SPARV workflow (Specify→Plan→Act→Review→Vault) with 10-point gate",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/sparv",
+          "target": "skills/sparv",
+          "description": "Install sparv skill with all scripts and hooks"
         }
       ]
     }

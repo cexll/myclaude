@@ -46,7 +46,7 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--module",
-        help="Comma-separated modules to install, or 'all' for all enabled",
+        help="Comma-separated modules to install/uninstall, or 'all'",
     )
     parser.add_argument(
         "--config",
@@ -57,6 +57,16 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
         "--list-modules",
         action="store_true",
         help="List available modules and exit",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show installation status of all modules",
+    )
+    parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="Uninstall specified modules",
     )
     parser.add_argument(
         "--force",
@@ -166,22 +176,93 @@ def resolve_paths(config: Dict[str, Any], args: argparse.Namespace) -> Dict[str,
 
 def list_modules(config: Dict[str, Any]) -> None:
     print("Available Modules:")
-    print(f"{'Name':<15} {'Default':<8} Description")
-    print("-" * 60)
-    for name, cfg in config.get("modules", {}).items():
+    print(f"{'#':<3} {'Name':<15} {'Default':<8} Description")
+    print("-" * 65)
+    for idx, (name, cfg) in enumerate(config.get("modules", {}).items(), 1):
         default = "✓" if cfg.get("enabled", False) else "✗"
         desc = cfg.get("description", "")
-        print(f"{name:<15} {default:<8} {desc}")
+        print(f"{idx:<3} {name:<15} {default:<8} {desc}")
     print("\n✓ = installed by default when no --module specified")
+
+
+def load_installed_status(ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """Load installed modules status from status file."""
+    status_path = Path(ctx["status_file"])
+    if status_path.exists():
+        try:
+            return _load_json(status_path)
+        except (ValueError, FileNotFoundError):
+            return {"modules": {}}
+    return {"modules": {}}
+
+
+def check_module_installed(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> bool:
+    """Check if a module is installed by verifying its files exist."""
+    install_dir = ctx["install_dir"]
+
+    for op in cfg.get("operations", []):
+        op_type = op.get("type")
+        if op_type in ("copy_dir", "copy_file"):
+            target = (install_dir / op["target"]).expanduser().resolve()
+            if target.exists():
+                return True
+    return False
+
+
+def get_installed_modules(config: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, bool]:
+    """Get installation status of all modules by checking files."""
+    result = {}
+    modules = config.get("modules", {})
+
+    # First check status file
+    status = load_installed_status(ctx)
+    status_modules = status.get("modules", {})
+
+    for name, cfg in modules.items():
+        # Check both status file and filesystem
+        in_status = name in status_modules
+        files_exist = check_module_installed(name, cfg, ctx)
+        result[name] = in_status or files_exist
+
+    return result
+
+
+def list_modules_with_status(config: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+    """List modules with installation status."""
+    installed_status = get_installed_modules(config, ctx)
+    status_data = load_installed_status(ctx)
+    status_modules = status_data.get("modules", {})
+
+    print("\n" + "=" * 70)
+    print("Module Status")
+    print("=" * 70)
+    print(f"{'#':<3} {'Name':<15} {'Status':<15} {'Installed At':<20} Description")
+    print("-" * 70)
+
+    for idx, (name, cfg) in enumerate(config.get("modules", {}).items(), 1):
+        desc = cfg.get("description", "")[:25]
+        if installed_status.get(name, False):
+            status = "✅ Installed"
+            installed_at = status_modules.get(name, {}).get("installed_at", "")[:16]
+        else:
+            status = "⬚ Not installed"
+            installed_at = ""
+        print(f"{idx:<3} {name:<15} {status:<15} {installed_at:<20} {desc}")
+
+    total = len(config.get("modules", {}))
+    installed_count = sum(1 for v in installed_status.values() if v)
+    print(f"\nTotal: {installed_count}/{total} modules installed")
+    print(f"Install dir: {ctx['install_dir']}")
 
 
 def select_modules(config: Dict[str, Any], module_arg: Optional[str]) -> Dict[str, Any]:
     modules = config.get("modules", {})
     if not module_arg:
-        return {k: v for k, v in modules.items() if v.get("enabled", False)}
+        # No --module specified: show interactive selection
+        return interactive_select_modules(config)
 
     if module_arg.strip().lower() == "all":
-        return {k: v for k, v in modules.items() if v.get("enabled", False)}
+        return dict(modules.items())
 
     selected: Dict[str, Any] = {}
     for name in (part.strip() for part in module_arg.split(",")):
@@ -190,6 +271,256 @@ def select_modules(config: Dict[str, Any], module_arg: Optional[str]) -> Dict[st
         if name not in modules:
             raise ValueError(f"Module '{name}' not found")
         selected[name] = modules[name]
+    return selected
+
+
+def interactive_select_modules(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Interactive module selection when no --module is specified."""
+    modules = config.get("modules", {})
+    module_names = list(modules.keys())
+
+    print("\n" + "=" * 65)
+    print("Welcome to Claude Plugin Installer")
+    print("=" * 65)
+    print("\nNo modules specified. Please select modules to install:\n")
+
+    list_modules(config)
+
+    print("\nEnter module numbers or names (comma-separated), or:")
+    print("  'all'  - Install all modules")
+    print("  'q'    - Quit without installing")
+    print()
+
+    while True:
+        try:
+            user_input = input("Select modules: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nInstallation cancelled.")
+            sys.exit(0)
+
+        if not user_input:
+            print("No input. Please enter module numbers, names, 'all', or 'q'.")
+            continue
+
+        if user_input.lower() == "q":
+            print("Installation cancelled.")
+            sys.exit(0)
+
+        if user_input.lower() == "all":
+            print(f"\nSelected all {len(modules)} modules.")
+            return dict(modules.items())
+
+        # Parse selection
+        selected: Dict[str, Any] = {}
+        parts = [p.strip() for p in user_input.replace(" ", ",").split(",") if p.strip()]
+
+        try:
+            for part in parts:
+                # Try as number first
+                if part.isdigit():
+                    idx = int(part) - 1
+                    if 0 <= idx < len(module_names):
+                        name = module_names[idx]
+                        selected[name] = modules[name]
+                    else:
+                        print(f"Invalid number: {part}. Valid range: 1-{len(module_names)}")
+                        selected = {}
+                        break
+                # Try as name
+                elif part in modules:
+                    selected[part] = modules[part]
+                else:
+                    print(f"Module not found: '{part}'")
+                    selected = {}
+                    break
+
+            if selected:
+                names = ", ".join(selected.keys())
+                print(f"\nSelected {len(selected)} module(s): {names}")
+                return selected
+
+        except ValueError:
+            print("Invalid input. Please try again.")
+            continue
+
+
+def uninstall_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """Uninstall a module by removing its files."""
+    result: Dict[str, Any] = {
+        "module": name,
+        "status": "success",
+        "uninstalled_at": datetime.now().isoformat(),
+    }
+
+    install_dir = ctx["install_dir"]
+    removed_paths = []
+
+    for op in cfg.get("operations", []):
+        op_type = op.get("type")
+        try:
+            if op_type in ("copy_dir", "copy_file"):
+                target = (install_dir / op["target"]).expanduser().resolve()
+                if target.exists():
+                    if target.is_dir():
+                        shutil.rmtree(target)
+                    else:
+                        target.unlink()
+                    removed_paths.append(str(target))
+                    write_log({"level": "INFO", "message": f"Removed: {target}"}, ctx)
+            # merge_dir and merge_json are harder to uninstall cleanly, skip
+        except Exception as exc:
+            write_log({"level": "WARNING", "message": f"Failed to remove {op.get('target', 'unknown')}: {exc}"}, ctx)
+
+    result["removed_paths"] = removed_paths
+    return result
+
+
+def update_status_after_uninstall(uninstalled_modules: List[str], ctx: Dict[str, Any]) -> None:
+    """Remove uninstalled modules from status file."""
+    status = load_installed_status(ctx)
+    modules = status.get("modules", {})
+
+    for name in uninstalled_modules:
+        if name in modules:
+            del modules[name]
+
+    status["modules"] = modules
+    status["updated_at"] = datetime.now().isoformat()
+
+    status_path = Path(ctx["status_file"])
+    with status_path.open("w", encoding="utf-8") as fh:
+        json.dump(status, fh, indent=2, ensure_ascii=False)
+
+
+def interactive_manage(config: Dict[str, Any], ctx: Dict[str, Any]) -> int:
+    """Interactive module management menu."""
+    while True:
+        installed_status = get_installed_modules(config, ctx)
+        modules = config.get("modules", {})
+        module_names = list(modules.keys())
+
+        print("\n" + "=" * 70)
+        print("Claude Plugin Manager")
+        print("=" * 70)
+        print(f"{'#':<3} {'Name':<15} {'Status':<15} Description")
+        print("-" * 70)
+
+        for idx, (name, cfg) in enumerate(modules.items(), 1):
+            desc = cfg.get("description", "")[:30]
+            if installed_status.get(name, False):
+                status = "✅ Installed"
+            else:
+                status = "⬚ Not installed"
+            print(f"{idx:<3} {name:<15} {status:<15} {desc}")
+
+        total = len(modules)
+        installed_count = sum(1 for v in installed_status.values() if v)
+        print(f"\nInstalled: {installed_count}/{total} | Dir: {ctx['install_dir']}")
+
+        print("\nCommands:")
+        print("  i <num/name>  - Install module(s)")
+        print("  u <num/name>  - Uninstall module(s)")
+        print("  q             - Quit")
+        print()
+
+        try:
+            user_input = input("Enter command: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting.")
+            return 0
+
+        if not user_input:
+            continue
+
+        if user_input.lower() == "q":
+            print("Goodbye!")
+            return 0
+
+        parts = user_input.split(maxsplit=1)
+        cmd = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        if cmd == "i":
+            # Install
+            selected = _parse_module_selection(args, modules, module_names)
+            if selected:
+                # Filter out already installed
+                to_install = {k: v for k, v in selected.items() if not installed_status.get(k, False)}
+                if not to_install:
+                    print("All selected modules are already installed.")
+                    continue
+                print(f"\nInstalling: {', '.join(to_install.keys())}")
+                results = []
+                for name, cfg in to_install.items():
+                    try:
+                        results.append(execute_module(name, cfg, ctx))
+                        print(f"  ✓ {name} installed")
+                    except Exception as exc:
+                        print(f"  ✗ {name} failed: {exc}")
+                # Update status
+                current_status = load_installed_status(ctx)
+                for r in results:
+                    if r.get("status") == "success":
+                        current_status.setdefault("modules", {})[r["module"]] = r
+                current_status["updated_at"] = datetime.now().isoformat()
+                with Path(ctx["status_file"]).open("w", encoding="utf-8") as fh:
+                    json.dump(current_status, fh, indent=2, ensure_ascii=False)
+
+        elif cmd == "u":
+            # Uninstall
+            selected = _parse_module_selection(args, modules, module_names)
+            if selected:
+                # Filter to only installed ones
+                to_uninstall = {k: v for k, v in selected.items() if installed_status.get(k, False)}
+                if not to_uninstall:
+                    print("None of the selected modules are installed.")
+                    continue
+                print(f"\nUninstalling: {', '.join(to_uninstall.keys())}")
+                confirm = input("Confirm? (y/N): ").strip().lower()
+                if confirm != "y":
+                    print("Cancelled.")
+                    continue
+                for name, cfg in to_uninstall.items():
+                    try:
+                        uninstall_module(name, cfg, ctx)
+                        print(f"  ✓ {name} uninstalled")
+                    except Exception as exc:
+                        print(f"  ✗ {name} failed: {exc}")
+                update_status_after_uninstall(list(to_uninstall.keys()), ctx)
+
+        else:
+            print(f"Unknown command: {cmd}. Use 'i', 'u', or 'q'.")
+
+
+def _parse_module_selection(
+    args: str, modules: Dict[str, Any], module_names: List[str]
+) -> Dict[str, Any]:
+    """Parse module selection from user input."""
+    if not args:
+        print("Please specify module number(s) or name(s).")
+        return {}
+
+    if args.lower() == "all":
+        return dict(modules.items())
+
+    selected: Dict[str, Any] = {}
+    parts = [p.strip() for p in args.replace(",", " ").split() if p.strip()]
+
+    for part in parts:
+        if part.isdigit():
+            idx = int(part) - 1
+            if 0 <= idx < len(module_names):
+                name = module_names[idx]
+                selected[name] = modules[name]
+            else:
+                print(f"Invalid number: {part}")
+                return {}
+        elif part in modules:
+            selected[part] = modules[part]
+        else:
+            print(f"Module not found: '{part}'")
+            return {}
+
     return selected
 
 
@@ -529,10 +860,54 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     ctx = resolve_paths(config, args)
 
+    # Handle --list-modules
     if getattr(args, "list_modules", False):
         list_modules(config)
         return 0
 
+    # Handle --status
+    if getattr(args, "status", False):
+        list_modules_with_status(config, ctx)
+        return 0
+
+    # Handle --uninstall
+    if getattr(args, "uninstall", False):
+        if not args.module:
+            print("Error: --uninstall requires --module to specify which modules to uninstall")
+            return 1
+        modules = config.get("modules", {})
+        installed = load_installed_status(ctx)
+        installed_modules = installed.get("modules", {})
+
+        selected = select_modules(config, args.module)
+        to_uninstall = {k: v for k, v in selected.items() if k in installed_modules}
+
+        if not to_uninstall:
+            print("None of the specified modules are installed.")
+            return 0
+
+        print(f"Uninstalling {len(to_uninstall)} module(s): {', '.join(to_uninstall.keys())}")
+        for name, cfg in to_uninstall.items():
+            try:
+                uninstall_module(name, cfg, ctx)
+                print(f"  ✓ {name} uninstalled")
+            except Exception as exc:
+                print(f"  ✗ {name} failed: {exc}", file=sys.stderr)
+
+        update_status_after_uninstall(list(to_uninstall.keys()), ctx)
+        print(f"\n✓ Uninstall complete")
+        return 0
+
+    # No --module specified: enter interactive management mode
+    if not args.module:
+        try:
+            ensure_install_dir(ctx["install_dir"])
+        except Exception as exc:
+            print(f"Failed to prepare install dir: {exc}", file=sys.stderr)
+            return 1
+        return interactive_manage(config, ctx)
+
+    # Install specified modules
     modules = select_modules(config, args.module)
 
     try:
@@ -568,7 +943,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             )
             break
 
-    write_status(results, ctx)
+    # Merge with existing status
+    current_status = load_installed_status(ctx)
+    for r in results:
+        if r.get("status") == "success":
+            current_status.setdefault("modules", {})[r["module"]] = r
+    current_status["updated_at"] = datetime.now().isoformat()
+    with Path(ctx["status_file"]).open("w", encoding="utf-8") as fh:
+        json.dump(current_status, fh, indent=2, ensure_ascii=False)
 
     # Summary
     success = sum(1 for r in results if r.get("status") == "success")
