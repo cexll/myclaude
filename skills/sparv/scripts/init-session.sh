@@ -137,6 +137,35 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 EOF
 }
 
+# Initialize kb.md (knowledge base) if not exists
+init_kb() {
+	local kb_file="$SPARV_ROOT/kb.md"
+	[ -f "$kb_file" ] && return 0
+
+	cat > "$kb_file" << 'EOF'
+# Knowledge Base
+
+Cross-session knowledge accumulated during SPARV workflows.
+
+---
+
+## Patterns
+
+<!-- Reusable code patterns discovered -->
+
+## Decisions
+
+<!-- Architectural choices + rationale -->
+<!-- Format: - [YYYY-MM-DD]: decision | rationale -->
+
+## Gotchas
+
+<!-- Common pitfalls + solutions -->
+<!-- Format: - [issue]: cause | solution -->
+
+EOF
+}
+
 # Check for active session
 active_session="$(find_active_session)"
 
@@ -162,6 +191,7 @@ mkdir -p "$HISTORY_DIR"
 # Initialize global files
 init_history_index
 init_changelog
+init_kb
 
 # Create state.yaml
 cat > "$SESSION_DIR/state.yaml" << EOF

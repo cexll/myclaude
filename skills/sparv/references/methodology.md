@@ -10,6 +10,42 @@ This document is a quick reference; the canonical spec is in `SKILL.md`.
 - **Review**: Spec conformance → Code quality; maximum 3 fix rounds
 - **Vault**: Archive session (state + journal)
 
+## Enhanced Rules (v1.1)
+
+### Uncertainty Declaration (G3)
+
+When any Specify dimension scores < 2:
+- Declare: `UNCERTAIN: <what> | ASSUMPTION: <fallback>`
+- List all assumptions in journal before Plan
+- Offer 2-3 options for ambiguous requirements
+
+### Requirement Routing
+
+| Mode | Condition | Flow |
+|------|-----------|------|
+| **Quick** | score >= 9 AND <= 3 files AND no EHRB | Specify → Act → Review |
+| **Full** | otherwise | Specify → Plan → Act → Review → Vault |
+
+### Context Acquisition (Optional)
+
+Before Specify scoring:
+1. Check `.sparv/kb.md` for existing patterns/decisions
+2. If insufficient, scan codebase for relevant files
+3. Document findings in journal under `## Context`
+
+### Knowledge Base Maintenance
+
+During Vault phase, update `.sparv/kb.md`:
+- **Patterns**: Reusable code patterns discovered
+- **Decisions**: Architectural choices + rationale
+- **Gotchas**: Common pitfalls + solutions
+
+### CHANGELOG Update
+
+```bash
+~/.claude/skills/sparv/scripts/changelog-update.sh --type <Added|Changed|Fixed|Removed> --desc "..."
+```
+
 ## Specify (10-Point Scale)
 
 Each item scores 0/1/2, total 0-10; `>=9` required to enter Plan:
