@@ -74,7 +74,7 @@ jobs:
           if [ "${{ matrix.goos }}" = "windows" ]; then
             OUTPUT_NAME="${OUTPUT_NAME}.exe"
           fi
-          go build -ldflags="-s -w -X main.version=${VERSION}" -o ${OUTPUT_NAME} .
+          go build -ldflags="-s -w -X main.version=${VERSION}" -o ${OUTPUT_NAME} ./cmd/codeagent
           chmod +x ${OUTPUT_NAME}
           echo "artifact_path=codeagent-wrapper/${OUTPUT_NAME}" >> $GITHUB_OUTPUT
 
