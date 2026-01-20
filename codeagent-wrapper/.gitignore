@@ -1,4 +1,7 @@
 # Build artifacts
+bin/
+codeagent
+codeagent.exe
 codeagent-wrapper
 codeagent-wrapper.exe
 *.test
@@ -9,3 +12,12 @@ coverage*.out
 cover.out
 cover_*.out
 coverage.html
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.swp
+*~
+.DS_Store
