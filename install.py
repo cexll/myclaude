@@ -121,8 +121,11 @@ def save_settings(ctx: Dict[str, Any], settings: Dict[str, Any]) -> None:
     _save_json(settings_path, settings)
 
 
-def find_module_hooks(module_name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Find hooks.json for a module if it exists."""
+def find_module_hooks(module_name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Optional[tuple]:
+    """Find hooks.json for a module if it exists.
+
+    Returns tuple of (hooks_config, plugin_root_path) or None.
+    """
     # Check for hooks in operations (copy_dir targets)
     for op in cfg.get("operations", []):
         if op.get("type") == "copy_dir":
@@ -130,18 +133,19 @@ def find_module_hooks(module_name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]
             hooks_file = target_dir / "hooks" / "hooks.json"
             if hooks_file.exists():
                 try:
-                    return _load_json(hooks_file)
+                    return (_load_json(hooks_file), str(target_dir))
                 except (ValueError, FileNotFoundError):
                     pass
 
     # Also check source directory during install
     for op in cfg.get("operations", []):
         if op.get("type") == "copy_dir":
+            target_dir = ctx["install_dir"] / op["target"]
             source_dir = ctx["config_dir"] / op["source"]
             hooks_file = source_dir / "hooks" / "hooks.json"
             if hooks_file.exists():
                 try:
-                    return _load_json(hooks_file)
+                    return (_load_json(hooks_file), str(target_dir))
                 except (ValueError, FileNotFoundError):
                     pass
 
@@ -153,13 +157,28 @@ def _create_hook_marker(module_name: str) -> str:
     return f"__module:{module_name}__"
 
 
-def merge_hooks_to_settings(module_name: str, hooks_config: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+def _replace_hook_variables(obj: Any, plugin_root: str) -> Any:
+    """Recursively replace ${CLAUDE_PLUGIN_ROOT} in hook config."""
+    if isinstance(obj, str):
+        return obj.replace("${CLAUDE_PLUGIN_ROOT}", plugin_root)
+    elif isinstance(obj, dict):
+        return {k: _replace_hook_variables(v, plugin_root) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_replace_hook_variables(item, plugin_root) for item in obj]
+    return obj
+
+
+def merge_hooks_to_settings(module_name: str, hooks_config: Dict[str, Any], ctx: Dict[str, Any], plugin_root: str = "") -> None:
     """Merge module hooks into settings.json."""
     settings = load_settings(ctx)
     settings.setdefault("hooks", {})
 
     module_hooks = hooks_config.get("hooks", {})
     marker = _create_hook_marker(module_name)
+
+    # Replace ${CLAUDE_PLUGIN_ROOT} with actual path
+    if plugin_root:
+        module_hooks = _replace_hook_variables(module_hooks, plugin_root)
 
     for hook_type, hook_entries in module_hooks.items():
         settings["hooks"].setdefault(hook_type, [])
@@ -707,10 +726,11 @@ def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[
             raise
 
     # Handle hooks: find and merge module hooks into settings.json
-    hooks_config = find_module_hooks(name, cfg, ctx)
-    if hooks_config:
+    hooks_result = find_module_hooks(name, cfg, ctx)
+    if hooks_result:
+        hooks_config, plugin_root = hooks_result
         try:
-            merge_hooks_to_settings(name, hooks_config, ctx)
+            merge_hooks_to_settings(name, hooks_config, ctx, plugin_root)
             result["operations"].append({"type": "merge_hooks", "status": "success"})
             result["has_hooks"] = True
         except Exception as exc:

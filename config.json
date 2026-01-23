@@ -169,6 +169,18 @@
         }
       ]
     },
+    "feature-dev": {
+      "enabled": false,
+      "description": "7-phase feature development workflow with codeagent orchestration",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/feature-dev",
+          "target": "skills/feature-dev",
+          "description": "Install feature-dev skill with hooks"
+        }
+      ]
+    },
     "course": {
       "enabled": false,
       "description": "课程开发工作流，包含 dev、产品需求和测试用例技能",
