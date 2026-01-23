@@ -648,6 +648,12 @@ func runSingleMode(cfg *Config, name string) int {
 		return result.ExitCode
 	}
 
+	// Validate that we got a meaningful output message
+	if strings.TrimSpace(result.Message) == "" {
+		logError(fmt.Sprintf("no output message: backend=%s returned empty result.Message with exit_code=0", cfg.Backend))
+		return 1
+	}
+
 	fmt.Println(result.Message)
 	if result.SessionID != "" {
 		fmt.Printf("\n---\nSESSION_ID: %s\n", result.SessionID)

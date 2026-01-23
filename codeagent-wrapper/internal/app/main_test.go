@@ -1913,6 +1913,37 @@ func TestRun_PassesReasoningEffortToTaskSpec(t *testing.T) {
 	}
 }
 
+func TestRun_NoOutputMessage_ReturnsExitCode1AndWritesStderr(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
+	t.Setenv("TMPDIR", t.TempDir())
+
+	selectBackendFn = func(name string) (Backend, error) {
+		return testBackend{name: name, command: "echo"}, nil
+	}
+
+	runTaskFn = func(task TaskSpec, silent bool, timeout int) TaskResult {
+		return TaskResult{ExitCode: 0, Message: ""}
+	}
+
+	isTerminalFn = func() bool { return true }
+	stdinReader = strings.NewReader("")
+
+	os.Args = []string{"codeagent-wrapper", "task"}
+
+	var code int
+	errOutput := captureStderr(t, func() {
+		code = run()
+	})
+
+	if code != 1 {
+		t.Fatalf("run() exit=%d, want 1", code)
+	}
+	if !strings.Contains(errOutput, "no output message") {
+		t.Fatalf("stderr missing sentinel error text; got:\n%s", errOutput)
+	}
+}
+
 func TestRunBuildCodexArgs_NewMode(t *testing.T) {
 	const key = "CODEX_BYPASS_SANDBOX"
 	t.Setenv(key, "false")
