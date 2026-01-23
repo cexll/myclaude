@@ -1,30 +1,30 @@
 ---
-name: feature-dev
-description: This skill should be used for structured feature development with codebase understanding. Triggers on /feature-dev command. Provides a 7-phase workflow (Discovery, Exploration, Clarification, Architecture, Implementation, Review, Summary) using codeagent-wrapper to orchestrate code-explorer, code-architect, code-reviewer, and develop agents in parallel.
-allowed-tools: ["Bash(${SKILL_DIR}/scripts/setup-feature-dev.sh:*)"]
+name: do
+description: This skill should be used for structured feature development with codebase understanding. Triggers on /do command. Provides a 7-phase workflow (Discovery, Exploration, Clarification, Architecture, Implementation, Review, Summary) using codeagent-wrapper to orchestrate code-explorer, code-architect, code-reviewer, and develop agents in parallel.
+allowed-tools: ["Bash(${SKILL_DIR}/scripts/setup-do.sh:*)"]
 ---
 
-# Feature Development Orchestrator
+# do - Feature Development Orchestrator
 
 An orchestrator for systematic feature development. Invoke agents via `codeagent-wrapper`, never write code directly.
 
 ## Loop Initialization (REQUIRED)
 
-When triggered via `/feature-dev <task>`, **first** initialize the loop state:
+When triggered via `/do <task>`, **first** initialize the loop state:
 
 ```bash
-"${SKILL_DIR}/scripts/setup-feature-dev.sh" "<task description>"
+"${SKILL_DIR}/scripts/setup-do.sh" "<task description>"
 ```
 
-This creates `.claude/feature-dev.local.md` with:
+This creates `.claude/do.local.md` with:
 - `active: true`
 - `current_phase: 1`
 - `max_phases: 7`
-- `completion_promise: "<promise>FEATURE_COMPLETE</promise>"`
+- `completion_promise: "<promise>DO_COMPLETE</promise>"`
 
 ## Loop State Management
 
-After each phase, update `.claude/feature-dev.local.md` frontmatter:
+After each phase, update `.claude/do.local.md` frontmatter:
 ```yaml
 current_phase: <next phase number>
 phase_name: "<next phase name>"
@@ -32,7 +32,7 @@ phase_name: "<next phase name>"
 
 When all 7 phases complete, output the completion signal:
 ```
-<promise>FEATURE_COMPLETE</promise>
+<promise>DO_COMPLETE</promise>
 ```
 
 To abort early, set `active: false` in the state file.
@@ -44,7 +44,7 @@ To abort early, set `active: false` in the state file.
 3. **Phase 5 (Implementation) requires explicit approval.** Stop after Phase 4 if not approved.
 4. **Pass complete context forward.** Every agent invocation includes the Context Pack.
 5. **Parallel-first.** Run independent tasks via `codeagent-wrapper --parallel`.
-6. **Update state after each phase.** Keep `.claude/feature-dev.local.md` current.
+6. **Update state after each phase.** Keep `.claude/do.local.md` current.
 
 ## Agents
 
@@ -90,7 +90,7 @@ To abort early, set `active: false` in the state file.
 ```bash
 codeagent-wrapper --agent code-architect - . <<'EOF'
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-explorer output: None
@@ -119,7 +119,7 @@ agent: code-explorer
 workdir: .
 ---CONTENT---
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-architect output: <Phase 1 output>
@@ -136,7 +136,7 @@ agent: code-explorer
 workdir: .
 ---CONTENT---
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-architect output: <Phase 1 output>
@@ -153,7 +153,7 @@ agent: code-explorer
 workdir: .
 ---CONTENT---
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-architect output: <Phase 1 output>
@@ -189,7 +189,7 @@ agent: code-architect
 workdir: .
 ---CONTENT---
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-explorer output: <ALL Phase 2 outputs>
@@ -208,7 +208,7 @@ agent: code-architect
 workdir: .
 ---CONTENT---
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-explorer output: <ALL Phase 2 outputs>
@@ -236,7 +236,7 @@ Use AskUserQuestion to let user choose approach.
 ```bash
 codeagent-wrapper --agent develop - . <<'EOF'
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-explorer output: <ALL Phase 2 outputs>
@@ -267,7 +267,7 @@ agent: code-reviewer
 workdir: .
 ---CONTENT---
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-architect output: <Phase 4 blueprint>
@@ -285,7 +285,7 @@ agent: code-reviewer
 workdir: .
 ---CONTENT---
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-architect output: <Phase 4 blueprint>
@@ -310,7 +310,7 @@ Use AskUserQuestion: Fix now / Fix later / Proceed as-is.
 ```bash
 codeagent-wrapper --agent code-reviewer - . <<'EOF'
 ## Original User Request
-/feature-dev <request>
+/do <request>
 
 ## Context Pack
 - Code-architect output: <Phase 4 blueprint>

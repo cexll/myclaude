@@ -169,15 +169,15 @@
         }
       ]
     },
-    "feature-dev": {
+    "do": {
       "enabled": false,
       "description": "7-phase feature development workflow with codeagent orchestration",
       "operations": [
         {
           "type": "copy_dir",
-          "source": "skills/feature-dev",
-          "target": "skills/feature-dev",
-          "description": "Install feature-dev skill with hooks"
+          "source": "skills/do",
+          "target": "skills/do",
+          "description": "Install do skill with hooks"
         }
       ]
     },

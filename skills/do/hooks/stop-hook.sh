@@ -26,7 +26,7 @@ json_escape() {
 }
 
 project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-state_file="${project_dir}/.claude/feature-dev.local.md"
+state_file="${project_dir}/.claude/do.local.md"
 
 if [ ! -f "$state_file" ]; then
 	exit 0
@@ -82,7 +82,7 @@ if [ -z "${phase_name:-}" ]; then
 fi
 
 if [ -z "${completion_promise:-}" ]; then
-	completion_promise="<promise>FEATURE_COMPLETE</promise>"
+	completion_promise="<promise>DO_COMPLETE</promise>"
 fi
 
 phases_done=0
@@ -114,9 +114,9 @@ if [ "$phases_done" -eq 1 ] && [ "$promise_met" -eq 1 ]; then
 fi
 
 if [ "$phases_done" -eq 0 ]; then
-	reason="feature-dev 循环未完成：当前阶段 ${current_phase}/${max_phases}（${phase_name}）。继续执行剩余阶段；完成每个阶段后更新 ${state_file} 的 current_phase/phase_name。全部完成后在最终输出中包含 completion_promise：${completion_promise}。如需退出，将 active 设为 false。"
+	reason="do loop incomplete: current phase ${current_phase}/${max_phases} (${phase_name}). Continue with remaining phases; update ${state_file} current_phase/phase_name after each phase. Include completion_promise in final output when done: ${completion_promise}. To exit early, set active to false."
 else
-	reason="feature-dev 已到最终阶段（current_phase=${current_phase} / max_phases=${max_phases}，phase_name=${phase_name}），但未检测到 completion_promise：${completion_promise}。请在最终输出中包含该标记（或写入 ${state_file} 正文），然后再结束；如需强制退出，将 active 设为 false。"
+	reason="do reached final phase (current_phase=${current_phase} / max_phases=${max_phases}, phase_name=${phase_name}), but completion_promise not detected: ${completion_promise}. Please include this marker in your final output (or write it to ${state_file} body), then finish; to force exit, set active to false."
 fi
 
 printf '{"decision":"block","reason":"%s"}\n' "$(json_escape "$reason")"

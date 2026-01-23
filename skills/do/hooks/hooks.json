@@ -1,5 +1,5 @@
 {
-  "description": "Feature-dev loop hook for 7-phase workflow",
+  "description": "do loop hook for 7-phase workflow",
   "hooks": {
     "Stop": [
       {

@@ -4,14 +4,14 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: setup-feature-dev.sh [options] PROMPT...
+Usage: setup-do.sh [options] PROMPT...
 
 Creates (or overwrites) project state file:
-  .claude/feature-dev.local.md
+  .claude/do.local.md
 
 Options:
   --max-phases N            Default: 7
-  --completion-promise STR  Default: <promise>FEATURE_COMPLETE</promise>
+  --completion-promise STR  Default: <promise>DO_COMPLETE</promise>
   -h, --help                Show this help
 EOF
 }
@@ -35,7 +35,7 @@ phase_name_for() {
 }
 
 max_phases=7
-completion_promise="<promise>FEATURE_COMPLETE</promise>"
+completion_promise="<promise>DO_COMPLETE</promise>"
 declare -a prompt_parts=()
 
 while [ $# -gt 0 ]; do
@@ -81,7 +81,7 @@ fi
 
 project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 state_dir="${project_dir}/.claude"
-state_file="${state_dir}/feature-dev.local.md"
+state_file="${state_dir}/do.local.md"
 
 mkdir -p "$state_dir"
 
@@ -96,7 +96,7 @@ max_phases: $max_phases
 completion_promise: "$completion_promise"
 ---
 
-# feature-dev loop state
+# do loop state
 
 ## Prompt
 $prompt
