@@ -940,6 +940,11 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	// Load gemini env from ~/.gemini/.env if exists
 	if cfg.Backend == "gemini" {
 		fileEnv = loadGeminiEnv()
+		if cfg.Mode != "resume" && strings.TrimSpace(cfg.Model) == "" {
+			if model := fileEnv["GEMINI_MODEL"]; model != "" {
+				cfg.Model = model
+			}
+		}
 	}
 
 	useStdin := taskSpec.UseStdin
