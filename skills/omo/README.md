@@ -1,14 +1,14 @@
-# OmO Multi-Agent Orchestration
+# omo - Multi-Agent Orchestration
 
-OmO (Oh-My-OpenCode) is a multi-agent orchestration skill that delegates tasks to specialized agents based on routing signals.
+OmO is a multi-agent orchestration skill that routes tasks to specialized agents based on risk signals.
 
 ## Installation
 
 ```bash
-python3 install.py --module omo
+python install.py --module omo
 ```
 
-## Quick Start
+## Usage
 
 ```
 /omo <your task>
@@ -18,59 +18,107 @@ python3 install.py --module omo
 
 | Agent | Role | Backend | Model |
 |-------|------|---------|-------|
-| oracle | Technical advisor | claude | claude-opus-4-5-20251101 |
-| librarian | External research | claude | claude-sonnet-4-5-20250929 |
-| explore | Codebase search | opencode | opencode/grok-code |
-| develop | Code implementation | codex | gpt-5.2 |
-| frontend-ui-ux-engineer | UI/UX specialist | gemini | gemini-3-pro-preview |
-| document-writer | Documentation | gemini | gemini-3-flash-preview |
+| `oracle` | Technical advisor | claude | claude-opus-4-5 |
+| `librarian` | External research | claude | claude-sonnet-4-5 |
+| `explore` | Codebase search | opencode | grok-code |
+| `develop` | Code implementation | codex | gpt-5.2 |
+| `frontend-ui-ux-engineer` | UI/UX specialist | gemini | gemini-3-pro |
+| `document-writer` | Documentation | gemini | gemini-3-flash |
 
-## How It Works
+## Routing Signals (Not Fixed Pipeline)
 
-1. `/omo` analyzes your request via routing signals
-2. Based on task type, it either:
-   - Answers directly (analysis/explanation tasks - no code changes)
-   - Delegates to specialized agents (implementation tasks)
-   - Fires parallel agents (exploration + research)
+This skill is **routing-first**, not a mandatory conveyor belt.
+
+| Signal | Add Agent |
+|--------|----------|
+| Code location/behavior unclear | `explore` |
+| External library/API usage unclear | `librarian` |
+| Risky change (multi-file, public API, security, perf) | `oracle` |
+| Implementation required | `develop` / `frontend-ui-ux-engineer` |
+| Documentation needed | `document-writer` |
+
+### Skipping Heuristics
+
+- Skip `explore` when exact file path + line number is known
+- Skip `oracle` when change is local + low-risk (single area, clear fix)
+- Skip implementation agents when user only wants analysis
+
+## Common Recipes
+
+| Task | Recipe |
+|------|--------|
+| Explain code | `explore` |
+| Small fix with known location | `develop` directly |
+| Bug fix, location unknown | `explore → develop` |
+| Cross-cutting refactor | `explore → oracle → develop` |
+| External API integration | `explore + librarian → oracle → develop` |
+| UI-only change | `explore → frontend-ui-ux-engineer` |
+| Docs-only change | `explore → document-writer` |
+
+## Context Pack Template
+
+Every agent invocation includes:
+
+```text
+## Original User Request
+<original request>
+
+## Context Pack (include anything relevant; write "None" if absent)
+- Explore output: <...>
+- Librarian output: <...>
+- Oracle output: <...>
+- Known constraints: <tests to run, time budget, repo conventions>
+
+## Current Task
+<specific task description>
+
+## Acceptance Criteria
+<clear completion conditions>
+```
+
+## Agent Invocation
+
+```bash
+codeagent-wrapper --agent <agent_name> - <workdir> <<'EOF'
+## Original User Request
+...
+
+## Context Pack
+...
+
+## Current Task
+...
+
+## Acceptance Criteria
+...
+EOF
+```
+
+Timeout: 2 hours.
 
 ## Examples
 
 ```bash
-# Refactoring
-/omo Help me refactor this authentication module
+# Analysis only
+/omo how does this function work?
+# → explore
 
-# Feature development
-/omo I need to add a new payment feature with frontend UI and backend API
+# Bug fix with unknown location
+/omo fix the authentication bug
+# → explore → develop
 
-# Research
-/omo What authentication scheme does this project use?
-```
+# Feature with external API
+/omo add Stripe payment integration
+# → explore + librarian → oracle → develop
 
-## Agent Delegation
-
-Delegates via codeagent-wrapper with full Context Pack:
-
-```bash
-codeagent-wrapper --agent oracle - . <<'EOF'
-## Original User Request
-Analyze the authentication architecture and recommend improvements.
-
-## Context Pack (include anything relevant; write "None" if absent)
-- Explore output: [paste explore output if available]
-- Librarian output: None
-- Oracle output: None
-
-## Current Task
-Review auth architecture, identify risks, propose minimal improvements.
-
-## Acceptance Criteria
-Output: recommendation, action plan, risk assessment, effort estimate.
-EOF
+# UI change
+/omo redesign the dashboard layout
+# → explore → frontend-ui-ux-engineer
 ```
 
 ## Configuration
 
-Agent-model mappings are configured in `~/.codeagent/models.json`:
+Agent-model mappings in `~/.codeagent/models.json`:
 
 ```json
 {
@@ -80,40 +128,42 @@ Agent-model mappings are configured in `~/.codeagent/models.json`:
     "oracle": {
       "backend": "claude",
       "model": "claude-opus-4-5-20251101",
-      "description": "Technical advisor",
       "yolo": true
     },
     "librarian": {
       "backend": "claude",
       "model": "claude-sonnet-4-5-20250929",
-      "description": "Researcher",
       "yolo": true
     },
     "explore": {
       "backend": "opencode",
-      "model": "opencode/grok-code",
-      "description": "Code search"
+      "model": "opencode/grok-code"
     },
     "frontend-ui-ux-engineer": {
       "backend": "gemini",
-      "model": "gemini-3-pro-preview",
-      "description": "Frontend engineer"
+      "model": "gemini-3-pro-preview"
     },
     "document-writer": {
       "backend": "gemini",
-      "model": "gemini-3-flash-preview",
-      "description": "Documentation"
+      "model": "gemini-3-flash-preview"
     },
     "develop": {
       "backend": "codex",
       "model": "gpt-5.2",
-      "description": "codex develop",
       "yolo": true,
       "reasoning": "xhigh"
     }
   }
 }
 ```
+
+## Hard Constraints
+
+1. **Never write code yourself** - delegate to implementation agents
+2. **Always pass context forward** - include original request + prior outputs
+3. **No direct grep/glob for non-trivial exploration** - use `explore`
+4. **No external docs guessing** - use `librarian`
+5. **Use fewest agents possible** - skipping is normal
 
 ## Requirements
 
