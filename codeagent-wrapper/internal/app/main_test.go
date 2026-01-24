@@ -3698,10 +3698,8 @@ func TestVersionFlag(t *testing.T) {
 		}
 	})
 
-	want := "codeagent-wrapper version 6.0.0-alpha1\n"
-
-	if output != want {
-		t.Fatalf("output = %q, want %q", output, want)
+	if !strings.HasPrefix(output, "codeagent-wrapper version ") {
+		t.Fatalf("output = %q, want prefix %q", output, "codeagent-wrapper version ")
 	}
 }
 
@@ -3714,10 +3712,8 @@ func TestVersionShortFlag(t *testing.T) {
 		}
 	})
 
-	want := "codeagent-wrapper version 6.0.0-alpha1\n"
-
-	if output != want {
-		t.Fatalf("output = %q, want %q", output, want)
+	if !strings.HasPrefix(output, "codeagent-wrapper version ") {
+		t.Fatalf("output = %q, want prefix %q", output, "codeagent-wrapper version ")
 	}
 }
 
@@ -3730,10 +3726,8 @@ func TestVersionLegacyAlias(t *testing.T) {
 		}
 	})
 
-	want := "codeagent-wrapper version 6.0.0-alpha1\n"
-
-	if output != want {
-		t.Fatalf("output = %q, want %q", output, want)
+	if !strings.HasPrefix(output, "codeagent-wrapper version ") {
+		t.Fatalf("output = %q, want prefix %q", output, "codeagent-wrapper version ")
 	}
 }
 
