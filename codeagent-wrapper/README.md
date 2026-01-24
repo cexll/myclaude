@@ -2,7 +2,7 @@
 
 `codeagent-wrapper` 是一个用 Go 编写的“多后端 AI 代码代理”命令行包装器：用统一的 CLI 入口封装不同的 AI 工具后端（Codex / Claude / Gemini / Opencode），并提供一致的参数、配置与会话恢复体验。
 
-入口：`cmd/codeagent/main.go`（生成二进制名：`codeagent`）。
+入口：`cmd/codeagent/main.go`（生成二进制名：`codeagent`）和 `cmd/codeagent-wrapper/main.go`（生成二进制名：`codeagent-wrapper`）。两者行为一致。
 
 ## 功能特性
 
@@ -22,12 +22,14 @@
 
 ```bash
 go install ./cmd/codeagent
+go install ./cmd/codeagent-wrapper
 ```
 
 安装后确认：
 
 ```bash
 codeagent version
+codeagent-wrapper version
 ```
 
 ## 使用示例
@@ -148,4 +150,3 @@ make test
 make lint
 make clean
 ```
-

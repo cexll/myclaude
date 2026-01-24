@@ -1067,6 +1067,12 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		}
 		if injected := envBackend.Env(baseURL, apiKey); len(injected) > 0 {
 			cmd.SetEnv(injected)
+			// Log injected env vars with masked API keys (to file and stderr)
+			for k, v := range injected {
+				msg := fmt.Sprintf("Env: %s=%s", k, maskSensitiveValue(k, v))
+				logInfoFn(msg)
+				fmt.Fprintln(os.Stderr, "  "+msg)
+			}
 		}
 	}
 
@@ -1448,4 +1454,20 @@ func terminateCommand(cmd commandRunner) *forceKillTimer {
 	})
 
 	return &forceKillTimer{timer: timer, done: done}
+}
+
+// maskSensitiveValue masks sensitive values like API keys for logging.
+// Values containing "key", "token", or "secret" (case-insensitive) are masked.
+// For values longer than 8 chars: shows first 4 + **** + last 4.
+// For shorter values: shows only ****.
+func maskSensitiveValue(key, value string) string {
+	keyLower := strings.ToLower(key)
+	if strings.Contains(keyLower, "key") || strings.Contains(keyLower, "token") || strings.Contains(keyLower, "secret") {
+		if len(value) > 8 {
+			return value[:4] + "****" + value[len(value)-4:]
+		} else if len(value) > 0 {
+			return "****"
+		}
+	}
+	return value
 }

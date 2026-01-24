@@ -635,6 +635,7 @@ func runSingleMode(cfg *Config, name string) int {
 		WorkDir:         cfg.WorkDir,
 		Mode:            cfg.Mode,
 		SessionID:       cfg.SessionID,
+		Backend:         cfg.Backend,
 		Model:           cfg.Model,
 		ReasoningEffort: cfg.ReasoningEffort,
 		Agent:           cfg.Agent,

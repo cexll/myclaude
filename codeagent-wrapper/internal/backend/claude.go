@@ -25,7 +25,7 @@ func (ClaudeBackend) Env(baseURL, apiKey string) map[string]string {
 		env["ANTHROPIC_BASE_URL"] = baseURL
 	}
 	if apiKey != "" {
-		env["ANTHROPIC_API_KEY"] = apiKey
+		env["ANTHROPIC_AUTH_TOKEN"] = apiKey
 	}
 	return env
 }
