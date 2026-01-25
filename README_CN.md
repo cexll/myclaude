@@ -268,6 +268,10 @@ python3 install.py --module <name> --force
 
 AGPL-3.0 - 查看 [LICENSE](LICENSE)
 
+### 商业授权
+
+如需商业授权（无需遵守 AGPL 义务），请联系：evanxian9@gmail.com
+
 ## 支持
 
 - [GitHub Issues](https://github.com/cexll/myclaude/issues)

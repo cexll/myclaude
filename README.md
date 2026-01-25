@@ -146,6 +146,10 @@ See [GitHub Issues](https://github.com/cexll/myclaude/issues) for more.
 
 AGPL-3.0 - see [LICENSE](LICENSE)
 
+### Commercial Licensing
+
+For commercial use without AGPL obligations, contact: evanxian9@gmail.com
+
 ## Support
 
 - [GitHub Issues](https://github.com/cexll/myclaude/issues)
