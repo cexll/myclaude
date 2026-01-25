@@ -24,7 +24,7 @@ const (
 	stdoutCloseReasonWait  = "wait-done"
 	stdoutCloseReasonDrain = "drain-timeout"
 	stdoutCloseReasonCtx   = "context-cancel"
-	stdoutDrainTimeout     = 100 * time.Millisecond
+	stdoutDrainTimeout     = 500 * time.Millisecond
 )
 
 // Test hooks for dependency injection

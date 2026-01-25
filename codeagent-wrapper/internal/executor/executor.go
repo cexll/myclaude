@@ -40,7 +40,7 @@ const (
 	stdoutCloseReasonWait  = "wait-done"
 	stdoutCloseReasonDrain = "drain-timeout"
 	stdoutCloseReasonCtx   = "context-cancel"
-	stdoutDrainTimeout     = 100 * time.Millisecond
+	stdoutDrainTimeout     = 500 * time.Millisecond
 )
 
 // Hook points (tests can override inside this package).
