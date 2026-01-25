@@ -54,7 +54,7 @@ To customize agents, create same-named files in `~/.codeagent/agents/` to overri
 3. **Phase 5 requires approval** - stop after Phase 4 if not approved
 4. **Pass complete context forward** - every agent gets the Context Pack
 5. **Parallel-first** - run independent tasks via `codeagent-wrapper --parallel`
-6. **Update state after each phase** - keep `.claude/do.local.md` current
+6. **Update state after each phase** - keep `.claude/do.{task_id}.local.md` current
 
 ## Context Pack Template
 
@@ -80,7 +80,7 @@ To customize agents, create same-named files in `~/.codeagent/agents/` to overri
 
 ## Loop State Management
 
-When triggered via `/do <task>`, initializes `.claude/do.local.md` with:
+When triggered via `/do <task>`, initializes `.claude/do.{task_id}.local.md` with:
 - `active: true`
 - `current_phase: 1`
 - `max_phases: 7`
@@ -102,7 +102,7 @@ To abort early, set `active: false` in the state file.
 ## Stop Hook
 
 A Stop hook is registered after installation:
-1. Creates `.claude/do.local.md` state file
+1. Creates `.claude/do.{task_id}.local.md` state file
 2. Updates `current_phase` after each phase
 3. Stop hook checks state, blocks exit if incomplete
 4. Outputs `<promise>DO_COMPLETE</promise>` when finished

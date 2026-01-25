@@ -16,7 +16,7 @@ When triggered via `/do <task>`, **first** initialize the loop state:
 "${SKILL_DIR}/scripts/setup-do.sh" "<task description>"
 ```
 
-This creates `.claude/do.local.md` with:
+This creates `.claude/do.{task_id}.local.md` with:
 - `active: true`
 - `current_phase: 1`
 - `max_phases: 7`
@@ -24,7 +24,7 @@ This creates `.claude/do.local.md` with:
 
 ## Loop State Management
 
-After each phase, update `.claude/do.local.md` frontmatter:
+After each phase, update `.claude/do.{task_id}.local.md` frontmatter:
 ```yaml
 current_phase: <next phase number>
 phase_name: "<next phase name>"
@@ -44,7 +44,7 @@ To abort early, set `active: false` in the state file.
 3. **Phase 5 (Implementation) requires explicit approval.** Stop after Phase 4 if not approved.
 4. **Pass complete context forward.** Every agent invocation includes the Context Pack.
 5. **Parallel-first.** Run independent tasks via `codeagent-wrapper --parallel`.
-6. **Update state after each phase.** Keep `.claude/do.local.md` current.
+6. **Update state after each phase.** Keep `.claude/do.{task_id}.local.md` current.
 
 ## Agents
 

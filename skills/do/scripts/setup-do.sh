@@ -81,7 +81,9 @@ fi
 
 project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 state_dir="${project_dir}/.claude"
-state_file="${state_dir}/do.local.md"
+
+task_id="$(date +%s)-$$-$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+state_file="${state_dir}/do.${task_id}.local.md"
 
 mkdir -p "$state_dir"
 
@@ -107,5 +109,6 @@ $prompt
 EOF
 
 echo "Initialized: $state_file"
+echo "task_id: $task_id"
 echo "phase: 1/$max_phases ($phase_name)"
 echo "completion_promise: $completion_promise"
