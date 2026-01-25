@@ -2,8 +2,8 @@
 bin/
 codeagent
 codeagent.exe
-codeagent-wrapper
-codeagent-wrapper.exe
+/codeagent-wrapper
+/codeagent-wrapper.exe
 *.test
 
 # Coverage reports
