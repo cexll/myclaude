@@ -70,12 +70,11 @@ func TestLoggerWithSuffixNamingAndIsolation(t *testing.T) {
 
 func TestLoggerWithSuffixReturnsErrorWhenTempDirNotWritable(t *testing.T) {
 	base := t.TempDir()
-	noWrite := filepath.Join(base, "ro")
-	if err := os.Mkdir(noWrite, 0o500); err != nil {
-		t.Fatalf("failed to create read-only temp dir: %v", err)
+	notDir := filepath.Join(base, "not-a-dir")
+	if err := os.WriteFile(notDir, []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(noWrite, 0o700) })
-	setTempDirEnv(t, noWrite)
+	setTempDirEnv(t, notDir)
 
 	logger, err := NewLoggerWithSuffix("task-err")
 	if err == nil {

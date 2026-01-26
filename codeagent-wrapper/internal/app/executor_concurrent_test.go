@@ -567,8 +567,7 @@ func TestExecutorParallelLogIsolation(t *testing.T) {
 }
 
 func TestConcurrentExecutorParallelLogIsolationAndClosure(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	oldArgs := os.Args
 	os.Args = []string{wrapperName}
@@ -929,8 +928,7 @@ func TestExecutorExecuteConcurrentWithContextBranches(t *testing.T) {
 	t.Run("TestConcurrentTaskLoggerFailure", func(t *testing.T) {
 		// Create a writable temp dir for the main logger, then flip TMPDIR to a read-only
 		// location so task-specific loggers fail to open.
-		writable := t.TempDir()
-		t.Setenv("TMPDIR", writable)
+		writable := setTempDirEnv(t, t.TempDir())
 
 		mainLogger, err := NewLoggerWithSuffix("shared-main")
 		if err != nil {
@@ -943,11 +941,11 @@ func TestExecutorExecuteConcurrentWithContextBranches(t *testing.T) {
 			_ = os.Remove(mainLogger.Path())
 		})
 
-		noWrite := filepath.Join(writable, "ro")
-		if err := os.Mkdir(noWrite, 0o500); err != nil {
-			t.Fatalf("failed to create read-only temp dir: %v", err)
+		notDir := filepath.Join(writable, "not-a-dir")
+		if err := os.WriteFile(notDir, []byte("x"), 0o644); err != nil {
+			t.Fatalf("failed to create temp file: %v", err)
 		}
-		t.Setenv("TMPDIR", noWrite)
+		setTempDirEnv(t, notDir)
 
 		taskA := nextExecutorTestTaskID("shared-a")
 		taskB := nextExecutorTestTaskID("shared-b")
@@ -1011,8 +1009,7 @@ func TestExecutorExecuteConcurrentWithContextBranches(t *testing.T) {
 	})
 
 	t.Run("TestSanitizeTaskID", func(t *testing.T) {
-		tempDir := t.TempDir()
-		t.Setenv("TMPDIR", tempDir)
+		setTempDirEnv(t, t.TempDir())
 
 		orig := runCodexTaskFn
 		runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
@@ -1081,8 +1078,7 @@ func TestExecutorSharedLogFalseWhenCustomLogPath(t *testing.T) {
 		_ = devNull.Close()
 	})
 
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	// Setup: 创建主 logger
 	mainLogger, err := NewLoggerWithSuffix("shared-main")
@@ -1098,11 +1094,11 @@ func TestExecutorSharedLogFalseWhenCustomLogPath(t *testing.T) {
 	// 模拟场景：task logger 创建失败（通过设置只读的 TMPDIR），
 	// 回退到主 logger（handle.shared=true），
 	// 但 runCodexTaskFn 返回自定义的 LogPath（不等于主 logger 的路径）
-	roDir := filepath.Join(tempDir, "ro")
-	if err := os.Mkdir(roDir, 0o500); err != nil {
-		t.Fatalf("failed to create read-only dir: %v", err)
+	notDir := filepath.Join(tempDir, "not-a-dir")
+	if err := os.WriteFile(notDir, []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
 	}
-	t.Setenv("TMPDIR", roDir)
+	setTempDirEnv(t, notDir)
 
 	orig := runCodexTaskFn
 	customLogPath := "/custom/path/to.log"

@@ -36,10 +36,8 @@ func TestEnvInjectionWithAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Override HOME to use temp dir
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
 
 	// Reset config cache
 	config.ResetModelsConfigCacheForTest()
@@ -104,9 +102,8 @@ func TestEnvInjectionLogic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
 
 	config.ResetModelsConfigCacheForTest()
 	defer config.ResetModelsConfigCacheForTest()

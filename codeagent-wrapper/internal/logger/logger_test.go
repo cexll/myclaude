@@ -26,8 +26,7 @@ func compareCleanupStats(got, want CleanupStats) bool {
 }
 
 func TestLoggerCreatesFileWithPID(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	logger, err := NewLogger()
 	if err != nil {
@@ -46,8 +45,7 @@ func TestLoggerCreatesFileWithPID(t *testing.T) {
 }
 
 func TestLoggerWritesLevels(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	logger, err := NewLogger()
 	if err != nil {
@@ -77,8 +75,7 @@ func TestLoggerWritesLevels(t *testing.T) {
 }
 
 func TestLoggerCloseStopsWorkerAndKeepsFile(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	logger, err := NewLogger()
 	if err != nil {
@@ -104,8 +101,7 @@ func TestLoggerCloseStopsWorkerAndKeepsFile(t *testing.T) {
 }
 
 func TestLoggerConcurrentWritesSafe(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	logger, err := NewLogger()
 	if err != nil {
@@ -390,12 +386,14 @@ func TestLoggerCleanupOldLogsPerformanceBound(t *testing.T) {
 	fakePaths := make([]string, fileCount)
 	for i := 0; i < fileCount; i++ {
 		name := fmt.Sprintf("codeagent-wrapper-%d.log", 10000+i)
-		fakePaths[i] = createTempLog(t, tempDir, name)
+		fakePaths[i] = filepath.Join(tempDir, name)
 	}
 
 	stubGlobLogFiles(t, func(pattern string) ([]string, error) {
 		return fakePaths, nil
 	})
+	stubFileStat(t, func(string) (os.FileInfo, error) { return fakeFileInfo{}, nil })
+	stubEvalSymlinks(t, func(path string) (string, error) { return path, nil })
 	stubProcessRunning(t, func(int) bool { return false })
 	stubProcessStartTime(t, func(int) time.Time { return time.Time{} })
 
@@ -542,8 +540,7 @@ func TestLoggerIsUnsafeFileSecurityChecks(t *testing.T) {
 }
 
 func TestLoggerPathAndRemove(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	logger, err := NewLoggerWithSuffix("sample")
 	if err != nil {

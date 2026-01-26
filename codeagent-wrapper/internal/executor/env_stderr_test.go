@@ -65,11 +65,8 @@ func TestEnvInjection_LogsToStderrAndMasksKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldHome := os.Getenv("HOME")
-	if err := os.Setenv("HOME", tmpDir); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Setenv("HOME", oldHome) }()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
 
 	config.ResetModelsConfigCacheForTest()
 	defer config.ResetModelsConfigCacheForTest()

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -253,6 +254,15 @@ func (p *realProcess) Signal(sig os.Signal) error {
 
 // newCommandRunner creates a new commandRunner (test hook injection point)
 var newCommandRunner = func(ctx context.Context, name string, args ...string) commandRunner {
+	if runtime.GOOS == "windows" {
+		lowerName := strings.ToLower(strings.TrimSpace(name))
+		if strings.HasSuffix(lowerName, ".bat") || strings.HasSuffix(lowerName, ".cmd") {
+			cmdArgs := make([]string, 0, 2+len(args))
+			cmdArgs = append(cmdArgs, "/c", name)
+			cmdArgs = append(cmdArgs, args...)
+			return &realCmd{cmd: commandContext(ctx, "cmd.exe", cmdArgs...)}
+		}
+	}
 	return &realCmd{cmd: commandContext(ctx, name, args...)}
 }
 
@@ -1058,17 +1068,17 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	if envBackend != nil {
-			baseURL, apiKey := config.ResolveBackendConfig(cfg.Backend)
-			if agentName := strings.TrimSpace(taskSpec.Agent); agentName != "" {
-				agentBackend, _, _, _, agentBaseURL, agentAPIKey, _, err := config.ResolveAgentConfig(agentName)
-				if err == nil {
-					if strings.EqualFold(strings.TrimSpace(agentBackend), strings.TrimSpace(cfg.Backend)) {
-						baseURL, apiKey = agentBaseURL, agentAPIKey
-					}
+		baseURL, apiKey := config.ResolveBackendConfig(cfg.Backend)
+		if agentName := strings.TrimSpace(taskSpec.Agent); agentName != "" {
+			agentBackend, _, _, _, agentBaseURL, agentAPIKey, _, err := config.ResolveAgentConfig(agentName)
+			if err == nil {
+				if strings.EqualFold(strings.TrimSpace(agentBackend), strings.TrimSpace(cfg.Backend)) {
+					baseURL, apiKey = agentBaseURL, agentAPIKey
 				}
 			}
-			if injected := envBackend.Env(baseURL, apiKey); len(injected) > 0 {
-				cmd.SetEnv(injected)
+		}
+		if injected := envBackend.Env(baseURL, apiKey); len(injected) > 0 {
+			cmd.SetEnv(injected)
 			// Log injected env vars with masked API keys (to file and stderr)
 			for k, v := range injected {
 				msg := fmt.Sprintf("Env: %s=%s", k, maskSensitiveValue(k, v))

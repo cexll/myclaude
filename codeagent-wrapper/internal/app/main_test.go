@@ -1948,7 +1948,7 @@ func TestRun_PassesReasoningEffortToTaskSpec(t *testing.T) {
 func TestRun_NoOutputMessage_ReturnsExitCode1AndWritesStderr(t *testing.T) {
 	defer resetTestHooks()
 	cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
-	t.Setenv("TMPDIR", t.TempDir())
+	setTempDirEnv(t, t.TempDir())
 
 	selectBackendFn = func(name string) (Backend, error) {
 		return testBackend{name: name, command: "echo"}, nil
@@ -2099,8 +2099,7 @@ func TestRunBuildCodexArgs_ResumeMode_EmptySessionHandledGracefully(t *testing.T
 
 func TestRunBuildCodexArgs_BypassSandboxEnvTrue(t *testing.T) {
 	defer resetTestHooks()
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	logger, err := NewLogger()
 	if err != nil {
@@ -2744,8 +2743,7 @@ func TestTailBufferWrite(t *testing.T) {
 
 func TestRunLogFunctions(t *testing.T) {
 	defer resetTestHooks()
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	logger, err := NewLogger()
 	if err != nil {
@@ -2792,8 +2790,7 @@ func TestLoggerLogDropOnDone(t *testing.T) {
 
 func TestLoggerLogAfterClose(t *testing.T) {
 	defer resetTestHooks()
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	setTempDirEnv(t, t.TempDir())
 
 	logger, err := NewLogger()
 	if err != nil {
@@ -4243,8 +4240,7 @@ func TestRun_ExplicitStdinEmpty(t *testing.T) {
 
 func TestRun_ExplicitStdinReadError(t *testing.T) {
 	defer resetTestHooks()
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 	logPath := filepath.Join(tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", os.Getpid()))
 
 	var logOutput string
@@ -4340,8 +4336,7 @@ func TestRun_ExplicitStdinSuccess(t *testing.T) {
 
 func TestRun_PipedTaskReadError(t *testing.T) {
 	defer resetTestHooks()
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 	logPath := filepath.Join(tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", os.Getpid()))
 
 	var logOutput string
@@ -4394,8 +4389,7 @@ func TestRun_PipedTaskSuccess(t *testing.T) {
 
 func TestRun_LoggerLifecycle(t *testing.T) {
 	defer resetTestHooks()
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 	logPath := filepath.Join(tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", os.Getpid()))
 
 	stdout := captureStdoutPipe()
@@ -4443,8 +4437,7 @@ func TestRun_LoggerRemovedOnSignal(t *testing.T) {
 	// Set shorter delays for faster test
 	_ = executor.SetForceKillDelay(1)
 
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 	logPath := filepath.Join(tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", os.Getpid()))
 
 	scriptPath := filepath.Join(tempDir, "sleepy-codex.sh")
@@ -4728,8 +4721,7 @@ func TestBackendRunCoverage(t *testing.T) {
 func TestParallelLogPathInSerialMode(t *testing.T) {
 	defer resetTestHooks()
 
-	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
+	tempDir := setTempDirEnv(t, t.TempDir())
 
 	os.Args = []string{"codeagent-wrapper", "do-stuff"}
 	stdinReader = strings.NewReader("")

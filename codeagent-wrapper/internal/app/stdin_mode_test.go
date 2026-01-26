@@ -8,7 +8,7 @@ import (
 func TestRunSingleMode_UseStdin_TargetArgAndTaskText(t *testing.T) {
 	defer resetTestHooks()
 
-	t.Setenv("TMPDIR", t.TempDir())
+	setTempDirEnv(t, t.TempDir())
 	logger, err := NewLogger()
 	if err != nil {
 		t.Fatalf("NewLogger(): %v", err)

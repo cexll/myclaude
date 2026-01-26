@@ -8,3 +8,4 @@ __pycache__
 .coverage
 coverage.out
 references
+output/
