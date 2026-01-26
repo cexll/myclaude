@@ -3237,20 +3237,36 @@ func TestRunCodexProcess(t *testing.T) {
 
 func TestRunSilentMode(t *testing.T) {
 	defer resetTestHooks()
+	tmpDir := t.TempDir()
+	setTempDirEnv(t, tmpDir)
 	jsonOutput := `{"type":"thread.started","thread_id":"silent-session"}
 {"type":"item.completed","item":{"type":"agent_message","text":"quiet"}}`
-	codexCommand = "echo"
+	codexCommand = "fake-cmd"
 	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+	_ = executor.SetNewCommandRunner(func(ctx context.Context, name string, args ...string) executor.CommandRunner {
+		return newFakeCmd(fakeCmdConfig{
+			StdoutPlan: []fakeStdoutEvent{{Data: jsonOutput + "\n"}},
+		})
+	})
 
 	capture := func(silent bool) string {
 		oldStderr := os.Stderr
-		r, w, _ := os.Pipe()
-		os.Stderr = w
-		res := runCodexTask(TaskSpec{Task: jsonOutput}, silent, 10)
-		if res.ExitCode != 0 {
-			t.Fatalf("unexpected exitCode %d", res.ExitCode)
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("os.Pipe() error = %v", err)
 		}
-		w.Close()
+		os.Stderr = w
+		defer func() {
+			os.Stderr = oldStderr
+			_ = w.Close()
+			_ = r.Close()
+		}()
+
+		res := runCodexTask(TaskSpec{Task: "ignored"}, silent, 10)
+		if res.ExitCode != 0 {
+			t.Fatalf("unexpected exitCode %d: %s", res.ExitCode, res.Error)
+		}
+		_ = w.Close()
 		os.Stderr = oldStderr
 		var buf bytes.Buffer
 		if _, err := io.Copy(&buf, r); err != nil {
@@ -3608,6 +3624,7 @@ do two`)
 }
 
 func TestParallelFlag(t *testing.T) {
+	defer resetTestHooks()
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
@@ -3617,14 +3634,10 @@ id: T1
 ---CONTENT---
 test`
 	stdinReader = strings.NewReader(jsonInput)
-	defer func() { stdinReader = os.Stdin }()
 
 	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
 		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: "test output"}
 	}
-	defer func() {
-		runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult { return runCodexTask(task, true, timeout) }
-	}()
 
 	exitCode := run()
 	if exitCode != 0 {
