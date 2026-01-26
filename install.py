@@ -70,6 +70,11 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
         help="Uninstall specified modules",
     )
     parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Update already installed modules",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Force overwrite existing files",
@@ -352,6 +357,19 @@ def check_module_installed(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) 
             target = (install_dir / op["target"]).expanduser().resolve()
             if target.exists():
                 return True
+        elif op_type == "merge_dir":
+            src = (ctx["config_dir"] / op["source"]).expanduser().resolve()
+            if not src.exists() or not src.is_dir():
+                continue
+            for subdir in src.iterdir():
+                if not subdir.is_dir():
+                    continue
+                for f in subdir.iterdir():
+                    if not f.is_file():
+                        continue
+                    candidate = (install_dir / subdir.name / f.name).expanduser().resolve()
+                    if candidate.exists():
+                        return True
     return False
 
 
@@ -1061,6 +1079,74 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
         update_status_after_uninstall(list(to_uninstall.keys()), ctx)
         print(f"\n✓ Uninstall complete")
+        return 0
+
+    # Handle --update
+    if getattr(args, "update", False):
+        try:
+            ensure_install_dir(ctx["install_dir"])
+        except Exception as exc:
+            print(f"Failed to prepare install dir: {exc}", file=sys.stderr)
+            return 1
+
+        installed_status = get_installed_modules(config, ctx)
+        if args.module:
+            selected = select_modules(config, args.module)
+            modules = {k: v for k, v in selected.items() if installed_status.get(k, False)}
+        else:
+            modules = {
+                k: v
+                for k, v in config.get("modules", {}).items()
+                if installed_status.get(k, False)
+            }
+
+        if not modules:
+            print("No installed modules to update.")
+            return 0
+
+        ctx["force"] = True
+        prepare_status_backup(ctx)
+
+        total = len(modules)
+        print(f"Updating {total} module(s) in {ctx['install_dir']}...")
+
+        results: List[Dict[str, Any]] = []
+        for idx, (name, cfg) in enumerate(modules.items(), 1):
+            print(f"[{idx}/{total}] Updating module: {name}...")
+            try:
+                results.append(execute_module(name, cfg, ctx))
+                print(f"  ✓ {name} updated successfully")
+            except Exception as exc:  # noqa: BLE001
+                print(f"  ✗ {name} failed: {exc}", file=sys.stderr)
+                rollback(ctx)
+                if not args.force:
+                    return 1
+                results.append(
+                    {
+                        "module": name,
+                        "status": "failed",
+                        "operations": [],
+                        "installed_at": datetime.now().isoformat(),
+                    }
+                )
+                break
+
+        current_status = load_installed_status(ctx)
+        for r in results:
+            if r.get("status") == "success":
+                current_status.setdefault("modules", {})[r["module"]] = r
+        current_status["updated_at"] = datetime.now().isoformat()
+        with Path(ctx["status_file"]).open("w", encoding="utf-8") as fh:
+            json.dump(current_status, fh, indent=2, ensure_ascii=False)
+
+        success = sum(1 for r in results if r.get("status") == "success")
+        failed = len(results) - success
+        if failed == 0:
+            print(f"\n✓ Update complete: {success} module(s) updated")
+        else:
+            print(f"\n⚠ Update finished with errors: {success} success, {failed} failed")
+            if not args.force:
+                return 1
         return 0
 
     # No --module specified: enter interactive management mode

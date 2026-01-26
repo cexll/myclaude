@@ -78,7 +78,7 @@ After code review passes (≥90%):
 ## Directory Structure
 
 ```
-requirements-driven-workflow/
+agents/requirements/
 ├── README.md
 ├── commands/
 │   └── requirements-pilot.md

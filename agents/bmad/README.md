@@ -94,7 +94,7 @@ PO and Architect phases use iterative refinement:
 ## Directory Structure
 
 ```
-bmad-agile-workflow/
+agents/bmad/
 ├── README.md
 ├── commands/
 │   └── bmad-pilot.md

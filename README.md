@@ -12,9 +12,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/cexll/myclaude.git
-cd myclaude
-python3 install.py --install-dir ~/.claude
+npx github:cexll/myclaude
 ```
 
 ## Modules Overview
@@ -22,28 +20,24 @@ python3 install.py --install-dir ~/.claude
 | Module | Description | Documentation |
 |--------|-------------|---------------|
 | [do](skills/do/README.md) | **Recommended** - 7-phase feature development with codeagent orchestration | `/do` command |
-| [dev](dev-workflow/README.md) | Lightweight dev workflow with Codex integration | `/dev` command |
 | [omo](skills/omo/README.md) | Multi-agent orchestration with intelligent routing | `/omo` command |
-| [bmad](bmad-agile-workflow/README.md) | BMAD agile workflow with 6 specialized agents | `/bmad-pilot` command |
-| [requirements](requirements-driven-workflow/README.md) | Lightweight requirements-to-code pipeline | `/requirements-pilot` command |
-| [essentials](development-essentials/README.md) | Core development commands and utilities | `/code`, `/debug`, etc. |
+| [bmad](agents/bmad/README.md) | BMAD agile workflow with 6 specialized agents | `/bmad-pilot` command |
+| [requirements](agents/requirements/README.md) | Lightweight requirements-to-code pipeline | `/requirements-pilot` command |
+| [essentials](agents/development-essentials/README.md) | Core development commands and utilities | `/code`, `/debug`, etc. |
 | [sparv](skills/sparv/README.md) | SPARV workflow (Specify→Plan→Act→Review→Vault) | `/sparv` command |
 | course | Course development (combines dev + product-requirements + test-cases) | Composite module |
 
 ## Installation
 
 ```bash
-# Install all enabled modules
-python3 install.py --install-dir ~/.claude
+# Interactive installer (recommended)
+npx github:cexll/myclaude
 
-# Install specific module
-python3 install.py --module dev
+# List installable items (modules / skills / wrapper)
+npx github:cexll/myclaude --list
 
-# List available modules
-python3 install.py --list-modules
-
-# Force overwrite
-python3 install.py --force
+# Custom install directory / overwrite
+npx github:cexll/myclaude --install-dir ~/.claude --force
 ```
 
 ### Module Configuration
@@ -53,13 +47,12 @@ Edit `config.json` to enable/disable modules:
 ```json
 {
   "modules": {
-    "dev": { "enabled": true },
     "bmad": { "enabled": false },
     "requirements": { "enabled": false },
     "essentials": { "enabled": false },
     "omo": { "enabled": false },
     "sparv": { "enabled": false },
-    "do": { "enabled": false },
+    "do": { "enabled": true },
     "course": { "enabled": false }
   }
 }
@@ -70,7 +63,6 @@ Edit `config.json` to enable/disable modules:
 | Scenario | Recommended |
 |----------|-------------|
 | Feature development (default) | `/do` |
-| Lightweight feature | `/dev` |
 | Bug investigation + fix | `/omo` |
 | Large enterprise project | `/bmad-pilot` |
 | Quick prototype | `/requirements-pilot` |
@@ -105,9 +97,8 @@ Edit `config.json` to enable/disable modules:
 
 ## Documentation
 
-- [Codeagent-Wrapper Guide](docs/CODEAGENT-WRAPPER.md)
-- [Hooks Documentation](docs/HOOKS.md)
 - [codeagent-wrapper](codeagent-wrapper/README.md)
+- [Plugin System](PLUGIN_README.md)
 
 ## Troubleshooting
 
@@ -115,13 +106,14 @@ Edit `config.json` to enable/disable modules:
 
 **Codex wrapper not found:**
 ```bash
-bash install.sh
+# Select: codeagent-wrapper
+npx github:cexll/myclaude
 ```
 
 **Module not loading:**
 ```bash
 cat ~/.claude/installed_modules.json
-python3 install.py --module <name> --force
+npx github:cexll/myclaude --force
 ```
 
 **Backend CLI errors:**
@@ -137,7 +129,6 @@ which gemini && gemini --version
 |-------|----------|
 | "Unknown event format" | Logging display issue, can be ignored |
 | Gemini can't read .gitignore files | Remove from .gitignore or use different backend |
-| `/dev` slow | Check logs, try faster model, use single repo |
 | Codex permission denied | Set `approval_policy = "never"` in ~/.codex/config.yaml |
 
 See [GitHub Issues](https://github.com/cexll/myclaude/issues) for more.
@@ -153,4 +144,3 @@ For commercial use without AGPL obligations, contact: evanxian9@gmail.com
 ## Support
 
 - [GitHub Issues](https://github.com/cexll/myclaude/issues)
-- [Documentation](docs/)

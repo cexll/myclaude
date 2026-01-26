@@ -2,65 +2,450 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.6.4] - 2026-01-15
+## [6.0.0] - 2026-01-26
 
 ### 🚀 Features
 
-- add reasoning effort config for codex backend
-- default to skip-permissions and bypass-sandbox
-- add multi-agent support with yolo mode
-- add omo module for multi-agent orchestration
-- add intelligent backend selection based on task complexity (#61)
-- v5.4.0 structured execution report (#94)
-- add millisecond-precision timestamps to all log entries (#91)
-- skill-install install script and security scan
-- add uninstall scripts with selective module removal
-
-### 🐛 Bug Fixes
-
-- filter codex stderr noise logs
-- use config override for codex reasoning effort
-- propagate SkipPermissions to parallel tasks (#113)
-- add timeout for Windows process termination
-- reject dash as workdir parameter (#118)
-- add sleep in fake script to prevent CI race condition
-- fix gemini env load
-- fix omo
-- fix codeagent skill TaskOutput
-- 修复 Gemini init 事件 session_id 未提取的问题 (#111)
-- Windows 后端退出：taskkill 结束进程树 + turn.completed 支持 (#108)
-- support model parameter for all backends, auto-inject from settings (#105)
-- replace setx with reg add to avoid 1024-char PATH truncation (#101)
-- 移除未知事件格式的日志噪声 (#96)
-- prevent duplicate PATH entries on reinstall (#95)
-- Minor issues #12 and #13 - ASCII mode and performance optimization
-- correct settings.json filename and bump version to v5.2.8
-- allow claude backend to read env from setting.json while preventing recursion (#92)
-- comprehensive security and quality improvements for PR #85 & #87 (#90)
-- Improve backend termination after message and extend timeout (#86)
-- Parser重复解析优化 + 严重bug修复 + PR #86兼容性 (#88)
-- filter noisy stderr output from gemini backend (#83)
-- 修復 wsl install.sh 格式問題 (#78)
-- 修复多 backend 并行日志 PID 混乱并移除包装格式 (#74) (#76)
+- support `npx github:cexll/myclaude` for installation and execution
+- default module changed from `dev` to `do`
 
 ### 🚜 Refactor
 
-- remove sisyphus agent and unused code
-- streamline agent documentation and remove sisyphus
+- restructure: create `agents/` and move `bmad-agile-workflow` → `agents/bmad`, `requirements-driven-workflow` → `agents/requirements`, `development-essentials` → `agents/development-essentials`
+- remove legacy directories: `docs/`, `hooks/`, `dev-workflow/`
+- update references across `config.json`, `README.md`, `README_CN.md`, `marketplace.json`, etc.
 
 ### 📚 Documentation
 
-- add OmO workflow to README and fix plugin marketplace structure
-- update FAQ for default bypass/skip-permissions behavior
-- 添加 FAQ 常见问题章节
-- update troubleshooting with idempotent PATH commands (#95)
+- add `skills/README.md` and `PLUGIN_README.md`
 
 ### 💼 Other
 
+- add `package.json` and `bin/cli.js` for npx packaging
+
+## [6.1.5] - 2026-01-25
+
+
+### 🐛 Bug Fixes
+
+
+- correct gitignore to not exclude cmd/codeagent-wrapper
+
+## [6.1.4] - 2026-01-25
+
+
+### 🐛 Bug Fixes
+
+
+- support concurrent tasks with unique state files
+
+## [6.1.3] - 2026-01-25
+
+
+### 🐛 Bug Fixes
+
+
+- correct build path in release workflow
+
+- increase stdoutDrainTimeout from 100ms to 500ms
+
+## [6.1.2] - 2026-01-24
+
+
+### 🐛 Bug Fixes
+
+
+- use ANTHROPIC_AUTH_TOKEN for Claude CLI env injection
+
+### 💼 Other
+
+
+- update codeagent version
+
+### 📚 Documentation
+
+
+- restructure root READMEs with do as recommended workflow
+
+- update do/omo/sparv module READMEs with detailed workflows
+
+- add README for bmad and requirements modules
+
+### 🧪 Testing
+
+
+- use prefix match for version flag tests
+
+## [6.1.1] - 2026-01-23
+
+
+### 🚜 Refactor
+
+
+- rename feature-dev to do workflow
+
+## [6.1.0] - 2026-01-23
+
+
+### ⚙️ Miscellaneous Tasks
+
+
+- ignore references directory
+
+- add go.work.sum for workspace dependencies
+
+### 🐛 Bug Fixes
+
+
+- read GEMINI_MODEL from ~/.gemini/.env ([#131](https://github.com/cexll/myclaude/issues/131))
+
+- validate non-empty output message before printing
+
+### 🚀 Features
+
+
+- add feature-dev skill with 7-phase workflow
+
+- support \${CLAUDE_PLUGIN_ROOT} variable in hooks config
+
+## [6.0.0-alpha1] - 2026-01-20
+
+
+### 🐛 Bug Fixes
+
+
+- add missing cmd/codeagent/main.go entry point
+
+- update release workflow build path for new directory structure
+
+- write PATH config to both profile and rc files ([#128](https://github.com/cexll/myclaude/issues/128))
+
+### 🚀 Features
+
+
+- add course module with dev, product-requirements and test-cases skills
+
+- add hooks management to install.py
+
+### 🚜 Refactor
+
+
+- restructure codebase to internal/ directory with modular architecture
+
+## [5.6.7] - 2026-01-17
+
+
+### 💼 Other
+
+
+- remove .sparv
+
+### 📚 Documentation
+
+
+- update 'Agent Hierarchy' model for frontend-ui-ux-engineer and document-writer in README ([#127](https://github.com/cexll/myclaude/issues/127))
+
+- update mappings for frontend-ui-ux-engineer and document-writer in README ([#126](https://github.com/cexll/myclaude/issues/126))
+
+### 🚀 Features
+
+
+- add sparv module and interactive plugin manager
+
+- add sparv enhanced rules v1.1
+
+- add sparv skill to claude-plugin v1.1.0
+
+- feat sparv skill
+
+## [5.6.6] - 2026-01-16
+
+
+### 🐛 Bug Fixes
+
+
+- remove extraneous dash arg for opencode stdin mode ([#124](https://github.com/cexll/myclaude/issues/124))
+
+### 💼 Other
+
+
+- update readme
+
+## [5.6.5] - 2026-01-16
+
+
+### 🐛 Bug Fixes
+
+
+- correct default models for oracle and librarian agents ([#120](https://github.com/cexll/myclaude/issues/120))
+
+### 🚀 Features
+
+
+- feat dev skill
+
+## [5.6.4] - 2026-01-15
+
+
+### 🐛 Bug Fixes
+
+
+- filter codex 0.84.0 stderr noise logs ([#122](https://github.com/cexll/myclaude/issues/122))
+
+- filter codex stderr noise logs
+
+## [5.6.3] - 2026-01-14
+
+
+### ⚙️ Miscellaneous Tasks
+
+
+- bump codeagent-wrapper version to 5.6.3
+
+### 🐛 Bug Fixes
+
+
+- update version tests to match 5.6.3
+
+- use config override for codex reasoning effort
+
+## [5.6.2] - 2026-01-14
+
+
+### 🐛 Bug Fixes
+
+
+- propagate SkipPermissions to parallel tasks ([#113](https://github.com/cexll/myclaude/issues/113))
+
+- add timeout for Windows process termination
+
+- reject dash as workdir parameter ([#118](https://github.com/cexll/myclaude/issues/118))
+
+### 📚 Documentation
+
+
+- add OmO workflow to README and fix plugin marketplace structure
+
+### 🚜 Refactor
+
+
+- remove sisyphus agent and unused code
+
+## [5.6.1] - 2026-01-13
+
+
+### 🐛 Bug Fixes
+
+
+- add sleep in fake script to prevent CI race condition
+
+- fix gemini env load
+
+- fix omo
+
+### 🚀 Features
+
+
+- add reasoning effort config for codex backend
+
+## [5.6.0] - 2026-01-13
+
+
+### 📚 Documentation
+
+
+- update FAQ for default bypass/skip-permissions behavior
+
+### 🚀 Features
+
+
+- default to skip-permissions and bypass-sandbox
+
+- add omo module for multi-agent orchestration
+
+### 🚜 Refactor
+
+
+- streamline agent documentation and remove sisyphus
+
+## [5.5.0] - 2026-01-12
+
+
+### 🐛 Bug Fixes
+
+
+- 修复 Gemini init 事件 session_id 未提取的问题 ([#111](https://github.com/cexll/myclaude/issues/111))
+
+- fix codeagent skill TaskOutput
+
+### 💼 Other
+
+
+- Merge branch 'master' of github.com:cexll/myclaude
+
 - add test-cases skill
+
 - add browser skill
-- BMADh和Requirements-Driven支持根据语义生成对应的文档 (#82)
+
+### 🚀 Features
+
+
+- add multi-agent support with yolo mode
+
+## [5.4.4] - 2026-01-08
+
+
+### 💼 Other
+
+
+- 修复 Windows 后端退出：taskkill 结束进程树 + turn.completed 支持 ([#108](https://github.com/cexll/myclaude/issues/108))
+
+## [5.4.3] - 2026-01-06
+
+
+### 🐛 Bug Fixes
+
+
+- support model parameter for all backends, auto-inject from settings ([#105](https://github.com/cexll/myclaude/issues/105))
+
+### 📚 Documentation
+
+
+- add FAQ Q5 for permission/sandbox env vars
+
+### 🚀 Features
+
+
+- feat skill-install install script and security scan
+
+- add uninstall scripts with selective module removal
+
+## [5.4.2] - 2025-12-31
+
+
+### 🐛 Bug Fixes
+
+
+- replace setx with reg add to avoid 1024-char PATH truncation ([#101](https://github.com/cexll/myclaude/issues/101))
+
+## [5.4.1] - 2025-12-26
+
+
+### 🐛 Bug Fixes
+
+
+- 移除未知事件格式的日志噪声 ([#96](https://github.com/cexll/myclaude/issues/96))
+
+- prevent duplicate PATH entries on reinstall ([#95](https://github.com/cexll/myclaude/issues/95))
+
+### 📚 Documentation
+
+
+- 添加 FAQ 常见问题章节
+
+- update troubleshooting with idempotent PATH commands ([#95](https://github.com/cexll/myclaude/issues/95))
+
+### 🚀 Features
+
+
+- Add intelligent backend selection based on task complexity ([#61](https://github.com/cexll/myclaude/issues/61))
+
+## [5.4.0] - 2025-12-24
+
+
+### 🐛 Bug Fixes
+
+
+- Minor issues #12 and #13 - ASCII mode and performance optimization
+
+- code review fixes for PR #94 - all critical and major issues resolved
+
+### 🚀 Features
+
+
+- v5.4.0 structured execution report ([#94](https://github.com/cexll/myclaude/issues/94))
+
+## [5.2.8] - 2025-12-22
+
+
+### ⚙️ Miscellaneous Tasks
+
+
+- simplify release workflow to use GitHub auto-generated notes
+
+### 🐛 Bug Fixes
+
+
+- correct settings.json filename and bump version to v5.2.8
+
+## [5.2.7] - 2025-12-21
+
+
+### ⚙️ Miscellaneous Tasks
+
+
+- bump version to v5.2.7
+
+### 🐛 Bug Fixes
+
+
+- allow claude backend to read env from setting.json while preventing recursion ([#92](https://github.com/cexll/myclaude/issues/92))
+
+- comprehensive security and quality improvements for PR #85 & #87 ([#90](https://github.com/cexll/myclaude/issues/90))
+
+- Parser重复解析优化 + 严重bug修复 + PR #86兼容性 ([#88](https://github.com/cexll/myclaude/issues/88))
+
+### 💼 Other
+
+
+- Improve backend termination after message and extend timeout ([#86](https://github.com/cexll/myclaude/issues/86))
+
+### 🚀 Features
+
+
+- add millisecond-precision timestamps to all log entries ([#91](https://github.com/cexll/myclaude/issues/91))
+
+## [5.2.6] - 2025-12-19
+
+
+### 🐛 Bug Fixes
+
+
+- filter noisy stderr output from gemini backend ([#83](https://github.com/cexll/myclaude/issues/83))
+
+- 修復 wsl install.sh 格式問題 ([#78](https://github.com/cexll/myclaude/issues/78))
+
+### 💼 Other
+
+
 - update all readme
+
+- BMADh和Requirements-Driven支持根据语义生成对应的文档 ([#82](https://github.com/cexll/myclaude/issues/82))
+
+## [5.2.5] - 2025-12-17
+
+
+### 🐛 Bug Fixes
+
+
+- 修复多 backend 并行日志 PID 混乱并移除包装格式 ([#74](https://github.com/cexll/myclaude/issues/74)) ([#76](https://github.com/cexll/myclaude/issues/76))
+
+- replace "Codex" to "codeagent" in dev-plan-generator subagent
+
+- 修復 win python install.py
+
+### 💼 Other
+
+
+- Merge pull request #71 from aliceric27/master
+
+- Merge branch 'cexll:master' into master
+
+- Merge pull request #72 from changxvv/master
+
+- update changelog
+
+- update codeagent skill backend select
 
 ## [5.2.4] - 2025-12-16
 

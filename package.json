@@ -1,0 +1,26 @@
+{
+  "name": "myclaude",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Claude Code multi-agent workflows (npx installer)",
+  "license": "AGPL-3.0",
+  "bin": {
+    "myclaude": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    ".claude-plugin/",
+    "agents/",
+    "skills/",
+    "memorys/",
+    "codeagent-wrapper/",
+    "config.json",
+    "install.py",
+    "install.sh",
+    "install.bat",
+    "PLUGIN_README.md",
+    "README.md",
+    "README_CN.md",
+    "LICENSE"
+  ]
+}

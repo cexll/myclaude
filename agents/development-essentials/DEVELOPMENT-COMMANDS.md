@@ -304,7 +304,7 @@ Deep reasoning and analysis for complex problems.
 ## 🔌 Agent Configuration
 
 All commands use specialized agents configured in:
-- `development-essentials/agents/`
+- `agents/development-essentials/agents/`
 - Agent prompt templates
 - Tool access permissions
 - Output formatting

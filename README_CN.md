@@ -9,9 +9,7 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/cexll/myclaude.git
-cd myclaude
-python3 install.py --install-dir ~/.claude
+npx github:cexll/myclaude
 ```
 
 ## 模块概览
@@ -19,11 +17,10 @@ python3 install.py --install-dir ~/.claude
 | 模块 | 描述 | 文档 |
 |------|------|------|
 | [do](skills/do/README.md) | **推荐** - 7 阶段功能开发 + codeagent 编排 | `/do` 命令 |
-| [dev](dev-workflow/README.md) | 轻量级开发工作流 + Codex 集成 | `/dev` 命令 |
 | [omo](skills/omo/README.md) | 多智能体编排 + 智能路由 | `/omo` 命令 |
-| [bmad](bmad-agile-workflow/README.md) | BMAD 敏捷工作流 + 6 个专业智能体 | `/bmad-pilot` 命令 |
-| [requirements](requirements-driven-workflow/README.md) | 轻量级需求到代码流水线 | `/requirements-pilot` 命令 |
-| [essentials](development-essentials/README.md) | 核心开发命令和工具 | `/code`, `/debug` 等 |
+| [bmad](agents/bmad/README.md) | BMAD 敏捷工作流 + 6 个专业智能体 | `/bmad-pilot` 命令 |
+| [requirements](agents/requirements/README.md) | 轻量级需求到代码流水线 | `/requirements-pilot` 命令 |
+| [essentials](agents/development-essentials/README.md) | 核心开发命令和工具 | `/code`, `/debug` 等 |
 | [sparv](skills/sparv/README.md) | SPARV 工作流 (Specify→Plan→Act→Review→Vault) | `/sparv` 命令 |
 | course | 课程开发（组合 dev + product-requirements + test-cases） | 组合模块 |
 
@@ -60,24 +57,6 @@ python3 install.py --install-dir ~/.claude
 - `code-architect` - 设计方案、文件规划
 - `code-reviewer` - 代码审查、简化建议
 - `develop` - 实现代码、运行测试
-
----
-
-### Dev 工作流
-
-轻量级开发工作流，适合简单功能开发。
-
-```bash
-/dev "实现 JWT 用户认证"
-```
-
-**6 步流程：**
-1. 需求澄清 - 交互式问答
-2. Codex 深度分析 - 代码库探索
-3. 开发计划生成 - 结构化任务分解
-4. 并行执行 - Codex 并发执行
-5. 覆盖率验证 - 强制 ≥90%
-6. 完成总结 - 报告生成
 
 ---
 
@@ -189,17 +168,14 @@ python3 install.py --install-dir ~/.claude
 ## 安装
 
 ```bash
-# 安装所有启用的模块
-python3 install.py --install-dir ~/.claude
+# 交互式安装器（推荐）
+npx github:cexll/myclaude
 
-# 安装特定模块
-python3 install.py --module dev
+# 列出可安装项（module:* / skill:* / codeagent-wrapper）
+npx github:cexll/myclaude --list
 
-# 列出可用模块
-python3 install.py --list-modules
-
-# 强制覆盖
-python3 install.py --force
+# 指定安装目录 / 强制覆盖
+npx github:cexll/myclaude --install-dir ~/.claude --force
 ```
 
 ### 模块配置
@@ -209,13 +185,12 @@ python3 install.py --force
 ```json
 {
   "modules": {
-    "dev": { "enabled": true },
     "bmad": { "enabled": false },
     "requirements": { "enabled": false },
     "essentials": { "enabled": false },
     "omo": { "enabled": false },
     "sparv": { "enabled": false },
-    "do": { "enabled": false },
+    "do": { "enabled": true },
     "course": { "enabled": false }
   }
 }
@@ -226,7 +201,6 @@ python3 install.py --force
 | 场景 | 推荐 |
 |------|------|
 | 功能开发（默认） | `/do` |
-| 轻量级功能 | `/dev` |
 | Bug 调查 + 修复 | `/omo` |
 | 大型企业项目 | `/bmad-pilot` |
 | 快速原型 | `/requirements-pilot` |
@@ -244,13 +218,14 @@ python3 install.py --force
 
 **Codex wrapper 未找到：**
 ```bash
-bash install.sh
+# 选择：codeagent-wrapper
+npx github:cexll/myclaude
 ```
 
 **模块未加载：**
 ```bash
 cat ~/.claude/installed_modules.json
-python3 install.py --module <name> --force
+npx github:cexll/myclaude --force
 ```
 
 ## FAQ
@@ -259,7 +234,6 @@ python3 install.py --module <name> --force
 |------|----------|
 | "Unknown event format" | 日志显示问题，可忽略 |
 | Gemini 无法读取 .gitignore 文件 | 从 .gitignore 移除或使用其他后端 |
-| `/dev` 执行慢 | 检查日志，尝试更快模型，使用单一仓库 |
 | Codex 权限拒绝 | 在 ~/.codex/config.yaml 设置 `approval_policy = "never"` |
 
 更多问题请访问 [GitHub Issues](https://github.com/cexll/myclaude/issues)。
@@ -275,4 +249,3 @@ AGPL-3.0 - 查看 [LICENSE](LICENSE)
 ## 支持
 
 - [GitHub Issues](https://github.com/cexll/myclaude/issues)
-- [文档](docs/)

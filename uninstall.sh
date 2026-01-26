@@ -28,7 +28,7 @@ Options:
 Examples:
   $0 --list                    # List installed modules
   $0 --dry-run                 # Preview what would be removed
-  $0 --module dev              # Uninstall only 'dev' module
+  $0 --module do               # Uninstall only 'do' module
   $0 -y                        # Uninstall all without confirmation
   $0 --purge -y                # Remove everything (DANGEROUS)
 EOF

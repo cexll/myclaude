@@ -7,12 +7,12 @@
 help:
 	@echo "Claude Code Multi-Agent Workflow - Quick Deployment"
 	@echo ""
-	@echo "Recommended installation: python3 install.py --install-dir ~/.claude"
+	@echo "Recommended installation: npx github:cexll/myclaude"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  install              - LEGACY: install all configurations (prefer install.py)"
+	@echo "  install              - LEGACY: install all configurations (prefer npx github:cexll/myclaude)"
 	@echo "  deploy-bmad          - Deploy BMAD workflow (bmad-pilot)"
 	@echo "  deploy-requirements  - Deploy Requirements workflow (requirements-pilot)"
 	@echo "  deploy-essentials    - Deploy Development Essentials workflow"
@@ -31,16 +31,16 @@ CLAUDE_CONFIG_DIR = ~/.claude
 SPECS_DIR = .claude/specs
 
 # Workflow directories
-BMAD_DIR = bmad-agile-workflow
-REQUIREMENTS_DIR = requirements-driven-workflow
-ESSENTIALS_DIR = development-essentials
+BMAD_DIR = agents/bmad
+REQUIREMENTS_DIR = agents/requirements
+ESSENTIALS_DIR = agents/development-essentials
 ADVANCED_DIR = advanced-ai-agents
 OUTPUT_STYLES_DIR = output-styles
 
 # Install all configurations
 install: deploy-all
 	@echo "⚠️  LEGACY PATH: make install will be removed in future versions."
-	@echo "    Prefer: python3 install.py --install-dir ~/.claude"
+	@echo "    Prefer: npx github:cexll/myclaude"
 	@echo "✅ Installation complete!"
 
 # Deploy BMAD workflow
@@ -159,4 +159,3 @@ changelog:
 	@echo ""
 	@echo "Preview the changes:"
 	@echo "  git diff CHANGELOG.md"
-

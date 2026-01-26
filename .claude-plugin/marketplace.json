@@ -16,31 +16,24 @@
       "category": "development"
     },
     {
-      "name": "dev",
-      "description": "Lightweight development workflow with requirements clarification, parallel codex execution, and mandatory 90% test coverage",
-      "version": "5.6.1",
-      "source": "./dev-workflow",
-      "category": "development"
-    },
-    {
       "name": "requirements",
       "description": "Requirements-driven development workflow with quality gates for practical feature implementation",
       "version": "5.6.1",
-      "source": "./requirements-driven-workflow",
+      "source": "./agents/requirements",
       "category": "development"
     },
     {
       "name": "bmad",
       "description": "Full BMAD agile workflow with role-based agents (PO, Architect, SM, Dev, QA) and interactive approval gates",
       "version": "5.6.1",
-      "source": "./bmad-agile-workflow",
+      "source": "./agents/bmad",
       "category": "development"
     },
     {
       "name": "dev-kit",
       "description": "Essential development commands for coding, debugging, testing, optimization, and documentation",
       "version": "5.6.1",
-      "source": "./development-essentials",
+      "source": "./agents/development-essentials",
       "category": "productivity"
     },
     {

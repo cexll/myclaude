@@ -14,14 +14,10 @@ Multi-backend AI code execution wrapper supporting Codex, Claude, and Gemini.
 ## Installation
 
 ```bash
-# Clone repository
-git clone https://github.com/cexll/myclaude.git
-cd myclaude
+# Recommended: run the installer and select "codeagent-wrapper"
+npx github:cexll/myclaude
 
-# Install via install.py (includes binary compilation)
-python3 install.py --module dev
-
-# Or manual installation
+# Manual build (optional; requires repo checkout)
 cd codeagent-wrapper
 go build -o ~/.claude/bin/codeagent-wrapper
 ```
