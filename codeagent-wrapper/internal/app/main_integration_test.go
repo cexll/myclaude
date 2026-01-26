@@ -550,10 +550,8 @@ func TestRunNonParallelOutputsIncludeLogPathsIntegration(t *testing.T) {
 	os.Args = []string{"codeagent-wrapper", "integration-log-check"}
 	stdinReader = strings.NewReader("")
 	isTerminalFn = func() bool { return true }
-	codexCommand = "echo"
-	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
-		return []string{`{"type":"thread.started","thread_id":"integration-session"}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"done"}}`}
-	}
+	codexCommand = createFakeCodexScript(t, "integration-session", "done")
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
 
 	var exitCode int
 	stderr := captureStderr(t, func() {
@@ -828,15 +826,20 @@ func TestRunCleanupFlagEndToEnd_Success(t *testing.T) {
 
 	tempDir := setTempDirEnv(t, t.TempDir())
 
-	staleA := createTempLog(t, tempDir, "codeagent-wrapper-2100.log")
-	staleB := createTempLog(t, tempDir, "codeagent-wrapper-2200-extra.log")
-	keeper := createTempLog(t, tempDir, "codeagent-wrapper-2300.log")
+	basePID := os.Getpid()
+	stalePID1 := basePID + 10000
+	stalePID2 := basePID + 11000
+	keeperPID := basePID + 12000
+
+	staleA := createTempLog(t, tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", stalePID1))
+	staleB := createTempLog(t, tempDir, fmt.Sprintf("codeagent-wrapper-%d-extra.log", stalePID2))
+	keeper := createTempLog(t, tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", keeperPID))
 
 	stubProcessRunning(t, func(pid int) bool {
-		return pid == 2300 || pid == os.Getpid()
+		return pid == keeperPID || pid == basePID
 	})
 	stubProcessStartTime(t, func(pid int) time.Time {
-		if pid == 2300 || pid == os.Getpid() {
+		if pid == keeperPID || pid == basePID {
 			return time.Now().Add(-1 * time.Hour)
 		}
 		return time.Time{}
@@ -866,10 +869,10 @@ func TestRunCleanupFlagEndToEnd_Success(t *testing.T) {
 	if !strings.Contains(output, "Files kept: 1") {
 		t.Fatalf("missing 'Files kept: 1' in output: %q", output)
 	}
-	if !strings.Contains(output, "codeagent-wrapper-2100.log") || !strings.Contains(output, "codeagent-wrapper-2200-extra.log") {
+	if !strings.Contains(output, fmt.Sprintf("codeagent-wrapper-%d.log", stalePID1)) || !strings.Contains(output, fmt.Sprintf("codeagent-wrapper-%d-extra.log", stalePID2)) {
 		t.Fatalf("missing deleted file names in output: %q", output)
 	}
-	if !strings.Contains(output, "codeagent-wrapper-2300.log") {
+	if !strings.Contains(output, fmt.Sprintf("codeagent-wrapper-%d.log", keeperPID)) {
 		t.Fatalf("missing kept file names in output: %q", output)
 	}
 

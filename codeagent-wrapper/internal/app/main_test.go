@@ -2953,13 +2953,10 @@ func TestRunCodexTask_StartError(t *testing.T) {
 
 func TestRunCodexTask_WithEcho(t *testing.T) {
 	defer resetTestHooks()
-	codexCommand = "echo"
-	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+	codexCommand = createFakeCodexScript(t, "test-session", "Test output")
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
 
-	jsonOutput := `{"type":"thread.started","thread_id":"test-session"}
-{"type":"item.completed","item":{"type":"agent_message","text":"Test output"}}`
-
-	res := runCodexTask(TaskSpec{Task: jsonOutput}, false, 10)
+	res := runCodexTask(TaskSpec{Task: "ignored"}, false, 10)
 	if res.ExitCode != 0 || res.Message != "Test output" || res.SessionID != "test-session" {
 		t.Fatalf("unexpected result: %+v", res)
 	}
@@ -3039,13 +3036,10 @@ func TestRunCodexTask_LogPathWithActiveLogger(t *testing.T) {
 	}
 	setLogger(logger)
 
-	codexCommand = "echo"
-	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+	codexCommand = createFakeCodexScript(t, "fake-thread", "ok")
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
 
-	jsonOutput := `{"type":"thread.started","thread_id":"fake-thread"}
-{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`
-
-	result := runCodexTask(TaskSpec{Task: jsonOutput}, false, 5)
+	result := runCodexTask(TaskSpec{Task: "ignored"}, false, 5)
 	if result.LogPath != logger.Path() {
 		t.Fatalf("LogPath = %q, want %q", result.LogPath, logger.Path())
 	}
@@ -3057,13 +3051,10 @@ func TestRunCodexTask_LogPathWithActiveLogger(t *testing.T) {
 func TestRunCodexTask_LogPathWithTempLogger(t *testing.T) {
 	defer resetTestHooks()
 
-	codexCommand = "echo"
-	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
+	codexCommand = createFakeCodexScript(t, "temp-thread", "temp")
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
 
-	jsonOutput := `{"type":"thread.started","thread_id":"temp-thread"}
-{"type":"item.completed","item":{"type":"agent_message","text":"temp"}}`
-
-	result := runCodexTask(TaskSpec{Task: jsonOutput}, true, 5)
+	result := runCodexTask(TaskSpec{Task: "ignored"}, true, 5)
 	t.Cleanup(func() {
 		if result.LogPath != "" {
 			os.Remove(result.LogPath)
@@ -3109,10 +3100,19 @@ func TestRunCodexTask_LogPathOnStartError(t *testing.T) {
 
 func TestRunCodexTask_NoMessage(t *testing.T) {
 	defer resetTestHooks()
-	codexCommand = "echo"
-	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{targetArg} }
-	jsonOutput := `{"type":"thread.started","thread_id":"test-session"}`
-	res := runCodexTask(TaskSpec{Task: jsonOutput}, false, 10)
+
+	fake := newFakeCmd(fakeCmdConfig{
+		StdoutPlan: []fakeStdoutEvent{
+			{Data: `{"type":"thread.started","thread_id":"test-session"}` + "\n"},
+		},
+		WaitDelay: 5 * time.Millisecond,
+	})
+	restore := executor.SetNewCommandRunner(func(ctx context.Context, name string, args ...string) executor.CommandRunner { return fake })
+	t.Cleanup(restore)
+
+	codexCommand = "fake-cmd"
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
+	res := runCodexTask(TaskSpec{Task: "ignored"}, false, 10)
 	if res.ExitCode != 1 || res.Error == "" {
 		t.Fatalf("expected error for missing agent_message, got %+v", res)
 	}
@@ -4504,10 +4504,8 @@ func TestRun_CleanupHookAlwaysCalled(t *testing.T) {
 	called := false
 	cleanupHook = func() { called = true }
 	// Use a command that goes through normal flow, not --version which returns early
-	restore := withBackend("echo", func(cfg *Config, targetArg string) []string {
-		return []string{`{"type":"thread.started","thread_id":"x"}
-{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`}
-	})
+	scriptPath := createFakeCodexScript(t, "x", "ok")
+	restore := withBackend(scriptPath, func(cfg *Config, targetArg string) []string { return []string{} })
 	defer restore()
 	os.Args = []string{"codeagent-wrapper", "task"}
 	if exitCode := run(); exitCode != 0 {
@@ -4739,10 +4737,8 @@ func TestParallelLogPathInSerialMode(t *testing.T) {
 	os.Args = []string{"codeagent-wrapper", "do-stuff"}
 	stdinReader = strings.NewReader("")
 	isTerminalFn = func() bool { return true }
-	codexCommand = "echo"
-	buildCodexArgsFn = func(cfg *Config, targetArg string) []string {
-		return []string{`{"type":"thread.started","thread_id":"cli-session"}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`}
-	}
+	codexCommand = createFakeCodexScript(t, "cli-session", "ok")
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
 
 	var exitCode int
 	stderr := captureStderr(t, func() {
@@ -4766,9 +4762,8 @@ func TestRun_CLI_Success(t *testing.T) {
 	stdinReader = strings.NewReader("")
 	isTerminalFn = func() bool { return true }
 
-	restore := withBackend("echo", func(cfg *Config, targetArg string) []string {
-		return []string{`{"type":"thread.started","thread_id":"cli-session"}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}`}
-	})
+	scriptPath := createFakeCodexScript(t, "cli-session", "ok")
+	restore := withBackend(scriptPath, func(cfg *Config, targetArg string) []string { return []string{} })
 	defer restore()
 
 	var exitCode int
