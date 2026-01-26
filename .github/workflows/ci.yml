@@ -24,11 +24,13 @@ jobs:
         run: |
           cd codeagent-wrapper
           go test -v -cover -coverprofile=coverage.out ./...
+        shell: bash
 
       - name: Check coverage
         run: |
           cd codeagent-wrapper
           go tool cover -func=coverage.out | grep total | awk '{print $3}'
+        shell: bash
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
