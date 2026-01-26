@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	ilogger "codeagent-wrapper/internal/logger"
-
 	"github.com/goccy/go-json"
 )
 
@@ -35,80 +33,85 @@ type ModelsConfig struct {
 	Backends       map[string]BackendConfig    `json:"backends,omitempty"`
 }
 
-var defaultModelsConfig = ModelsConfig{
-	DefaultBackend: "opencode",
-	DefaultModel:   "opencode/grok-code",
-	Agents: map[string]AgentModelConfig{
-		"oracle":                  {Backend: "claude", Model: "claude-opus-4-5-20251101", PromptFile: "~/.claude/skills/omo/references/oracle.md", Description: "Technical advisor"},
-		"librarian":               {Backend: "claude", Model: "claude-sonnet-4-5-20250929", PromptFile: "~/.claude/skills/omo/references/librarian.md", Description: "Researcher"},
-		"explore":                 {Backend: "opencode", Model: "opencode/grok-code", PromptFile: "~/.claude/skills/omo/references/explore.md", Description: "Code search"},
-		"develop":                 {Backend: "codex", Model: "", PromptFile: "~/.claude/skills/omo/references/develop.md", Description: "Code development"},
-		"frontend-ui-ux-engineer": {Backend: "gemini", Model: "", PromptFile: "~/.claude/skills/omo/references/frontend-ui-ux-engineer.md", Description: "Frontend engineer"},
-		"document-writer":         {Backend: "gemini", Model: "", PromptFile: "~/.claude/skills/omo/references/document-writer.md", Description: "Documentation"},
-	},
-}
+var defaultModelsConfig = ModelsConfig{}
+
+const modelsConfigTildePath = "~/.codeagent/models.json"
+
+const modelsConfigExample = `{
+  "default_backend": "codex",
+  "default_model": "gpt-4.1",
+  "backends": {
+    "codex": { "api_key": "..." },
+    "claude": { "api_key": "..." }
+  },
+  "agents": {
+    "develop": {
+      "backend": "codex",
+      "model": "gpt-4.1",
+      "prompt_file": "~/.codeagent/prompts/develop.md",
+      "reasoning": "high",
+      "yolo": true
+    }
+  }
+}`
 
 var (
 	modelsConfigOnce   sync.Once
 	modelsConfigCached *ModelsConfig
+	modelsConfigErr    error
 )
 
-func modelsConfig() *ModelsConfig {
+func modelsConfig() (*ModelsConfig, error) {
 	modelsConfigOnce.Do(func() {
-		modelsConfigCached = loadModelsConfig()
+		modelsConfigCached, modelsConfigErr = loadModelsConfig()
 	})
-	if modelsConfigCached == nil {
-		return &defaultModelsConfig
-	}
-	return modelsConfigCached
+	return modelsConfigCached, modelsConfigErr
 }
 
-func loadModelsConfig() *ModelsConfig {
+func modelsConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
-	if err != nil {
-		ilogger.LogWarn(fmt.Sprintf("Failed to resolve home directory for models config: %v; using defaults", err))
-		return &defaultModelsConfig
+	if err != nil || strings.TrimSpace(home) == "" {
+		return "", fmt.Errorf("failed to resolve user home directory: %w", err)
 	}
 
 	configDir := filepath.Clean(filepath.Join(home, ".codeagent"))
 	configPath := filepath.Clean(filepath.Join(configDir, "models.json"))
 	rel, err := filepath.Rel(configDir, configPath)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return &defaultModelsConfig
+		return "", fmt.Errorf("refusing to read models config outside %s: %s", configDir, configPath)
+	}
+	return configPath, nil
+}
+
+func modelsConfigHint(configPath string) string {
+	configPath = strings.TrimSpace(configPath)
+	if configPath == "" {
+		return fmt.Sprintf("Create %s with e.g.:\n%s", modelsConfigTildePath, modelsConfigExample)
+	}
+	return fmt.Sprintf("Create %s (resolved to %s) with e.g.:\n%s", modelsConfigTildePath, configPath, modelsConfigExample)
+}
+
+func loadModelsConfig() (*ModelsConfig, error) {
+	configPath, err := modelsConfigPath()
+	if err != nil {
+		return nil, fmt.Errorf("%w\n\n%s", err, modelsConfigHint(""))
 	}
 
 	data, err := os.ReadFile(configPath) // #nosec G304 -- path is fixed under user home and validated to stay within configDir
 	if err != nil {
-		if !os.IsNotExist(err) {
-			ilogger.LogWarn(fmt.Sprintf("Failed to read models config %s: %v; using defaults", configPath, err))
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("models config not found: %s\n\n%s", configPath, modelsConfigHint(configPath))
 		}
-		return &defaultModelsConfig
+		return nil, fmt.Errorf("failed to read models config %s: %w\n\n%s", configPath, err, modelsConfigHint(configPath))
 	}
 
 	var cfg ModelsConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		ilogger.LogWarn(fmt.Sprintf("Failed to parse models config %s: %v; using defaults", configPath, err))
-		return &defaultModelsConfig
+		return nil, fmt.Errorf("failed to parse models config %s: %w\n\n%s", configPath, err, modelsConfigHint(configPath))
 	}
 
 	cfg.DefaultBackend = strings.TrimSpace(cfg.DefaultBackend)
-	if cfg.DefaultBackend == "" {
-		cfg.DefaultBackend = defaultModelsConfig.DefaultBackend
-	}
 	cfg.DefaultModel = strings.TrimSpace(cfg.DefaultModel)
-	if cfg.DefaultModel == "" {
-		cfg.DefaultModel = defaultModelsConfig.DefaultModel
-	}
-
-	// Merge with defaults
-	for name, agent := range defaultModelsConfig.Agents {
-		if _, exists := cfg.Agents[name]; !exists {
-			if cfg.Agents == nil {
-				cfg.Agents = make(map[string]AgentModelConfig)
-			}
-			cfg.Agents[name] = agent
-		}
-	}
 
 	// Normalize backend keys so lookups can be case-insensitive.
 	if len(cfg.Backends) > 0 {
@@ -127,7 +130,7 @@ func loadModelsConfig() *ModelsConfig {
 		}
 	}
 
-	return &cfg
+	return &cfg, nil
 }
 
 func LoadDynamicAgent(name string) (AgentModelConfig, bool) {
@@ -150,7 +153,10 @@ func LoadDynamicAgent(name string) (AgentModelConfig, bool) {
 }
 
 func ResolveBackendConfig(backendName string) (baseURL, apiKey string) {
-	cfg := modelsConfig()
+	cfg, err := modelsConfig()
+	if err != nil || cfg == nil {
+		return "", ""
+	}
 	resolved := resolveBackendConfig(cfg, backendName)
 	return strings.TrimSpace(resolved.BaseURL), strings.TrimSpace(resolved.APIKey)
 }
@@ -172,12 +178,30 @@ func resolveBackendConfig(cfg *ModelsConfig, backendName string) BackendConfig {
 	return BackendConfig{}
 }
 
-func resolveAgentConfig(agentName string) (backend, model, promptFile, reasoning, baseURL, apiKey string, yolo bool) {
-	cfg := modelsConfig()
+func resolveAgentConfig(agentName string) (backend, model, promptFile, reasoning, baseURL, apiKey string, yolo bool, err error) {
+	if err := ValidateAgentName(agentName); err != nil {
+		return "", "", "", "", "", "", false, err
+	}
+
+	cfg, err := modelsConfig()
+	if err != nil {
+		return "", "", "", "", "", "", false, err
+	}
+	if cfg == nil {
+		return "", "", "", "", "", "", false, fmt.Errorf("models config is nil\n\n%s", modelsConfigHint(""))
+	}
+
 	if agent, ok := cfg.Agents[agentName]; ok {
 		backend = strings.TrimSpace(agent.Backend)
 		if backend == "" {
-			backend = cfg.DefaultBackend
+			backend = strings.TrimSpace(cfg.DefaultBackend)
+			if backend == "" {
+				configPath, pathErr := modelsConfigPath()
+				if pathErr != nil {
+					return "", "", "", "", "", "", false, fmt.Errorf("agent %q has empty backend and default_backend is not set\n\n%s", agentName, modelsConfigHint(""))
+				}
+				return "", "", "", "", "", "", false, fmt.Errorf("agent %q has empty backend and default_backend is not set\n\n%s", agentName, modelsConfigHint(configPath))
+			}
 		}
 		backendCfg := resolveBackendConfig(cfg, backend)
 
@@ -190,31 +214,46 @@ func resolveAgentConfig(agentName string) (backend, model, promptFile, reasoning
 			apiKey = strings.TrimSpace(backendCfg.APIKey)
 		}
 
-		return backend, strings.TrimSpace(agent.Model), agent.PromptFile, agent.Reasoning, baseURL, apiKey, agent.Yolo
+		model = strings.TrimSpace(agent.Model)
+		if model == "" {
+			configPath, pathErr := modelsConfigPath()
+			if pathErr != nil {
+				return "", "", "", "", "", "", false, fmt.Errorf("agent %q has empty model; set agents.%s.model in %s\n\n%s", agentName, agentName, modelsConfigTildePath, modelsConfigHint(""))
+			}
+			return "", "", "", "", "", "", false, fmt.Errorf("agent %q has empty model; set agents.%s.model in %s\n\n%s", agentName, agentName, modelsConfigTildePath, modelsConfigHint(configPath))
+		}
+		return backend, model, agent.PromptFile, agent.Reasoning, baseURL, apiKey, agent.Yolo, nil
 	}
 
 	if dynamic, ok := LoadDynamicAgent(agentName); ok {
-		backend = cfg.DefaultBackend
-		model = cfg.DefaultModel
+		backend = strings.TrimSpace(cfg.DefaultBackend)
+		model = strings.TrimSpace(cfg.DefaultModel)
+		configPath, pathErr := modelsConfigPath()
+		if backend == "" || model == "" {
+			if pathErr != nil {
+				return "", "", "", "", "", "", false, fmt.Errorf("dynamic agent %q requires default_backend and default_model to be set in %s\n\n%s", agentName, modelsConfigTildePath, modelsConfigHint(""))
+			}
+			return "", "", "", "", "", "", false, fmt.Errorf("dynamic agent %q requires default_backend and default_model to be set in %s\n\n%s", agentName, modelsConfigTildePath, modelsConfigHint(configPath))
+		}
 		backendCfg := resolveBackendConfig(cfg, backend)
 		baseURL = strings.TrimSpace(backendCfg.BaseURL)
 		apiKey = strings.TrimSpace(backendCfg.APIKey)
-		return backend, model, dynamic.PromptFile, "", baseURL, apiKey, false
+		return backend, model, dynamic.PromptFile, "", baseURL, apiKey, false, nil
 	}
 
-	backend = cfg.DefaultBackend
-	model = cfg.DefaultModel
-	backendCfg := resolveBackendConfig(cfg, backend)
-	baseURL = strings.TrimSpace(backendCfg.BaseURL)
-	apiKey = strings.TrimSpace(backendCfg.APIKey)
-	return backend, model, "", "", baseURL, apiKey, false
+	configPath, pathErr := modelsConfigPath()
+	if pathErr != nil {
+		return "", "", "", "", "", "", false, fmt.Errorf("agent %q not found in %s\n\n%s", agentName, modelsConfigTildePath, modelsConfigHint(""))
+	}
+	return "", "", "", "", "", "", false, fmt.Errorf("agent %q not found in %s\n\n%s", agentName, modelsConfigTildePath, modelsConfigHint(configPath))
 }
 
-func ResolveAgentConfig(agentName string) (backend, model, promptFile, reasoning, baseURL, apiKey string, yolo bool) {
+func ResolveAgentConfig(agentName string) (backend, model, promptFile, reasoning, baseURL, apiKey string, yolo bool, err error) {
 	return resolveAgentConfig(agentName)
 }
 
 func ResetModelsConfigCacheForTest() {
 	modelsConfigCached = nil
+	modelsConfigErr = nil
 	modelsConfigOnce = sync.Once{}
 }

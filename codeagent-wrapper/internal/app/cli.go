@@ -254,7 +254,11 @@ func buildSingleConfig(cmd *cobra.Command, args []string, rawArgv []string, opts
 	var resolvedBackend, resolvedModel, resolvedPromptFile, resolvedReasoning string
 	if agentName != "" {
 		var resolvedYolo bool
-		resolvedBackend, resolvedModel, resolvedPromptFile, resolvedReasoning, _, _, resolvedYolo = config.ResolveAgentConfig(agentName)
+		var err error
+		resolvedBackend, resolvedModel, resolvedPromptFile, resolvedReasoning, _, _, resolvedYolo, err = config.ResolveAgentConfig(agentName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve agent %q: %w", agentName, err)
+		}
 		yolo = resolvedYolo
 	}
 

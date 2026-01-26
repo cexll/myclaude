@@ -3,78 +3,43 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestResolveAgentConfig_Defaults(t *testing.T) {
+func TestResolveAgentConfig_NoConfig_ReturnsHelpfulError(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Cleanup(ResetModelsConfigCacheForTest)
 	ResetModelsConfigCacheForTest()
 
-	// Test that default agents resolve correctly without config file
-	tests := []struct {
-		agent          string
-		wantBackend    string
-		wantModel      string
-		wantPromptFile string
-	}{
-		{"oracle", "claude", "claude-opus-4-5-20251101", "~/.claude/skills/omo/references/oracle.md"},
-		{"librarian", "claude", "claude-sonnet-4-5-20250929", "~/.claude/skills/omo/references/librarian.md"},
-		{"explore", "opencode", "opencode/grok-code", "~/.claude/skills/omo/references/explore.md"},
-		{"frontend-ui-ux-engineer", "gemini", "", "~/.claude/skills/omo/references/frontend-ui-ux-engineer.md"},
-		{"document-writer", "gemini", "", "~/.claude/skills/omo/references/document-writer.md"},
+	_, _, _, _, _, _, _, err := ResolveAgentConfig("develop")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.agent, func(t *testing.T) {
-			backend, model, promptFile, _, _, _, _ := resolveAgentConfig(tt.agent)
-			if backend != tt.wantBackend {
-				t.Errorf("backend = %q, want %q", backend, tt.wantBackend)
-			}
-			if model != tt.wantModel {
-				t.Errorf("model = %q, want %q", model, tt.wantModel)
-			}
-			if promptFile != tt.wantPromptFile {
-				t.Errorf("promptFile = %q, want %q", promptFile, tt.wantPromptFile)
-			}
-		})
+	msg := err.Error()
+	if !strings.Contains(msg, modelsConfigTildePath) {
+		t.Fatalf("error should mention %s, got: %s", modelsConfigTildePath, msg)
 	}
-}
-
-func TestResolveAgentConfig_UnknownAgent(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Cleanup(ResetModelsConfigCacheForTest)
-	ResetModelsConfigCacheForTest()
-
-	backend, model, promptFile, _, _, _, _ := resolveAgentConfig("unknown-agent")
-	if backend != "opencode" {
-		t.Errorf("unknown agent backend = %q, want %q", backend, "opencode")
+	if !strings.Contains(msg, filepath.Join(home, ".codeagent", "models.json")) {
+		t.Fatalf("error should mention resolved config path, got: %s", msg)
 	}
-	if model != "opencode/grok-code" {
-		t.Errorf("unknown agent model = %q, want %q", model, "opencode/grok-code")
-	}
-	if promptFile != "" {
-		t.Errorf("unknown agent promptFile = %q, want empty", promptFile)
+	if !strings.Contains(msg, "\"agents\"") {
+		t.Fatalf("error should include example config, got: %s", msg)
 	}
 }
 
 func TestLoadModelsConfig_NoFile(t *testing.T) {
-	home := "/nonexistent/path/that/does/not/exist"
+	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Cleanup(ResetModelsConfigCacheForTest)
 	ResetModelsConfigCacheForTest()
 
-	cfg := loadModelsConfig()
-	if cfg.DefaultBackend != "opencode" {
-		t.Errorf("DefaultBackend = %q, want %q", cfg.DefaultBackend, "opencode")
-	}
-	if len(cfg.Agents) != 6 {
-		t.Errorf("len(Agents) = %d, want 6", len(cfg.Agents))
+	_, err := loadModelsConfig()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
 }
 
@@ -119,7 +84,10 @@ func TestLoadModelsConfig_WithFile(t *testing.T) {
 	t.Cleanup(ResetModelsConfigCacheForTest)
 	ResetModelsConfigCacheForTest()
 
-	cfg := loadModelsConfig()
+	cfg, err := loadModelsConfig()
+	if err != nil {
+		t.Fatalf("loadModelsConfig: %v", err)
+	}
 
 	if cfg.DefaultBackend != "claude" {
 		t.Errorf("DefaultBackend = %q, want %q", cfg.DefaultBackend, "claude")
@@ -140,9 +108,8 @@ func TestLoadModelsConfig_WithFile(t *testing.T) {
 		}
 	}
 
-	// Check that defaults are merged
-	if _, ok := cfg.Agents["oracle"]; !ok {
-		t.Error("default agent oracle should be merged")
+	if _, ok := cfg.Agents["oracle"]; ok {
+		t.Error("oracle should not be present without explicit config")
 	}
 
 	baseURL, apiKey := ResolveBackendConfig("claude")
@@ -153,7 +120,10 @@ func TestLoadModelsConfig_WithFile(t *testing.T) {
 		t.Errorf("ResolveBackendConfig(apiKey) = %q, want %q", apiKey, "backend-key")
 	}
 
-	backend, model, _, _, agentBaseURL, agentAPIKey, _ := ResolveAgentConfig("custom-agent")
+	backend, model, _, _, agentBaseURL, agentAPIKey, _, err := ResolveAgentConfig("custom-agent")
+	if err != nil {
+		t.Fatalf("ResolveAgentConfig(custom-agent): %v", err)
+	}
 	if backend != "codex" {
 		t.Errorf("ResolveAgentConfig(backend) = %q, want %q", backend, "codex")
 	}
@@ -183,12 +153,26 @@ func TestResolveAgentConfig_DynamicAgent(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	backend, model, promptFile, _, _, _, _ := resolveAgentConfig("sarsh")
-	if backend != "opencode" {
-		t.Errorf("backend = %q, want %q", backend, "opencode")
+	configDir := filepath.Join(home, ".codeagent")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
 	}
-	if model != "opencode/grok-code" {
-		t.Errorf("model = %q, want %q", model, "opencode/grok-code")
+	if err := os.WriteFile(filepath.Join(configDir, "models.json"), []byte(`{
+  "default_backend": "codex",
+  "default_model": "gpt-test"
+}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	backend, model, promptFile, _, _, _, _, err := ResolveAgentConfig("sarsh")
+	if err != nil {
+		t.Fatalf("ResolveAgentConfig(sarsh): %v", err)
+	}
+	if backend != "codex" {
+		t.Errorf("backend = %q, want %q", backend, "codex")
+	}
+	if model != "gpt-test" {
+		t.Errorf("model = %q, want %q", model, "gpt-test")
 	}
 	if promptFile != "~/.codeagent/agents/sarsh.md" {
 		t.Errorf("promptFile = %q, want %q", promptFile, "~/.codeagent/agents/sarsh.md")
@@ -213,9 +197,66 @@ func TestLoadModelsConfig_InvalidJSON(t *testing.T) {
 	t.Cleanup(ResetModelsConfigCacheForTest)
 	ResetModelsConfigCacheForTest()
 
-	cfg := loadModelsConfig()
-	// Should fall back to defaults
-	if cfg.DefaultBackend != "opencode" {
-		t.Errorf("invalid JSON should fallback, got DefaultBackend = %q", cfg.DefaultBackend)
+	_, err := loadModelsConfig()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestResolveAgentConfig_UnknownAgent_ReturnsError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Cleanup(ResetModelsConfigCacheForTest)
+	ResetModelsConfigCacheForTest()
+
+	configDir := filepath.Join(home, ".codeagent")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "models.json"), []byte(`{
+  "default_backend": "codex",
+  "default_model": "gpt-test",
+  "agents": {
+    "develop": { "backend": "codex", "model": "gpt-test" }
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, _, _, _, _, _, _, err := ResolveAgentConfig("unknown-agent")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown-agent") {
+		t.Fatalf("error should mention agent name, got: %s", err.Error())
+	}
+}
+
+func TestResolveAgentConfig_EmptyModel_ReturnsError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Cleanup(ResetModelsConfigCacheForTest)
+	ResetModelsConfigCacheForTest()
+
+	configDir := filepath.Join(home, ".codeagent")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "models.json"), []byte(`{
+  "agents": {
+    "bad-agent": { "backend": "codex", "model": " " }
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, _, _, _, _, _, _, err := ResolveAgentConfig("bad-agent")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "empty model") {
+		t.Fatalf("error should mention empty model, got: %s", err.Error())
 	}
 }

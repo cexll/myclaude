@@ -3,6 +3,7 @@ package wrapper
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 
 	config "codeagent-wrapper/internal/config"
@@ -28,6 +29,18 @@ func BenchmarkConfigParse_ParseArgs(b *testing.B) {
 	home := b.TempDir()
 	b.Setenv("HOME", home)
 	b.Setenv("USERPROFILE", home)
+
+	configDir := filepath.Join(home, ".codeagent")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		b.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "models.json"), []byte(`{
+  "agents": {
+    "develop": { "backend": "codex", "model": "gpt-test" }
+  }
+}`), 0o644); err != nil {
+		b.Fatal(err)
+	}
 
 	config.ResetModelsConfigCacheForTest()
 	b.Cleanup(config.ResetModelsConfigCacheForTest)

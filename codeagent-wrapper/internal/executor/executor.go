@@ -1058,15 +1058,17 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	if envBackend != nil {
-		baseURL, apiKey := config.ResolveBackendConfig(cfg.Backend)
-		if agentName := strings.TrimSpace(taskSpec.Agent); agentName != "" {
-			agentBackend, _, _, _, agentBaseURL, agentAPIKey, _ := config.ResolveAgentConfig(agentName)
-			if strings.EqualFold(strings.TrimSpace(agentBackend), strings.TrimSpace(cfg.Backend)) {
-				baseURL, apiKey = agentBaseURL, agentAPIKey
+			baseURL, apiKey := config.ResolveBackendConfig(cfg.Backend)
+			if agentName := strings.TrimSpace(taskSpec.Agent); agentName != "" {
+				agentBackend, _, _, _, agentBaseURL, agentAPIKey, _, err := config.ResolveAgentConfig(agentName)
+				if err == nil {
+					if strings.EqualFold(strings.TrimSpace(agentBackend), strings.TrimSpace(cfg.Backend)) {
+						baseURL, apiKey = agentBaseURL, agentAPIKey
+					}
+				}
 			}
-		}
-		if injected := envBackend.Env(baseURL, apiKey); len(injected) > 0 {
-			cmd.SetEnv(injected)
+			if injected := envBackend.Env(baseURL, apiKey); len(injected) > 0 {
+				cmd.SetEnv(injected)
 			// Log injected env vars with masked API keys (to file and stderr)
 			for k, v := range injected {
 				msg := fmt.Sprintf("Env: %s=%s", k, maskSensitiveValue(k, v))

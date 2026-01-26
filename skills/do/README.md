@@ -158,7 +158,7 @@ EOF
 
 ## ~/.codeagent/models.json Configuration
 
-Optional. Uses codeagent-wrapper built-in config by default. To customize:
+Required when using `agent:` in parallel tasks or `--agent`. Create `~/.codeagent/models.json` to configure agent → backend/model mappings:
 
 ```json
 {

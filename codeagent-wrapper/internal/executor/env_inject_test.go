@@ -46,7 +46,10 @@ func TestEnvInjectionWithAgent(t *testing.T) {
 	defer config.ResetModelsConfigCacheForTest()
 
 	// Test ResolveAgentConfig
-	agentBackend, model, _, _, baseURL, apiKey, _ := config.ResolveAgentConfig("test-agent")
+	agentBackend, model, _, _, baseURL, apiKey, _, err := config.ResolveAgentConfig("test-agent")
+	if err != nil {
+		t.Fatalf("ResolveAgentConfig: %v", err)
+	}
 	t.Logf("ResolveAgentConfig: backend=%q, model=%q, baseURL=%q, apiKey=%q",
 		agentBackend, model, baseURL, apiKey)
 
@@ -118,7 +121,10 @@ func TestEnvInjectionLogic(t *testing.T) {
 
 	// Step 2: If agent specified, get agent config
 	if agentName != "" {
-		agentBackend, _, _, _, agentBaseURL, agentAPIKey, _ := config.ResolveAgentConfig(agentName)
+		agentBackend, _, _, _, agentBaseURL, agentAPIKey, _, err := config.ResolveAgentConfig(agentName)
+		if err != nil {
+			t.Fatalf("ResolveAgentConfig(%q): %v", agentName, err)
+		}
 		t.Logf("Step 2 - ResolveAgentConfig(%q): backend=%q, baseURL=%q, apiKey=%q",
 			agentName, agentBackend, agentBaseURL, agentAPIKey)
 

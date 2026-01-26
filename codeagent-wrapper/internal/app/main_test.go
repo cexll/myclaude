@@ -1392,6 +1392,24 @@ func TestBackendParseArgs_PromptFileFlag(t *testing.T) {
 func TestBackendParseArgs_PromptFileOverridesAgent(t *testing.T) {
 	defer resetTestHooks()
 
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Cleanup(config.ResetModelsConfigCacheForTest)
+	config.ResetModelsConfigCacheForTest()
+
+	configDir := filepath.Join(home, ".codeagent")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "models.json"), []byte(`{
+  "agents": {
+    "develop": { "backend": "codex", "model": "gpt-test" }
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
 	os.Args = []string{"codeagent-wrapper", "--prompt-file", "/tmp/custom.md", "--agent", "develop", "task"}
 	cfg, err := parseArgs()
 	if err != nil {
