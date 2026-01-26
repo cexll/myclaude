@@ -174,9 +174,14 @@ npx github:cexll/myclaude
 # 列出可安装项（module:* / skill:* / codeagent-wrapper）
 npx github:cexll/myclaude --list
 
+# 检测已安装 modules 并从 GitHub 更新
+npx github:cexll/myclaude --update
+
 # 指定安装目录 / 强制覆盖
 npx github:cexll/myclaude --install-dir ~/.claude --force
 ```
+
+`--update` 会在目标安装目录（默认 `~/.claude`，优先读取 `installed_modules.json`）检测已安装 modules，并从 GitHub 拉取最新发布版本覆盖更新。
 
 ### 模块配置
 

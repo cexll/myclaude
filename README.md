@@ -36,9 +36,14 @@ npx github:cexll/myclaude
 # List installable items (modules / skills / wrapper)
 npx github:cexll/myclaude --list
 
+# Detect installed modules and update from GitHub
+npx github:cexll/myclaude --update
+
 # Custom install directory / overwrite
 npx github:cexll/myclaude --install-dir ~/.claude --force
 ```
+
+`--update` detects already installed modules in the target install dir (defaults to `~/.claude`, via `installed_modules.json` when present) and updates them from GitHub (latest release) by overwriting the module files.
 
 ### Module Configuration
 
