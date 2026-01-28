@@ -501,7 +501,7 @@ async function updateInstalledModules(installDir, tag, config, dryRun) {
     await fs.promises.mkdir(installDir, { recursive: true });
     for (const name of toUpdate) {
       process.stdout.write(`Updating module: ${name}\n`);
-      const r = await applyModule(name, config, repoRoot, installDir, true);
+      const r = await applyModule(name, config, repoRoot, installDir, true, tag);
       upsertModuleStatus(installDir, r);
     }
   } finally {
@@ -560,6 +560,7 @@ async function promptMultiSelect(items, title) {
   function cleanup() {
     process.stdin.setRawMode(false);
     process.stdin.removeListener("keypress", onKey);
+    process.stdin.pause();
   }
 
   function onKey(_, key) {
@@ -749,14 +750,16 @@ async function mergeDir(src, installDir, force) {
   return installed;
 }
 
-function runInstallSh(repoRoot, installDir) {
+function runInstallSh(repoRoot, installDir, tag) {
   return new Promise((resolve, reject) => {
     const cmd = process.platform === "win32" ? "cmd.exe" : "bash";
     const args = process.platform === "win32" ? ["/c", "install.bat"] : ["install.sh"];
+    const env = { ...process.env, INSTALL_DIR: installDir };
+    if (tag) env.CODEAGENT_WRAPPER_VERSION = tag;
     const p = spawn(cmd, args, {
       cwd: repoRoot,
       stdio: "inherit",
-      env: { ...process.env, INSTALL_DIR: installDir },
+      env,
     });
     p.on("exit", (code) => {
       if (code === 0) resolve();
@@ -774,7 +777,7 @@ async function rmTree(p) {
   await fs.promises.rmdir(p, { recursive: true });
 }
 
-async function applyModule(moduleName, config, repoRoot, installDir, force) {
+async function applyModule(moduleName, config, repoRoot, installDir, force, tag) {
   const mod = config && config.modules && config.modules[moduleName];
   if (!mod) throw new Error(`Unknown module: ${moduleName}`);
   const ops = Array.isArray(mod.operations) ? mod.operations : [];
@@ -800,7 +803,7 @@ async function applyModule(moduleName, config, repoRoot, installDir, force) {
         if (cmd !== "bash install.sh") {
           throw new Error(`Refusing run_command: ${cmd || "(empty)"}`);
         }
-        await runInstallSh(repoRoot, installDir);
+        await runInstallSh(repoRoot, installDir, tag);
       } else {
         throw new Error(`Unsupported operation type: ${type}`);
       }
@@ -964,12 +967,12 @@ async function installSelected(picks, tag, config, installDir, force, dryRun) {
     for (const p of picks) {
       if (p.kind === "wrapper") {
         process.stdout.write("Installing codeagent-wrapper...\n");
-        await runInstallSh(repoRoot, installDir);
+        await runInstallSh(repoRoot, installDir, tag);
         continue;
       }
       if (p.kind === "module") {
         process.stdout.write(`Installing module: ${p.moduleName}\n`);
-        const r = await applyModule(p.moduleName, config, repoRoot, installDir, force);
+        const r = await applyModule(p.moduleName, config, repoRoot, installDir, force, tag);
         upsertModuleStatus(installDir, r);
         continue;
       }

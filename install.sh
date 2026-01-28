@@ -24,9 +24,13 @@ esac
 
 # Build download URL
 REPO="cexll/myclaude"
-VERSION="latest"
+VERSION="${CODEAGENT_WRAPPER_VERSION:-latest}"
 BINARY_NAME="codeagent-wrapper-${OS}-${ARCH}"
-URL="https://github.com/${REPO}/releases/${VERSION}/download/${BINARY_NAME}"
+if [ "$VERSION" = "latest" ]; then
+    URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
+else
+    URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
+fi
 
 echo "Downloading codeagent-wrapper from ${URL}..."
 if ! curl -fsSL "$URL" -o /tmp/codeagent-wrapper; then
