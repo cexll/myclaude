@@ -29,7 +29,16 @@ project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 state_dir="${project_dir}/.claude"
 
 shopt -s nullglob
-state_files=("${state_dir}"/do.*.local.md)
+if [ -n "${DO_TASK_ID:-}" ]; then
+	candidate="${state_dir}/do.${DO_TASK_ID}.local.md"
+	if [ -f "$candidate" ]; then
+		state_files=("$candidate")
+	else
+		state_files=()
+	fi
+else
+	state_files=("${state_dir}"/do.*.local.md)
+fi
 shopt -u nullglob
 
 if [ ${#state_files[@]} -eq 0 ]; then
