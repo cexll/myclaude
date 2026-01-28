@@ -3,10 +3,14 @@ package wrapper
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestEnsureExecutableTempDir_Override(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ensureExecutableTempDir is no-op on Windows")
+	}
 	restore := captureTempEnv()
 	t.Cleanup(restore)
 
@@ -37,6 +41,9 @@ func TestEnsureExecutableTempDir_Override(t *testing.T) {
 }
 
 func TestEnsureExecutableTempDir_FallbackWhenCurrentNotExecutable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ensureExecutableTempDir is no-op on Windows")
+	}
 	restore := captureTempEnv()
 	t.Cleanup(restore)
 
