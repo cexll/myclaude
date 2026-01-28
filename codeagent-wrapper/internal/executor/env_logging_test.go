@@ -16,7 +16,7 @@ func TestMaskSensitiveValue(t *testing.T) {
 	}{
 		{
 			name:     "API_KEY with long value",
-			key:      "ANTHROPIC_AUTH_TOKEN",
+			key:      "ANTHROPIC_API_KEY",
 			value:    "sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 			expected: "sk-a****xxxx",
 		},
@@ -180,7 +180,7 @@ func TestClaudeBackendEnv(t *testing.T) {
 			name:       "both base_url and api_key",
 			baseURL:    "https://api.custom.com",
 			apiKey:     "sk-test-key-12345",
-			expectKeys: []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"},
+			expectKeys: []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY"},
 		},
 		{
 			name:       "only base_url",
@@ -192,7 +192,7 @@ func TestClaudeBackendEnv(t *testing.T) {
 			name:       "only api_key",
 			baseURL:    "",
 			apiKey:     "sk-test-key-12345",
-			expectKeys: []string{"ANTHROPIC_AUTH_TOKEN"},
+			expectKeys: []string{"ANTHROPIC_API_KEY"},
 		},
 		{
 			name:      "both empty",
@@ -237,8 +237,8 @@ func TestClaudeBackendEnv(t *testing.T) {
 				}
 			}
 			if tt.apiKey != "" && strings.TrimSpace(tt.apiKey) != "" {
-				if env["ANTHROPIC_AUTH_TOKEN"] != strings.TrimSpace(tt.apiKey) {
-					t.Errorf("ANTHROPIC_AUTH_TOKEN = %q, want %q", env["ANTHROPIC_AUTH_TOKEN"], strings.TrimSpace(tt.apiKey))
+				if env["ANTHROPIC_API_KEY"] != strings.TrimSpace(tt.apiKey) {
+					t.Errorf("ANTHROPIC_API_KEY = %q, want %q", env["ANTHROPIC_API_KEY"], strings.TrimSpace(tt.apiKey))
 				}
 			}
 		})
@@ -267,7 +267,7 @@ func TestEnvLoggingIntegration(t *testing.T) {
 			}
 		}
 
-		if k == "ANTHROPIC_AUTH_TOKEN" {
+		if k == "ANTHROPIC_API_KEY" {
 			// API key should be masked
 			if masked == v {
 				t.Errorf("API_KEY should be masked, but got original value")

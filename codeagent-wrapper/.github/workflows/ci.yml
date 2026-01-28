@@ -17,6 +17,9 @@ jobs:
         go-version: ["1.21", "1.22"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
@@ -25,11 +28,16 @@ jobs:
         run: make test
       - name: Build
         run: make build
+      - name: Verify version
+        run: ./codeagent-wrapper --version
 
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"

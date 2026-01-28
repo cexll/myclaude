@@ -117,14 +117,14 @@ func TestEnvInjection_LogsToStderrAndMasksKey(t *testing.T) {
 	if cmd.env["ANTHROPIC_BASE_URL"] != baseURL {
 		t.Fatalf("ANTHROPIC_BASE_URL=%q, want %q", cmd.env["ANTHROPIC_BASE_URL"], baseURL)
 	}
-	if cmd.env["ANTHROPIC_AUTH_TOKEN"] != apiKey {
-		t.Fatalf("ANTHROPIC_AUTH_TOKEN=%q, want %q", cmd.env["ANTHROPIC_AUTH_TOKEN"], apiKey)
+	if cmd.env["ANTHROPIC_API_KEY"] != apiKey {
+		t.Fatalf("ANTHROPIC_API_KEY=%q, want %q", cmd.env["ANTHROPIC_API_KEY"], apiKey)
 	}
 
 	if !strings.Contains(got, "Env: ANTHROPIC_BASE_URL="+baseURL) {
 		t.Fatalf("stderr missing base URL env log; stderr=%q", got)
 	}
-	if !strings.Contains(got, "Env: ANTHROPIC_AUTH_TOKEN=eyJh****test") {
+	if !strings.Contains(got, "Env: ANTHROPIC_API_KEY=eyJh****test") {
 		t.Fatalf("stderr missing masked API key log; stderr=%q", got)
 	}
 }

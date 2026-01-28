@@ -1088,6 +1088,8 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		}
 	}
 
+	injectTempEnv(cmd)
+
 	// For backends that don't support -C flag (claude, gemini), set working directory via cmd.Dir
 	// Codex passes workdir via -C flag, so we skip setting Dir for it to avoid conflicts
 	if cfg.Mode != "resume" && commandName != "codex" && cfg.WorkDir != "" {
@@ -1395,6 +1397,22 @@ waitLoop:
 	}
 
 	return result
+}
+
+func injectTempEnv(cmd commandRunner) {
+	if cmd == nil {
+		return
+	}
+	env := make(map[string]string, 3)
+	for _, k := range []string{"TMPDIR", "TMP", "TEMP"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			env[k] = v
+		}
+	}
+	if len(env) == 0 {
+		return
+	}
+	cmd.SetEnv(env)
 }
 
 func cancelReason(commandName string, ctx context.Context) string {

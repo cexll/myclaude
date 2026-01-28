@@ -168,6 +168,7 @@ func newCleanupCommand() *cobra.Command {
 }
 
 func runWithLoggerAndCleanup(fn func() int) (exitCode int) {
+	ensureExecutableTempDir()
 	logger, err := NewLogger()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: failed to initialize logger: %v\n", err)

@@ -9,8 +9,9 @@ import (
 	"time"
 )
 
+var version = "dev"
+
 const (
-	version               = "6.1.2"
 	defaultWorkdir        = "."
 	defaultTimeout        = 7200 // seconds (2 hours)
 	defaultCoverageTarget = 90.0

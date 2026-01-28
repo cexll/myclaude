@@ -72,8 +72,8 @@ func TestEnvInjectionWithAgent(t *testing.T) {
 	if env["ANTHROPIC_BASE_URL"] != baseURL {
 		t.Errorf("expected ANTHROPIC_BASE_URL=%q, got %q", baseURL, env["ANTHROPIC_BASE_URL"])
 	}
-	if env["ANTHROPIC_AUTH_TOKEN"] != apiKey {
-		t.Errorf("expected ANTHROPIC_AUTH_TOKEN=%q, got %q", apiKey, env["ANTHROPIC_AUTH_TOKEN"])
+	if env["ANTHROPIC_API_KEY"] != apiKey {
+		t.Errorf("expected ANTHROPIC_API_KEY=%q, got %q", apiKey, env["ANTHROPIC_API_KEY"])
 	}
 }
 
@@ -149,8 +149,8 @@ func TestEnvInjectionLogic(t *testing.T) {
 		t.Errorf("ANTHROPIC_BASE_URL: expected %q, got %q", expectedURL, injected["ANTHROPIC_BASE_URL"])
 	}
 
-	if _, ok := injected["ANTHROPIC_AUTH_TOKEN"]; !ok {
-		t.Error("ANTHROPIC_AUTH_TOKEN not set")
+	if _, ok := injected["ANTHROPIC_API_KEY"]; !ok {
+		t.Error("ANTHROPIC_API_KEY not set")
 	}
 
 	// Step 5: Test masking

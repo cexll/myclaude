@@ -150,3 +150,8 @@ make test
 make lint
 make clean
 ```
+
+## 故障排查
+
+- macOS 下如果看到临时目录相关的 `permission denied`（例如临时可执行文件无法在 `/var/folders/.../T` 执行），可设置一个可执行的临时目录：`CODEAGENT_TMPDIR=$HOME/.codeagent/tmp`。
+- `claude` 后端的 `base_url/api_key`（来自 `~/.codeagent/models.json`）会注入到子进程环境变量：`ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY`。若 `base_url` 指向本地代理（如 `localhost:23001`），请确认代理进程在运行。

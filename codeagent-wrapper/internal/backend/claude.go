@@ -25,7 +25,8 @@ func (ClaudeBackend) Env(baseURL, apiKey string) map[string]string {
 		env["ANTHROPIC_BASE_URL"] = baseURL
 	}
 	if apiKey != "" {
-		env["ANTHROPIC_AUTH_TOKEN"] = apiKey
+		// Claude Code CLI uses ANTHROPIC_API_KEY for API-key based auth.
+		env["ANTHROPIC_API_KEY"] = apiKey
 	}
 	return env
 }
