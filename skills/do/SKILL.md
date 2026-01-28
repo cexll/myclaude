@@ -45,6 +45,8 @@ To abort early, set `active: false` in the state file.
 4. **Pass complete context forward.** Every agent invocation includes the Context Pack.
 5. **Parallel-first.** Run independent tasks via `codeagent-wrapper --parallel`.
 6. **Update state after each phase.** Keep `.claude/do.{task_id}.local.md` current.
+7. **Expect long-running `codeagent-wrapper` calls.** High-reasoning modes (e.g. `xhigh`) can take a long time; stay in the orchestrator role and wait for agents to complete.
+8. **Timeouts are not an escape hatch.** If a `codeagent-wrapper` invocation times out/errors, retry `codeagent-wrapper` (split/narrow the task if needed); never switch to direct implementation.
 
 ## Agents
 
