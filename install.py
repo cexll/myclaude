@@ -518,6 +518,11 @@ def uninstall_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dic
 
     install_dir = ctx["install_dir"]
     removed_paths = []
+    status = load_installed_status(ctx)
+    module_status = status.get("modules", {}).get(name, {})
+    merge_dir_files = module_status.get("merge_dir_files", [])
+    if not isinstance(merge_dir_files, list):
+        merge_dir_files = []
 
     for op in cfg.get("operations", []):
         op_type = op.get("type")
@@ -531,7 +536,55 @@ def uninstall_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dic
                         target.unlink()
                     removed_paths.append(str(target))
                     write_log({"level": "INFO", "message": f"Removed: {target}"}, ctx)
-            # merge_dir and merge_json are harder to uninstall cleanly, skip
+            elif op_type == "merge_dir":
+                if not merge_dir_files:
+                    write_log(
+                        {
+                            "level": "WARNING",
+                            "message": f"No merge_dir_files recorded for {name}; skip merge_dir uninstall",
+                        },
+                        ctx,
+                    )
+                    continue
+
+                for rel in dict.fromkeys(merge_dir_files):
+                    rel_path = Path(str(rel))
+                    if rel_path.is_absolute() or ".." in rel_path.parts:
+                        write_log(
+                            {
+                                "level": "WARNING",
+                                "message": f"Skip unsafe merge_dir path for {name}: {rel}",
+                            },
+                            ctx,
+                        )
+                        continue
+
+                    target = (install_dir / rel_path).resolve()
+                    if target == install_dir or install_dir not in target.parents:
+                        write_log(
+                            {
+                                "level": "WARNING",
+                                "message": f"Skip out-of-tree merge_dir path for {name}: {rel}",
+                            },
+                            ctx,
+                        )
+                        continue
+
+                    if target.exists():
+                        if target.is_dir():
+                            shutil.rmtree(target)
+                        else:
+                            target.unlink()
+                        removed_paths.append(str(target))
+                        write_log({"level": "INFO", "message": f"Removed: {target}"}, ctx)
+
+                    parent = target.parent
+                    while parent != install_dir and parent.exists():
+                        try:
+                            parent.rmdir()
+                        except OSError:
+                            break
+                        parent = parent.parent
         except Exception as exc:
             write_log({"level": "WARNING", "message": f"Failed to remove {op.get('target', 'unknown')}: {exc}"}, ctx)
 
@@ -720,7 +773,9 @@ def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[
             elif op_type == "copy_file":
                 op_copy_file(op, ctx)
             elif op_type == "merge_dir":
-                op_merge_dir(op, ctx)
+                merged = op_merge_dir(op, ctx)
+                if merged:
+                    result.setdefault("merge_dir_files", []).extend(merged)
             elif op_type == "merge_json":
                 op_merge_json(op, ctx)
             elif op_type == "run_command":
@@ -792,7 +847,7 @@ def op_copy_dir(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
     write_log({"level": "INFO", "message": f"Copied dir {src} -> {dst}"}, ctx)
 
 
-def op_merge_dir(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+def op_merge_dir(op: Dict[str, Any], ctx: Dict[str, Any]) -> List[str]:
     """Merge source dir's subdirs (commands/, agents/, etc.) into install_dir."""
     src = _source_path(op, ctx)
     install_dir = ctx["install_dir"]
@@ -813,6 +868,7 @@ def op_merge_dir(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
                 merged.append(f"{subdir.name}/{f.name}")
 
     write_log({"level": "INFO", "message": f"Merged {src.name}: {', '.join(merged) or 'no files'}"}, ctx)
+    return merged
 
 
 def op_copy_file(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
