@@ -1,6 +1,6 @@
 # do - Feature Development Orchestrator
 
-7-phase feature development workflow orchestrating multiple agents via codeagent-wrapper.
+5-phase feature development workflow orchestrating multiple agents via codeagent-wrapper.
 
 ## Installation
 
@@ -24,17 +24,15 @@ Examples:
 /do implement order export to CSV
 ```
 
-## 7-Phase Workflow
+## 5-Phase Workflow
 
 | Phase | Name | Goal | Key Actions |
 |-------|------|------|-------------|
-| 1 | Discovery | Understand requirements | AskUserQuestion + code-architect draft |
-| 2 | Exploration | Map codebase patterns | 2-3 parallel code-explorer tasks |
-| 3 | Clarification | Resolve ambiguities | **MANDATORY** - must answer before proceeding |
-| 4 | Architecture | Design implementation | 2 parallel code-architect approaches |
-| 5 | Implementation | Build the feature | **Requires approval** - develop agent |
-| 6 | Review | Catch defects | 2-3 parallel code-reviewer tasks |
-| 7 | Summary | Document results | code-reviewer summary |
+| 1 | Understand | Gather requirements | AskUserQuestion + code-explorer analysis |
+| 2 | Clarify | Resolve ambiguities | **MANDATORY** - must answer before proceeding |
+| 3 | Design | Plan implementation | code-architect approaches |
+| 4 | Implement | Build the feature | **Requires approval** - develop agent |
+| 5 | Complete | Finalize and document | code-reviewer summary |
 
 ## Agents
 
@@ -50,8 +48,8 @@ To customize agents, create same-named files in `~/.codeagent/agents/` to overri
 ## Hard Constraints
 
 1. **Never write code directly** - delegate all changes to codeagent-wrapper agents
-2. **Phase 3 is mandatory** - do not proceed until questions are answered
-3. **Phase 5 requires approval** - stop after Phase 4 if not approved
+2. **Phase 2 is mandatory** - do not proceed until questions are answered
+3. **Phase 4 requires approval** - stop after Phase 3 if not approved
 4. **Pass complete context forward** - every agent gets the Context Pack
 5. **Parallel-first** - run independent tasks via `codeagent-wrapper --parallel`
 6. **Update state after each phase** - keep `.claude/do.{task_id}.local.md` current
@@ -63,7 +61,7 @@ To customize agents, create same-named files in `~/.codeagent/agents/` to overri
 <verbatim request>
 
 ## Context Pack
-- Phase: <1-7 name>
+- Phase: <1-5 name>
 - Decisions: <requirements/constraints/choices>
 - Code-explorer output: <paste or "None">
 - Code-architect output: <paste or "None">
@@ -83,7 +81,7 @@ To customize agents, create same-named files in `~/.codeagent/agents/` to overri
 When triggered via `/do <task>`, initializes `.claude/do.{task_id}.local.md` with:
 - `active: true`
 - `current_phase: 1`
-- `max_phases: 7`
+- `max_phases: 5`
 - `completion_promise: "<promise>DO_COMPLETE</promise>"`
 
 After each phase, update frontmatter:
@@ -92,7 +90,7 @@ current_phase: <next phase number>
 phase_name: "<next phase name>"
 ```
 
-When all 7 phases complete, output:
+When all 5 phases complete, output:
 ```
 <promise>DO_COMPLETE</promise>
 ```
@@ -183,4 +181,30 @@ Required when using `agent:` in parallel tasks or `--agent`. Create `~/.codeagen
 
 ```bash
 python install.py --uninstall --module do
+```
+
+## Worktree Mode
+
+Use `--worktree` to execute tasks in an isolated git worktree, preventing changes to your main branch:
+
+```bash
+codeagent-wrapper --worktree --agent develop "implement feature X" .
+```
+
+This automatically:
+1. Generates a unique task ID (format: `YYYYMMDD-xxxxxx`)
+2. Creates a new worktree at `.worktrees/do-{task_id}/`
+3. Creates a new branch `do/{task_id}`
+4. Executes the task in the isolated worktree
+
+Output includes: `Using worktree: .worktrees/do-{task_id}/ (task_id: {id}, branch: do/{id})`
+
+In parallel mode, add `worktree: true` to task blocks:
+```
+---TASK---
+id: feature_impl
+agent: develop
+worktree: true
+---CONTENT---
+Implement the feature
 ```

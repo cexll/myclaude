@@ -30,6 +30,7 @@ type cliOptions struct {
 	Agent           string
 	PromptFile      string
 	SkipPermissions bool
+	Worktree        bool
 
 	Parallel   bool
 	FullOutput bool
@@ -136,6 +137,7 @@ func addRootFlags(fs *pflag.FlagSet, opts *cliOptions) {
 
 	fs.BoolVar(&opts.SkipPermissions, "skip-permissions", false, "Skip permissions prompts (also via CODEAGENT_SKIP_PERMISSIONS)")
 	fs.BoolVar(&opts.SkipPermissions, "dangerously-skip-permissions", false, "Alias for --skip-permissions")
+	fs.BoolVar(&opts.Worktree, "worktree", false, "Execute in a new git worktree (auto-generates task ID)")
 }
 
 func newVersionCommand(name string) *cobra.Command {
@@ -350,6 +352,7 @@ func buildSingleConfig(cmd *cobra.Command, args []string, rawArgv []string, opts
 		MaxParallelWorkers: config.ResolveMaxParallelWorkers(),
 		AllowedTools:       resolvedAllowedTools,
 		DisallowedTools:    resolvedDisallowedTools,
+		Worktree:           opts.Worktree,
 	}
 
 	if args[0] == "resume" {
@@ -653,6 +656,7 @@ func runSingleMode(cfg *Config, name string) int {
 		ReasoningEffort: cfg.ReasoningEffort,
 		Agent:           cfg.Agent,
 		SkipPermissions: cfg.SkipPermissions,
+		Worktree:        cfg.Worktree,
 		AllowedTools:    cfg.AllowedTools,
 		DisallowedTools: cfg.DisallowedTools,
 		UseStdin:        useStdin,

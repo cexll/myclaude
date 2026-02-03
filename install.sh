@@ -57,14 +57,18 @@ if [[ ":${PATH}:" != *":${BIN_DIR}:"* ]]; then
     echo ""
     echo "WARNING: ${BIN_DIR} is not in your PATH"
 
-    # Detect shell and set config files
-    if [ -n "$ZSH_VERSION" ]; then
-        RC_FILE="$HOME/.zshrc"
-        PROFILE_FILE="$HOME/.zprofile"
-    else
-        RC_FILE="$HOME/.bashrc"
-        PROFILE_FILE="$HOME/.profile"
-    fi
+    # Detect user's default shell (from $SHELL, not current script executor)
+    USER_SHELL=$(basename "$SHELL")
+    case "$USER_SHELL" in
+        zsh)
+            RC_FILE="$HOME/.zshrc"
+            PROFILE_FILE="$HOME/.zprofile"
+            ;;
+        *)
+            RC_FILE="$HOME/.bashrc"
+            PROFILE_FILE="$HOME/.profile"
+            ;;
+    esac
 
     # Idempotent add: check if complete export statement already exists
     EXPORT_LINE="export PATH=\"${BIN_DIR}:\$PATH\""

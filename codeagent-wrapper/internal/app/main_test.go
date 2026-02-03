@@ -1616,6 +1616,60 @@ do something`
 	}
 }
 
+func TestParallelParseConfig_Worktree(t *testing.T) {
+	input := `---TASK---
+id: task-1
+worktree: true
+---CONTENT---
+do something`
+
+	cfg, err := parseParallelConfig([]byte(input))
+	if err != nil {
+		t.Fatalf("parseParallelConfig() unexpected error: %v", err)
+	}
+	if len(cfg.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(cfg.Tasks))
+	}
+	task := cfg.Tasks[0]
+	if !task.Worktree {
+		t.Fatalf("Worktree = %v, want true", task.Worktree)
+	}
+}
+
+func TestParallelParseConfig_WorktreeBooleanValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{"true", "true", true},
+		{"1", "1", true},
+		{"yes", "yes", true},
+		{"false", "false", false},
+		{"0", "0", false},
+		{"no", "no", false},
+		{"empty", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := fmt.Sprintf(`---TASK---
+id: task-1
+worktree: %s
+---CONTENT---
+do something`, tt.value)
+
+			cfg, err := parseParallelConfig([]byte(input))
+			if err != nil {
+				t.Fatalf("parseParallelConfig() unexpected error: %v", err)
+			}
+			if cfg.Tasks[0].Worktree != tt.want {
+				t.Fatalf("Worktree = %v, want %v for value %q", cfg.Tasks[0].Worktree, tt.want, tt.value)
+			}
+		})
+	}
+}
+
 func TestParallelParseConfig_EmptySessionID(t *testing.T) {
 	input := `---TASK---
 id: task-1

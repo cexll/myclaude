@@ -75,6 +75,12 @@ func ParseParallelConfig(data []byte) (*ParallelConfig, error) {
 					continue
 				}
 				task.SkipPermissions = config.ParseBoolFlag(value, false)
+			case "worktree":
+				if value == "" {
+					task.Worktree = true
+					continue
+				}
+				task.Worktree = config.ParseBoolFlag(value, false)
 			case "dependencies":
 				for _, dep := range strings.Split(value, ",") {
 					dep = strings.TrimSpace(dep)
