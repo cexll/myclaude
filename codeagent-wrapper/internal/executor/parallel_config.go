@@ -96,7 +96,7 @@ func ParseParallelConfig(data []byte) (*ParallelConfig, error) {
 				if err := config.ValidateAgentName(task.Agent); err != nil {
 					return nil, fmt.Errorf("task block #%d invalid agent name: %w", taskIndex, err)
 				}
-				backend, model, promptFile, reasoning, _, _, _, err := config.ResolveAgentConfig(task.Agent)
+				backend, model, promptFile, reasoning, _, _, _, allowedTools, disallowedTools, err := config.ResolveAgentConfig(task.Agent)
 				if err != nil {
 					return nil, fmt.Errorf("task block #%d failed to resolve agent %q: %w", taskIndex, task.Agent, err)
 				}
@@ -110,6 +110,8 @@ func ParseParallelConfig(data []byte) (*ParallelConfig, error) {
 				task.ReasoningEffort = reasoning
 			}
 			task.PromptFile = promptFile
+			task.AllowedTools = allowedTools
+			task.DisallowedTools = disallowedTools
 		}
 
 		if task.ID == "" {

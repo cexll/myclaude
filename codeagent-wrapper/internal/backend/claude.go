@@ -134,6 +134,15 @@ func buildClaudeArgs(cfg *config.Config, targetArg string) []string {
 		}
 	}
 
+	if len(cfg.AllowedTools) > 0 {
+		args = append(args, "--allowedTools")
+		args = append(args, cfg.AllowedTools...)
+	}
+	if len(cfg.DisallowedTools) > 0 {
+		args = append(args, "--disallowedTools")
+		args = append(args, cfg.DisallowedTools...)
+	}
+
 	args = append(args, "--output-format", "stream-json", "--verbose", targetArg)
 
 	return args

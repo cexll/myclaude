@@ -21,6 +21,8 @@ type TaskSpec struct {
 	Agent           string          `json:"agent,omitempty"`
 	PromptFile      string          `json:"prompt_file,omitempty"`
 	SkipPermissions bool            `json:"skip_permissions,omitempty"`
+	AllowedTools    []string        `json:"allowed_tools,omitempty"`
+	DisallowedTools []string        `json:"disallowed_tools,omitempty"`
 	Mode            string          `json:"-"`
 	UseStdin        bool            `json:"-"`
 	Context         context.Context `json:"-"`

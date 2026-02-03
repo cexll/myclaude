@@ -905,6 +905,8 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		ReasoningEffort: taskSpec.ReasoningEffort,
 		SkipPermissions: taskSpec.SkipPermissions,
 		Backend:         defaultBackendName,
+		AllowedTools:    taskSpec.AllowedTools,
+		DisallowedTools: taskSpec.DisallowedTools,
 	}
 
 	commandName := strings.TrimSpace(defaultCommandName)
@@ -921,6 +923,11 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		cfg.Backend = backend.Name()
 	} else if taskSpec.Backend != "" {
 		cfg.Backend = taskSpec.Backend
+		if selectBackendFn != nil {
+			if b, err := selectBackendFn(taskSpec.Backend); err == nil {
+				argsBuilder = b.BuildArgs
+			}
+		}
 	} else if commandName != "" {
 		cfg.Backend = commandName
 	}
@@ -1070,7 +1077,7 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	if envBackend != nil {
 		baseURL, apiKey := config.ResolveBackendConfig(cfg.Backend)
 		if agentName := strings.TrimSpace(taskSpec.Agent); agentName != "" {
-			agentBackend, _, _, _, agentBaseURL, agentAPIKey, _, err := config.ResolveAgentConfig(agentName)
+			agentBackend, _, _, _, agentBaseURL, agentAPIKey, _, _, _, err := config.ResolveAgentConfig(agentName)
 			if err == nil {
 				if strings.EqualFold(strings.TrimSpace(agentBackend), strings.TrimSpace(cfg.Backend)) {
 					baseURL, apiKey = agentBaseURL, agentAPIKey

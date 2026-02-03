@@ -24,6 +24,8 @@ type Config struct {
 	SkipPermissions    bool
 	Yolo               bool
 	MaxParallelWorkers int
+	AllowedTools       []string
+	DisallowedTools    []string
 }
 
 // EnvFlagEnabled returns true when the environment variable exists and is not
