@@ -41,10 +41,15 @@ This creates `.claude/do.{task_id}.local.md` with:
 
 ## Worktree Mode
 
-When `use_worktree: true` in state file, ALL `codeagent-wrapper` calls that modify code MUST include `--worktree`:
+When `use_worktree: true` in state file:
+- The worktree is created once during initialization (setup-do.py)
+- The worktree path is stored in `worktree_dir` frontmatter field
+- Environment variable `DO_WORKTREE_DIR` is exported for codeagent-wrapper to use
+- ALL `codeagent-wrapper` calls that modify code MUST include `--worktree` flag
+- codeagent-wrapper detects `DO_WORKTREE_DIR` and reuses the existing worktree instead of creating new ones
 
 ```bash
-# With worktree mode enabled
+# With worktree mode enabled - codeagent-wrapper will use DO_WORKTREE_DIR automatically
 codeagent-wrapper --worktree --agent develop - . <<'EOF'
 ...
 EOF
@@ -60,7 +65,7 @@ workdir: .
 EOF
 ```
 
-The `--worktree` flag tells codeagent-wrapper to create/use a worktree internally. Read-only agents (code-explorer, code-architect, code-reviewer) do NOT need `--worktree`.
+The `--worktree` flag tells codeagent-wrapper to use worktree mode. When `DO_WORKTREE_DIR` is set, it reuses that directory; otherwise it creates a new worktree (backward compatibility). Read-only agents (code-explorer, code-architect, code-reviewer) do NOT need `--worktree`.
 
 ## Loop State Management
 

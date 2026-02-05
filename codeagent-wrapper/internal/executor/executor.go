@@ -941,8 +941,13 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 		cfg.WorkDir = defaultWorkdir
 	}
 
-	// Handle worktree mode: create a new git worktree and update cfg.WorkDir
-	if taskSpec.Worktree {
+	// Handle worktree mode: check DO_WORKTREE_DIR env var first, then create if needed
+	if worktreeDir := os.Getenv("DO_WORKTREE_DIR"); worktreeDir != "" {
+		// Use existing worktree from /do setup
+		cfg.WorkDir = worktreeDir
+		logInfo(fmt.Sprintf("Using existing worktree from DO_WORKTREE_DIR: %s", worktreeDir))
+	} else if taskSpec.Worktree {
+		// Create new worktree (backward compatibility for standalone --worktree usage)
 		paths, err := createWorktreeFn(cfg.WorkDir)
 		if err != nil {
 			result.ExitCode = 1

@@ -2,6 +2,7 @@
 import argparse
 import os
 import secrets
+import subprocess
 import sys
 import time
 
@@ -19,6 +20,34 @@ def phase_name_for(n: int) -> str:
 def die(msg: str):
     print(f"❌ {msg}", file=sys.stderr)
     sys.exit(1)
+
+
+def create_worktree(project_dir: str, task_id: str) -> str:
+    """Create a git worktree for the task. Returns the worktree directory path."""
+    # Get git root
+    result = subprocess.run(
+        ["git", "-C", project_dir, "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        die(f"Not a git repository: {project_dir}")
+    git_root = result.stdout.strip()
+
+    # Calculate paths
+    worktree_dir = os.path.join(git_root, ".worktrees", f"do-{task_id}")
+    branch_name = f"do/{task_id}"
+
+    # Create worktree with new branch
+    result = subprocess.run(
+        ["git", "-C", git_root, "worktree", "add", "-b", branch_name, worktree_dir],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        die(f"Failed to create worktree: {result.stderr}")
+
+    return worktree_dir
 
 def main():
     parser = argparse.ArgumentParser(
@@ -50,6 +79,11 @@ def main():
 
     os.makedirs(state_dir, exist_ok=True)
 
+    # Create worktree if requested (before writing state file)
+    worktree_dir = ""
+    if use_worktree:
+        worktree_dir = create_worktree(project_dir, task_id)
+
     phase_name = phase_name_for(1)
 
     content = f"""---
@@ -59,6 +93,7 @@ phase_name: "{phase_name}"
 max_phases: {max_phases}
 completion_promise: "{completion_promise}"
 use_worktree: {str(use_worktree).lower()}
+worktree_dir: "{worktree_dir}"
 ---
 
 # do loop state
@@ -80,6 +115,9 @@ use_worktree: {str(use_worktree).lower()}
     print(f"completion_promise: {completion_promise}")
     print(f"use_worktree: {use_worktree}")
     print(f"export DO_TASK_ID={task_id}")
+    if worktree_dir:
+        print(f"worktree_dir: {worktree_dir}")
+        print(f"export DO_WORKTREE_DIR={worktree_dir}")
 
 if __name__ == "__main__":
     main()
