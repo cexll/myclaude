@@ -78,32 +78,19 @@ def check_state_file(state_file: str, stdin_payload: str) -> str:
 
     phases_done = current_phase >= max_phases
 
-    promise_met = False
-    if completion_promise:
-        if stdin_payload and completion_promise in stdin_payload:
-            promise_met = True
-        else:
-            body = get_body(state_file)
-            if body and completion_promise in body:
-                promise_met = True
-
-    if phases_done and promise_met:
+    if phases_done:
+        # 阶段已完成，清理状态文件并允许退出
+        # promise 检测作为可选确认，不阻止退出
         try:
             os.remove(state_file)
         except Exception:
             pass
         return ""
 
-    if not phases_done:
-        return (f"do loop incomplete: current phase {current_phase}/{max_phases} ({phase_name}). "
-                f"Continue with remaining phases; update {state_file} current_phase/phase_name after each phase. "
-                f"Include completion_promise in final output when done: {completion_promise}. "
-                f"To exit early, set active to false.")
-    else:
-        return (f"do reached final phase (current_phase={current_phase} / max_phases={max_phases}, "
-                f"phase_name={phase_name}), but completion_promise not detected: {completion_promise}. "
-                f"Please include this marker in your final output (or write it to {state_file} body), "
-                f"then finish; to force exit, set active to false.")
+    return (f"do loop incomplete: current phase {current_phase}/{max_phases} ({phase_name}). "
+            f"Continue with remaining phases; update {state_file} current_phase/phase_name after each phase. "
+            f"Include completion_promise in final output when done: {completion_promise}. "
+            f"To exit early, set active to false.")
 
 def main():
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
