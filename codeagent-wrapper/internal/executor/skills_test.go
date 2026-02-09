@@ -3,9 +3,19 @@ package executor
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// setTestHome overrides the home directory for both Unix (HOME) and Windows (USERPROFILE).
+func setTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
+}
 
 // --- helper: create a temp skill dir with SKILL.md ---
 
@@ -195,7 +205,7 @@ func TestDetectProjectSkills_NonexistentDir(t *testing.T) {
 
 func TestResolveSkillContent_ValidSkill(t *testing.T) {
 	home := createTempSkill(t, "test-skill", "---\nname: test\n---\n\n# Test Skill\nBest practices here.")
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	result := ResolveSkillContent([]string{"test-skill"}, 0)
 	if result == "" {
@@ -217,7 +227,7 @@ func TestResolveSkillContent_ValidSkill(t *testing.T) {
 
 func TestResolveSkillContent_NonexistentSkill(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	result := ResolveSkillContent([]string{"nonexistent-skill-xyz"}, 0)
 	if result != "" {
@@ -237,7 +247,7 @@ func TestResolveSkillContent_Empty(t *testing.T) {
 func TestResolveSkillContent_Budget(t *testing.T) {
 	longBody := strings.Repeat("x", 500)
 	home := createTempSkill(t, "big-skill", "---\nname: big\n---\n\n"+longBody)
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	result := ResolveSkillContent([]string{"big-skill"}, 200)
 	if result == "" {
@@ -256,7 +266,7 @@ func TestResolveSkillContent_MultipleSkills(t *testing.T) {
 		os.MkdirAll(skillDir, 0755)
 		os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# "+name+"\nContent."), 0644)
 	}
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	result := ResolveSkillContent([]string{"skill-a", "skill-b"}, 0)
 	if result == "" {
@@ -272,7 +282,7 @@ func TestResolveSkillContent_MultipleSkills(t *testing.T) {
 
 func TestResolveSkillContent_PathTraversal(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	result := ResolveSkillContent([]string{"../../../etc/passwd"}, 0)
 	if result != "" {
@@ -282,7 +292,7 @@ func TestResolveSkillContent_PathTraversal(t *testing.T) {
 
 func TestResolveSkillContent_InvalidNames(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	tests := []string{"../bad", "foo/bar", "skill name", "skill.name", "a b"}
 	for _, name := range tests {
@@ -312,7 +322,7 @@ func TestResolveSkillContent_ValidNamePattern(t *testing.T) {
 
 func TestSkillInjectionFormat(t *testing.T) {
 	home := createTempSkill(t, "test-go", "---\nname: go\n---\n\n# Go Best Practices\nUse gofmt.")
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	taskText := "Implement the feature."
 	content := ResolveSkillContent([]string{"test-go"}, 0)
