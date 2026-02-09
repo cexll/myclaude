@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
+"""
+Stop hook for do skill workflow.
+
+Checks if the do loop is complete before allowing exit.
+Uses the new task directory structure under .claude/do-tasks/.
+"""
+
 import glob
 import json
 import os
-import re
 import sys
+
+DIR_TASKS = ".claude/do-tasks"
+FILE_CURRENT_TASK = ".current-task"
+FILE_TASK_JSON = "task.json"
 
 PHASE_NAMES = {
     1: "Understand",
@@ -13,98 +23,69 @@ PHASE_NAMES = {
     5: "Complete",
 }
 
+
 def phase_name_for(n: int) -> str:
     return PHASE_NAMES.get(n, f"Phase {n}")
 
-def frontmatter_get(file_path: str, key: str) -> str:
+
+def get_current_task(project_dir: str) -> str | None:
+    """Read current task directory path."""
+    current_task_file = os.path.join(project_dir, DIR_TASKS, FILE_CURRENT_TASK)
+    if not os.path.exists(current_task_file):
+        return None
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
+        with open(current_task_file, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            return content if content else None
     except Exception:
-        return ""
+        return None
 
-    if not lines or lines[0].strip() != "---":
-        return ""
 
-    for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == "---":
-            break
-        match = re.match(rf"^{re.escape(key)}:\s*(.*)$", line)
-        if match:
-            value = match.group(1).strip()
-            if value.startswith('"') and value.endswith('"'):
-                value = value[1:-1]
-            return value
-    return ""
-
-def get_body(file_path: str) -> str:
+def get_task_info(project_dir: str, task_dir: str) -> dict | None:
+    """Read task.json data."""
+    task_json_path = os.path.join(project_dir, task_dir, FILE_TASK_JSON)
+    if not os.path.exists(task_json_path):
+        return None
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        with open(task_json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
     except Exception:
+        return None
+
+
+def check_task_complete(project_dir: str, task_dir: str) -> str:
+    """Check if task is complete. Returns blocking reason or empty string."""
+    task_info = get_task_info(project_dir, task_dir)
+    if not task_info:
         return ""
 
-    parts = content.split("---", 2)
-    if len(parts) >= 3:
-        return parts[2]
-    return ""
-
-def check_state_file(state_file: str, stdin_payload: str) -> str:
-    active_raw = frontmatter_get(state_file, "active")
-    active_lc = active_raw.lower()
-    if active_lc not in ("true", "1", "yes", "on"):
+    status = task_info.get("status", "")
+    if status == "completed":
         return ""
 
-    current_phase_raw = frontmatter_get(state_file, "current_phase")
-    max_phases_raw = frontmatter_get(state_file, "max_phases")
-    phase_name = frontmatter_get(state_file, "phase_name")
-    completion_promise = frontmatter_get(state_file, "completion_promise")
+    current_phase = task_info.get("current_phase", 1)
+    max_phases = task_info.get("max_phases", 5)
+    phase_name = task_info.get("phase_name", phase_name_for(current_phase))
+    completion_promise = task_info.get("completion_promise", "<promise>DO_COMPLETE</promise>")
 
-    try:
-        current_phase = int(current_phase_raw)
-    except (ValueError, TypeError):
-        current_phase = 1
-
-    try:
-        max_phases = int(max_phases_raw)
-    except (ValueError, TypeError):
-        max_phases = 5
-
-    if not phase_name:
-        phase_name = phase_name_for(current_phase)
-
-    if not completion_promise:
-        completion_promise = "<promise>DO_COMPLETE</promise>"
-
-    phases_done = current_phase >= max_phases
-
-    if phases_done:
-        # 阶段已完成，清理状态文件并允许退出
-        # promise 检测作为可选确认，不阻止退出
-        try:
-            os.remove(state_file)
-        except Exception:
-            pass
+    if current_phase >= max_phases:
+        # Task is at final phase, allow exit
         return ""
 
-    return (f"do loop incomplete: current phase {current_phase}/{max_phases} ({phase_name}). "
-            f"Continue with remaining phases; update {state_file} current_phase/phase_name after each phase. "
-            f"Include completion_promise in final output when done: {completion_promise}. "
-            f"To exit early, set active to false.")
+    return (
+        f"do loop incomplete: current phase {current_phase}/{max_phases} ({phase_name}). "
+        f"Continue with remaining phases; use 'task.py update-phase <N>' after each phase. "
+        f"Include completion_promise in final output when done: {completion_promise}. "
+        f"To exit early, set status to 'completed' in task.json."
+    )
+
 
 def main():
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-    state_dir = os.path.join(project_dir, ".claude")
 
-    do_task_id = os.environ.get("DO_TASK_ID", "")
-
-    if do_task_id:
-        candidate = os.path.join(state_dir, f"do.{do_task_id}.local.md")
-        state_files = [candidate] if os.path.isfile(candidate) else []
-    else:
-        state_files = glob.glob(os.path.join(state_dir, "do.*.local.md"))
-
-    if not state_files:
+    task_dir = get_current_task(project_dir)
+    if not task_dir:
+        # No active task, allow exit
         sys.exit(0)
 
     stdin_payload = ""
@@ -114,18 +95,13 @@ def main():
         except Exception:
             pass
 
-    blocking_reasons = []
-    for state_file in state_files:
-        reason = check_state_file(state_file, stdin_payload)
-        if reason:
-            blocking_reasons.append(reason)
-
-    if not blocking_reasons:
+    reason = check_task_complete(project_dir, task_dir)
+    if not reason:
         sys.exit(0)
 
-    combined_reason = " ".join(blocking_reasons)
-    print(json.dumps({"decision": "block", "reason": combined_reason}))
+    print(json.dumps({"decision": "block", "reason": reason}))
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

@@ -29,6 +29,7 @@ type cliOptions struct {
 	ReasoningEffort string
 	Agent           string
 	PromptFile      string
+	Skills          string
 	SkipPermissions bool
 	Worktree        bool
 
@@ -134,6 +135,7 @@ func addRootFlags(fs *pflag.FlagSet, opts *cliOptions) {
 	fs.StringVar(&opts.ReasoningEffort, "reasoning-effort", "", "Reasoning effort (backend-specific)")
 	fs.StringVar(&opts.Agent, "agent", "", "Agent preset name (from ~/.codeagent/models.json)")
 	fs.StringVar(&opts.PromptFile, "prompt-file", "", "Prompt file path")
+	fs.StringVar(&opts.Skills, "skills", "", "Comma-separated skill names for spec injection")
 
 	fs.BoolVar(&opts.SkipPermissions, "skip-permissions", false, "Skip permissions prompts (also via CODEAGENT_SKIP_PERMISSIONS)")
 	fs.BoolVar(&opts.SkipPermissions, "dangerously-skip-permissions", false, "Alias for --skip-permissions")
@@ -339,6 +341,16 @@ func buildSingleConfig(cmd *cobra.Command, args []string, rawArgv []string, opts
 		return nil, fmt.Errorf("task required")
 	}
 
+	var skills []string
+	if cmd.Flags().Changed("skills") {
+		for _, s := range strings.Split(opts.Skills, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				skills = append(skills, s)
+			}
+		}
+	}
+
 	cfg := &Config{
 		WorkDir:            defaultWorkdir,
 		Backend:            backendName,
@@ -352,6 +364,7 @@ func buildSingleConfig(cmd *cobra.Command, args []string, rawArgv []string, opts
 		MaxParallelWorkers: config.ResolveMaxParallelWorkers(),
 		AllowedTools:       resolvedAllowedTools,
 		DisallowedTools:    resolvedDisallowedTools,
+		Skills:             skills,
 		Worktree:           opts.Worktree,
 	}
 
@@ -418,7 +431,7 @@ func runParallelMode(cmd *cobra.Command, args []string, opts *cliOptions, v *vip
 		return 1
 	}
 
-	if cmd.Flags().Changed("agent") || cmd.Flags().Changed("prompt-file") || cmd.Flags().Changed("reasoning-effort") {
+	if cmd.Flags().Changed("agent") || cmd.Flags().Changed("prompt-file") || cmd.Flags().Changed("reasoning-effort") || cmd.Flags().Changed("skills") {
 		fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend, --model, --full-output and --skip-permissions are allowed.")
 		return 1
 	}
@@ -583,6 +596,17 @@ func runSingleMode(cfg *Config, name string) int {
 			return 1
 		}
 		taskText = wrapTaskWithAgentPrompt(prompt, taskText)
+	}
+
+	// Resolve skills: explicit > auto-detect from workdir
+	skills := cfg.Skills
+	if len(skills) == 0 {
+		skills = detectProjectSkills(cfg.WorkDir)
+	}
+	if len(skills) > 0 {
+		if content := resolveSkillContent(skills, 0); content != "" {
+			taskText = taskText + "\n\n# Domain Best Practices\n\n" + content
+		}
 	}
 
 	useStdin := cfg.ExplicitStdin || shouldUseStdin(taskText, piped)

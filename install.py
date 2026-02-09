@@ -126,35 +126,44 @@ def save_settings(ctx: Dict[str, Any], settings: Dict[str, Any]) -> None:
     _save_json(settings_path, settings)
 
 
-def find_module_hooks(module_name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Optional[tuple]:
-    """Find hooks.json for a module if it exists.
+def find_module_hooks(module_name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> List[tuple]:
+    """Find all hooks.json files for a module.
 
-    Returns tuple of (hooks_config, plugin_root_path) or None.
+    Returns list of tuples (hooks_config, plugin_root_path).
+    Searches in order for each copy_dir operation:
+    1. {target_dir}/hooks/hooks.json (for skills with hooks subdirectory)
+    2. {target_dir}/hooks.json (for hooks directory itself)
     """
+    results = []
+    seen_paths = set()
+
     # Check for hooks in operations (copy_dir targets)
     for op in cfg.get("operations", []):
         if op.get("type") == "copy_dir":
             target_dir = ctx["install_dir"] / op["target"]
-            hooks_file = target_dir / "hooks" / "hooks.json"
-            if hooks_file.exists():
-                try:
-                    return (_load_json(hooks_file), str(target_dir))
-                except (ValueError, FileNotFoundError):
-                    pass
-
-    # Also check source directory during install
-    for op in cfg.get("operations", []):
-        if op.get("type") == "copy_dir":
-            target_dir = ctx["install_dir"] / op["target"]
             source_dir = ctx["config_dir"] / op["source"]
-            hooks_file = source_dir / "hooks" / "hooks.json"
-            if hooks_file.exists():
-                try:
-                    return (_load_json(hooks_file), str(target_dir))
-                except (ValueError, FileNotFoundError):
-                    pass
 
-    return None
+            # Check both target and source directories
+            for base_dir, plugin_root in [(target_dir, str(target_dir)), (source_dir, str(target_dir))]:
+                # First check {dir}/hooks/hooks.json (for skills)
+                hooks_file = base_dir / "hooks" / "hooks.json"
+                if hooks_file.exists() and str(hooks_file) not in seen_paths:
+                    try:
+                        results.append((_load_json(hooks_file), plugin_root))
+                        seen_paths.add(str(hooks_file))
+                    except (ValueError, FileNotFoundError):
+                        pass
+
+                # Then check {dir}/hooks.json (for hooks directory itself)
+                hooks_file = base_dir / "hooks.json"
+                if hooks_file.exists() and str(hooks_file) not in seen_paths:
+                    try:
+                        results.append((_load_json(hooks_file), plugin_root))
+                        seen_paths.add(str(hooks_file))
+                    except (ValueError, FileNotFoundError):
+                        pass
+
+    return results
 
 
 def _create_hook_marker(module_name: str) -> str:
@@ -799,16 +808,16 @@ def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[
             raise
 
     # Handle hooks: find and merge module hooks into settings.json
-    hooks_result = find_module_hooks(name, cfg, ctx)
-    if hooks_result:
-        hooks_config, plugin_root = hooks_result
-        try:
-            merge_hooks_to_settings(name, hooks_config, ctx, plugin_root)
-            result["operations"].append({"type": "merge_hooks", "status": "success"})
-            result["has_hooks"] = True
-        except Exception as exc:
-            write_log({"level": "WARNING", "message": f"Failed to merge hooks for {name}: {exc}"}, ctx)
-            result["operations"].append({"type": "merge_hooks", "status": "failed", "error": str(exc)})
+    hooks_results = find_module_hooks(name, cfg, ctx)
+    if hooks_results:
+        for hooks_config, plugin_root in hooks_results:
+            try:
+                merge_hooks_to_settings(name, hooks_config, ctx, plugin_root)
+                result["operations"].append({"type": "merge_hooks", "status": "success"})
+                result["has_hooks"] = True
+            except Exception as exc:
+                write_log({"level": "WARNING", "message": f"Failed to merge hooks for {name}: {exc}"}, ctx)
+                result["operations"].append({"type": "merge_hooks", "status": "failed", "error": str(exc)})
 
     return result
 

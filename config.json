@@ -145,6 +145,24 @@
           }
         }
       ]
+    },
+    "claudekit": {
+      "enabled": false,
+      "description": "ClaudeKit workflow: skills/do + global hooks (pre-bash, inject-spec, log-prompt, on-stop)",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/do",
+          "target": "skills/do",
+          "description": "Install do skill with 5-phase workflow"
+        },
+        {
+          "type": "copy_dir",
+          "source": "hooks",
+          "target": "hooks",
+          "description": "Install global hooks (pre-bash, inject-spec, log-prompt, on-stop)"
+        }
+      ]
     }
   }
 }

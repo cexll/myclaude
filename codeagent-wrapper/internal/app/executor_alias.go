@@ -52,3 +52,11 @@ func runCodexProcess(parentCtx context.Context, codexArgs []string, taskText str
 func runCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backend Backend, customArgs []string, useCustomArgs bool, silent bool, timeoutSec int) TaskResult {
 	return executor.RunCodexTaskWithContext(parentCtx, taskSpec, backend, codexCommand, buildCodexArgsFn, customArgs, useCustomArgs, silent, timeoutSec)
 }
+
+func detectProjectSkills(workDir string) []string {
+	return executor.DetectProjectSkills(workDir)
+}
+
+func resolveSkillContent(skills []string, maxBudget int) string {
+	return executor.ResolveSkillContent(skills, maxBudget)
+}

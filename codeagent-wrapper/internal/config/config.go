@@ -26,6 +26,7 @@ type Config struct {
 	MaxParallelWorkers int
 	AllowedTools       []string
 	DisallowedTools    []string
+	Skills             []string
 	Worktree           bool // Execute in a new git worktree
 }
 

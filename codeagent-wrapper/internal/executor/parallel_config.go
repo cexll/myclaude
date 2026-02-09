@@ -88,6 +88,13 @@ func ParseParallelConfig(data []byte) (*ParallelConfig, error) {
 						task.Dependencies = append(task.Dependencies, dep)
 					}
 				}
+			case "skills":
+				for _, s := range strings.Split(value, ",") {
+					s = strings.TrimSpace(s)
+					if s != "" {
+						task.Skills = append(task.Skills, s)
+					}
+				}
 			}
 		}
 
@@ -99,17 +106,17 @@ func ParseParallelConfig(data []byte) (*ParallelConfig, error) {
 			if strings.TrimSpace(task.Agent) == "" {
 				return nil, fmt.Errorf("task block #%d has empty agent field", taskIndex)
 			}
-				if err := config.ValidateAgentName(task.Agent); err != nil {
-					return nil, fmt.Errorf("task block #%d invalid agent name: %w", taskIndex, err)
-				}
-				backend, model, promptFile, reasoning, _, _, _, allowedTools, disallowedTools, err := config.ResolveAgentConfig(task.Agent)
-				if err != nil {
-					return nil, fmt.Errorf("task block #%d failed to resolve agent %q: %w", taskIndex, task.Agent, err)
-				}
-				if task.Backend == "" {
-					task.Backend = backend
-				}
-				if task.Model == "" {
+			if err := config.ValidateAgentName(task.Agent); err != nil {
+				return nil, fmt.Errorf("task block #%d invalid agent name: %w", taskIndex, err)
+			}
+			backend, model, promptFile, reasoning, _, _, _, allowedTools, disallowedTools, err := config.ResolveAgentConfig(task.Agent)
+			if err != nil {
+				return nil, fmt.Errorf("task block #%d failed to resolve agent %q: %w", taskIndex, task.Agent, err)
+			}
+			if task.Backend == "" {
+				task.Backend = backend
+			}
+			if task.Model == "" {
 				task.Model = model
 			}
 			if task.ReasoningEffort == "" {

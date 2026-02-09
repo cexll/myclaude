@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -127,4 +128,117 @@ func ReadAgentPromptFile(path string, allowOutsideClaudeDir bool) (string, error
 
 func WrapTaskWithAgentPrompt(prompt string, task string) string {
 	return "<agent-prompt>\n" + prompt + "\n</agent-prompt>\n\n" + task
+}
+
+// techSkillMap maps file-existence fingerprints to skill names.
+var techSkillMap = []struct {
+	Files  []string // any of these files → this tech
+	Skills []string
+}{
+	{Files: []string{"go.mod", "go.sum"}, Skills: []string{"golang-base-practices"}},
+	{Files: []string{"Cargo.toml"}, Skills: []string{"rust-best-practices"}},
+	{Files: []string{"pyproject.toml", "setup.py", "requirements.txt", "Pipfile"}, Skills: []string{"python-best-practices"}},
+	{Files: []string{"package.json"}, Skills: []string{"vercel-react-best-practices", "frontend-design"}},
+	{Files: []string{"vue.config.js", "vite.config.ts", "nuxt.config.ts"}, Skills: []string{"vue-web-app"}},
+}
+
+// DetectProjectSkills scans workDir for tech-stack fingerprints and returns
+// skill names that are both detected and installed at ~/.claude/skills/{name}/SKILL.md.
+func DetectProjectSkills(workDir string) []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	var detected []string
+	seen := make(map[string]bool)
+	for _, entry := range techSkillMap {
+		for _, f := range entry.Files {
+			if _, err := os.Stat(filepath.Join(workDir, f)); err == nil {
+				for _, skill := range entry.Skills {
+					if seen[skill] {
+						continue
+					}
+					skillPath := filepath.Join(home, ".claude", "skills", skill, "SKILL.md")
+					if _, err := os.Stat(skillPath); err == nil {
+						detected = append(detected, skill)
+						seen[skill] = true
+					}
+				}
+				break // one matching file is enough for this entry
+			}
+		}
+	}
+	return detected
+}
+
+const defaultSkillBudget = 16000 // chars, ~4K tokens
+
+// validSkillName ensures skill names contain only safe characters to prevent path traversal
+var validSkillName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// ResolveSkillContent reads SKILL.md files for the given skill names,
+// strips YAML frontmatter, wraps each in <skill> tags, and enforces a
+// character budget to prevent context bloat.
+func ResolveSkillContent(skills []string, maxBudget int) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	if maxBudget <= 0 {
+		maxBudget = defaultSkillBudget
+	}
+	var sections []string
+	remaining := maxBudget
+	for _, name := range skills {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if !validSkillName.MatchString(name) {
+			logWarn(fmt.Sprintf("skill %q: invalid name (must contain only [a-zA-Z0-9_-]), skipping", name))
+			continue
+		}
+		path := filepath.Join(home, ".claude", "skills", name, "SKILL.md")
+		data, err := os.ReadFile(path)
+		if err != nil || len(data) == 0 {
+			logWarn(fmt.Sprintf("skill %q: SKILL.md not found or empty, skipping", name))
+			continue
+		}
+		body := stripYAMLFrontmatter(strings.TrimSpace(string(data)))
+		tagOverhead := len("<skill name=\"\">") + len(name) + len("\n") + len("\n</skill>")
+		bodyBudget := remaining - tagOverhead
+		if bodyBudget <= 0 {
+			logWarn(fmt.Sprintf("skill %q: skipped, insufficient budget for tags", name))
+			break
+		}
+		if len(body) > bodyBudget {
+			logWarn(fmt.Sprintf("skill %q: truncated from %d to %d chars (budget)", name, len(body), bodyBudget))
+			body = body[:bodyBudget]
+		}
+		remaining -= len(body) + tagOverhead
+		sections = append(sections, "<skill name=\""+name+"\">\n"+body+"\n</skill>")
+		if remaining <= 0 {
+			break
+		}
+	}
+	if len(sections) == 0 {
+		return ""
+	}
+	return strings.Join(sections, "\n\n")
+}
+
+func stripYAMLFrontmatter(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	if !strings.HasPrefix(s, "---") {
+		return s
+	}
+	idx := strings.Index(s[3:], "\n---")
+	if idx < 0 {
+		return s
+	}
+	result := s[3+idx+4:]
+	if len(result) > 0 && result[0] == '\n' {
+		result = result[1:]
+	}
+	return strings.TrimSpace(result)
 }

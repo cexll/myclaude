@@ -52,7 +52,7 @@ To customize agents, create same-named files in `~/.codeagent/agents/` to overri
 3. **Phase 4 requires approval** - stop after Phase 3 if not approved
 4. **Pass complete context forward** - every agent gets the Context Pack
 5. **Parallel-first** - run independent tasks via `codeagent-wrapper --parallel`
-6. **Update state after each phase** - keep `.claude/do.{task_id}.local.md` current
+6. **Update state after each phase** - keep `.claude/do-tasks/{task_id}/task.json` current
 
 ## Context Pack Template
 
@@ -78,16 +78,34 @@ To customize agents, create same-named files in `~/.codeagent/agents/` to overri
 
 ## Loop State Management
 
-When triggered via `/do <task>`, initializes `.claude/do.{task_id}.local.md` with:
-- `active: true`
-- `current_phase: 1`
-- `max_phases: 5`
-- `completion_promise: "<promise>DO_COMPLETE</promise>"`
-
-After each phase, update frontmatter:
+When triggered via `/do <task>`, initializes `.claude/do-tasks/{task_id}/task.md` with YAML frontmatter:
 ```yaml
-current_phase: <next phase number>
-phase_name: "<next phase name>"
+---
+id: "<task_id>"
+title: "<task description>"
+status: "in_progress"
+current_phase: 1
+phase_name: "Understand"
+max_phases: 5
+use_worktree: false
+created_at: "<ISO timestamp>"
+completion_promise: "<promise>DO_COMPLETE</promise>"
+---
+
+# Requirements
+
+<task description>
+
+## Context
+
+## Progress
+```
+
+The current task is tracked in `.claude/do-tasks/.current-task`.
+
+After each phase, update `task.md` frontmatter via:
+```bash
+python3 ".claude/skills/do/scripts/task.py" update-phase <N>
 ```
 
 When all 5 phases complete, output:
@@ -95,17 +113,17 @@ When all 5 phases complete, output:
 <promise>DO_COMPLETE</promise>
 ```
 
-To abort early, set `active: false` in the state file.
+To abort early, manually edit `task.md` and set `status: "cancelled"` in the frontmatter.
 
 ## Stop Hook
 
 A Stop hook is registered after installation:
-1. Creates `.claude/do.{task_id}.local.md` state file
-2. Updates `current_phase` after each phase
+1. Creates `.claude/do-tasks/{task_id}/task.md` state file
+2. Updates `current_phase` in frontmatter after each phase
 3. Stop hook checks state, blocks exit if incomplete
 4. Outputs `<promise>DO_COMPLETE</promise>` when finished
 
-Manual exit: Set `active` to `false` in the state file.
+Manual exit: Edit `task.md` and set `status: "cancelled"` in the frontmatter.
 
 ## Parallel Execution Examples
 

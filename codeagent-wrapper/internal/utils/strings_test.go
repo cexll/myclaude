@@ -19,7 +19,7 @@ func TestTruncate(t *testing.T) {
 		{"zero maxLen", "hello", 0, "..."},
 		{"negative maxLen", "hello", -1, ""},
 		{"maxLen 1", "hello", 1, "h..."},
-		{"unicode bytes truncate", "你好世界", 10, "你好世\xe7..."},  // Truncate works on bytes, not runes
+		{"unicode bytes truncate", "你好世界", 10, "你好世\xe7..."},    // Truncate works on bytes, not runes
 		{"mixed truncate", "hello世界abc", 7, "hello\xe4\xb8..."}, // byte-based truncation
 	}
 

@@ -24,6 +24,7 @@ type TaskSpec struct {
 	Worktree        bool            `json:"worktree,omitempty"`
 	AllowedTools    []string        `json:"allowed_tools,omitempty"`
 	DisallowedTools []string        `json:"disallowed_tools,omitempty"`
+	Skills          []string        `json:"skills,omitempty"`
 	Mode            string          `json:"-"`
 	UseStdin        bool            `json:"-"`
 	Context         context.Context `json:"-"`

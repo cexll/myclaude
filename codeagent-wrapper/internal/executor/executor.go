@@ -337,6 +337,16 @@ func DefaultRunCodexTaskFn(task TaskSpec, timeout int) TaskResult {
 		}
 		task.Task = WrapTaskWithAgentPrompt(prompt, task.Task)
 	}
+	// Resolve skills: explicit > auto-detect from workdir
+	skills := task.Skills
+	if len(skills) == 0 {
+		skills = DetectProjectSkills(task.WorkDir)
+	}
+	if len(skills) > 0 {
+		if content := ResolveSkillContent(skills, 0); content != "" {
+			task.Task = task.Task + "\n\n# Domain Best Practices\n\n" + content
+		}
+	}
 	if task.UseStdin || ShouldUseStdin(task.Task, false) {
 		task.UseStdin = true
 	}
