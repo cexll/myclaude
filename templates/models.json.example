@@ -1,0 +1,52 @@
+{
+  "default_backend": "codex",
+  "default_model": "gpt-5.2",
+  "backends": {
+    "codex": { "api_key": "" },
+    "claude": { "api_key": "" },
+    "gemini": { "api_key": "" },
+    "opencode": { "api_key": "" }
+  },
+  "agents": {
+    "develop": {
+      "backend": "codex",
+      "model": "gpt-5.2",
+      "reasoning": "xhigh",
+      "yolo": true
+    },
+    "code-explorer": {
+      "backend": "opencode",
+      "model": ""
+    },
+    "code-architect": {
+      "backend": "claude",
+      "model": ""
+    },
+    "code-reviewer": {
+      "backend": "claude",
+      "model": ""
+    },
+    "oracle": {
+      "backend": "claude",
+      "model": "claude-opus-4-5-20251101",
+      "yolo": true
+    },
+    "librarian": {
+      "backend": "claude",
+      "model": "claude-sonnet-4-5-20250929",
+      "yolo": true
+    },
+    "explore": {
+      "backend": "opencode",
+      "model": "opencode/grok-code"
+    },
+    "frontend-ui-ux-engineer": {
+      "backend": "gemini",
+      "model": "gemini-3-pro-preview"
+    },
+    "document-writer": {
+      "backend": "gemini",
+      "model": "gemini-3-flash-preview"
+    }
+  }
+}

@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.7.0] - 2026-02-10
+
+### 🚀 Features
+
+- feat(install): per-module agent merge/unmerge for ~/.codeagent/models.json
+- feat(install): post-install verification (wrapper version, PATH, backend CLIs)
+- feat(install): install CLAUDE.md by default
+- feat(docs): document 9 skills, 11 commands, claudekit module, OpenCode backend
+
+### 🐛 Bug Fixes
+
+- fix(docs): correct 7-phase → 5-phase for do skill across all docs
+- fix(install): best-effort default config install (never crashes main flow)
+- fix(install): interactive quit no longer triggers post-install actions
+- fix(install): empty parent directory cleanup on copy_file uninstall
+- fix(install): agent restore on uninstall when shared by multiple modules
+- fix(docs): remove non-existent on-stop hook references
+
+### 📚 Documentation
+
+- Updated USER_GUIDE.md with 13 CLI flags and OpenCode backend
+- Updated README.md/README_CN.md with complete module and skill listings
+- Added templates/models.json.example with all agent presets (do + omo)
+
+## [6.6.0] - 2026-02-10
+
+### 🚀 Features
+
+- feat(skills): add per-task skill spec auto-detection and injection
+- feat: add worktree support and refactor do skill to Python
+
+### 🐛 Bug Fixes
+
+- fix(test): set USERPROFILE on Windows for skills tests
+- fix(do): reuse worktree across phases via DO_WORKTREE_DIR env var
+- fix(release): auto-generate release notes from git history
+
+### 📚 Documentation
+
+- audit and fix documentation, installation scripts, and default configuration
+
 ## [6.0.0] - 2026-01-26
 
 ### 🚀 Features

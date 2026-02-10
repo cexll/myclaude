@@ -244,6 +244,112 @@ def unmerge_hooks_from_settings(module_name: str, ctx: Dict[str, Any]) -> None:
         write_log({"level": "INFO", "message": f"Removed hooks for module: {module_name}"}, ctx)
 
 
+def merge_agents_to_models(module_name: str, agents: Dict[str, Any], ctx: Dict[str, Any]) -> None:
+    """Merge module agent configs into ~/.codeagent/models.json."""
+    models_path = Path.home() / ".codeagent" / "models.json"
+    models_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if models_path.exists():
+        with models_path.open("r", encoding="utf-8") as fh:
+            models = json.load(fh)
+    else:
+        template = ctx["config_dir"] / "templates" / "models.json.example"
+        if template.exists():
+            with template.open("r", encoding="utf-8") as fh:
+                models = json.load(fh)
+            # Clear template agents so modules populate with __module__ tags
+            models["agents"] = {}
+        else:
+            models = {
+                "default_backend": "codex",
+                "default_model": "gpt-4.1",
+                "backends": {},
+                "agents": {},
+            }
+
+    models.setdefault("agents", {})
+    for agent_name, agent_cfg in agents.items():
+        entry = dict(agent_cfg)
+        entry["__module__"] = module_name
+
+        existing = models["agents"].get(agent_name, {})
+        if not existing or existing.get("__module__"):
+            models["agents"][agent_name] = entry
+
+    with models_path.open("w", encoding="utf-8") as fh:
+        json.dump(models, fh, indent=2, ensure_ascii=False)
+
+    write_log(
+        {
+            "level": "INFO",
+            "message": (
+                f"Merged {len(agents)} agent(s) from {module_name} "
+                "into models.json"
+            ),
+        },
+        ctx,
+    )
+
+
+def unmerge_agents_from_models(module_name: str, ctx: Dict[str, Any]) -> None:
+    """Remove module's agent configs from ~/.codeagent/models.json.
+
+    If another installed module also declares a removed agent, restore that
+    module's version so shared agents (e.g. 'develop') are not lost.
+    """
+    models_path = Path.home() / ".codeagent" / "models.json"
+    if not models_path.exists():
+        return
+
+    with models_path.open("r", encoding="utf-8") as fh:
+        models = json.load(fh)
+
+    agents = models.get("agents", {})
+    to_remove = [
+        name
+        for name, cfg in agents.items()
+        if isinstance(cfg, dict) and cfg.get("__module__") == module_name
+    ]
+
+    if not to_remove:
+        return
+
+    # Load config to find other modules that declare the same agents
+    config_path = ctx["config_dir"] / "config.json"
+    config = _load_json(config_path) if config_path.exists() else {}
+    installed = load_installed_status(ctx).get("modules", {})
+
+    for name in to_remove:
+        del agents[name]
+        # Check if another installed module also declares this agent
+        for other_mod, other_status in installed.items():
+            if other_mod == module_name:
+                continue
+            if other_status.get("status") != "success":
+                continue
+            other_cfg = config.get("modules", {}).get(other_mod, {})
+            other_agents = other_cfg.get("agents", {})
+            if name in other_agents:
+                restored = dict(other_agents[name])
+                restored["__module__"] = other_mod
+                agents[name] = restored
+                break
+
+    with models_path.open("w", encoding="utf-8") as fh:
+        json.dump(models, fh, indent=2, ensure_ascii=False)
+
+    write_log(
+        {
+            "level": "INFO",
+            "message": (
+                f"Removed {len(to_remove)} agent(s) from {module_name} "
+                "in models.json"
+            ),
+        },
+        ctx,
+    )
+
+
 def _hooks_equal(hook1: Dict[str, Any], hook2: Dict[str, Any]) -> bool:
     """Compare two hooks ignoring the __module__ marker."""
     h1 = {k: v for k, v in hook1.items() if k != "__module__"}
@@ -545,6 +651,14 @@ def uninstall_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dic
                         target.unlink()
                     removed_paths.append(str(target))
                     write_log({"level": "INFO", "message": f"Removed: {target}"}, ctx)
+                    # Clean up empty parent directories up to install_dir
+                    parent = target.parent
+                    while parent != install_dir and parent.exists():
+                        try:
+                            parent.rmdir()
+                        except OSError:
+                            break
+                        parent = parent.parent
             elif op_type == "merge_dir":
                 if not merge_dir_files:
                     write_log(
@@ -604,6 +718,13 @@ def uninstall_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dic
     except Exception as exc:
         write_log({"level": "WARNING", "message": f"Failed to remove hooks for {name}: {exc}"}, ctx)
 
+    # Remove module agents from ~/.codeagent/models.json
+    try:
+        unmerge_agents_from_models(name, ctx)
+        result["agents_removed"] = True
+    except Exception as exc:
+        write_log({"level": "WARNING", "message": f"Failed to remove agents for {name}: {exc}"}, ctx)
+
     result["removed_paths"] = removed_paths
     return result
 
@@ -626,7 +747,9 @@ def update_status_after_uninstall(uninstalled_modules: List[str], ctx: Dict[str,
 
 
 def interactive_manage(config: Dict[str, Any], ctx: Dict[str, Any]) -> int:
-    """Interactive module management menu."""
+    """Interactive module management menu. Returns 0 on success, 1 on error.
+    Sets ctx['_did_install'] = True if any module was installed."""
+    ctx.setdefault("_did_install", False)
     while True:
         installed_status = get_installed_modules(config, ctx)
         modules = config.get("modules", {})
@@ -695,6 +818,7 @@ def interactive_manage(config: Dict[str, Any], ctx: Dict[str, Any]) -> int:
                 for r in results:
                     if r.get("status") == "success":
                         current_status.setdefault("modules", {})[r["module"]] = r
+                        ctx["_did_install"] = True
                 current_status["updated_at"] = datetime.now().isoformat()
                 with Path(ctx["status_file"]).open("w", encoding="utf-8") as fh:
                     json.dump(current_status, fh, indent=2, ensure_ascii=False)
@@ -818,6 +942,17 @@ def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[
             except Exception as exc:
                 write_log({"level": "WARNING", "message": f"Failed to merge hooks for {name}: {exc}"}, ctx)
                 result["operations"].append({"type": "merge_hooks", "status": "failed", "error": str(exc)})
+
+    # Handle agents: merge module agent configs into ~/.codeagent/models.json
+    module_agents = cfg.get("agents", {})
+    if module_agents:
+        try:
+            merge_agents_to_models(name, module_agents, ctx)
+            result["operations"].append({"type": "merge_agents", "status": "success"})
+            result["has_agents"] = True
+        except Exception as exc:
+            write_log({"level": "WARNING", "message": f"Failed to merge agents for {name}: {exc}"}, ctx)
+            result["operations"].append({"type": "merge_agents", "status": "failed", "error": str(exc)})
 
     return result
 
@@ -1060,6 +1195,67 @@ def write_status(results: List[Dict[str, Any]], ctx: Dict[str, Any]) -> None:
         json.dump(status, fh, indent=2, ensure_ascii=False)
 
 
+def install_default_configs(ctx: Dict[str, Any]) -> None:
+    """Copy default config files if they don't already exist. Best-effort: never raises."""
+    try:
+        install_dir = ctx["install_dir"]
+        config_dir = ctx["config_dir"]
+
+        # Copy memorys/CLAUDE.md -> {install_dir}/CLAUDE.md
+        claude_md_src = config_dir / "memorys" / "CLAUDE.md"
+        claude_md_dst = install_dir / "CLAUDE.md"
+        if not claude_md_dst.exists() and claude_md_src.exists():
+            shutil.copy2(claude_md_src, claude_md_dst)
+            print(f"  Installed CLAUDE.md to {claude_md_dst}")
+            write_log({"level": "INFO", "message": f"Installed CLAUDE.md to {claude_md_dst}"}, ctx)
+    except Exception as exc:
+        print(f"  Warning: could not install default configs: {exc}", file=sys.stderr)
+
+
+def print_post_install_info(ctx: Dict[str, Any]) -> None:
+    """Print post-install verification and setup guidance."""
+    install_dir = ctx["install_dir"]
+
+    # Check codeagent-wrapper version
+    wrapper_bin = install_dir / "bin" / "codeagent-wrapper"
+    wrapper_version = None
+    try:
+        result = subprocess.run(
+            [str(wrapper_bin), "--version"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            wrapper_version = result.stdout.strip()
+    except Exception:
+        pass
+
+    # Check PATH
+    bin_dir = str(install_dir / "bin")
+    env_path = os.environ.get("PATH", "")
+    path_ok = any(
+        os.path.realpath(p) == os.path.realpath(bin_dir)
+        if os.path.exists(p) else p == bin_dir
+        for p in env_path.split(os.pathsep)
+    )
+
+    # Check backend CLIs
+    backends = ["codex", "claude", "gemini", "opencode"]
+    detected = {name: shutil.which(name) is not None for name in backends}
+
+    print("\nSetup Complete!")
+    v_mark = "✓" if wrapper_version else "✗"
+    print(f"  codeagent-wrapper: {wrapper_version or '(not found)'} {v_mark}")
+    p_mark = "✓" if path_ok else "✗ (not in PATH)"
+    print(f"  PATH: {bin_dir} {p_mark}")
+    print("\nBackend CLIs detected:")
+    cli_parts = [f"{b} {'✓' if detected[b] else '✗'}" for b in backends]
+    print("  " + "  |  ".join(cli_parts))
+    print("\nNext steps:")
+    print("  1. Configure API keys in ~/.codeagent/models.json")
+    print('  2. Try: /do "your first task"')
+    print()
+
+
 def prepare_status_backup(ctx: Dict[str, Any]) -> None:
     status_path = Path(ctx["status_file"])
     if status_path.exists():
@@ -1208,6 +1404,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         failed = len(results) - success
         if failed == 0:
             print(f"\n✓ Update complete: {success} module(s) updated")
+            install_default_configs(ctx)
+            print_post_install_info(ctx)
         else:
             print(f"\n⚠ Update finished with errors: {success} success, {failed} failed")
             if not args.force:
@@ -1221,7 +1419,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         except Exception as exc:
             print(f"Failed to prepare install dir: {exc}", file=sys.stderr)
             return 1
-        return interactive_manage(config, ctx)
+        result = interactive_manage(config, ctx)
+        if result == 0 and ctx.get("_did_install"):
+            install_default_configs(ctx)
+            print_post_install_info(ctx)
+        return result
 
     # Install specified modules
     modules = select_modules(config, args.module)
@@ -1279,6 +1481,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         print(f"  Check log file for details: {ctx['log_file']}")
         if not args.force:
             return 1
+
+    if failed == 0:
+        install_default_configs(ctx)
+        print_post_install_info(ctx)
 
     return 0
 

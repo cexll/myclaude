@@ -8,7 +8,7 @@ const os = require("os");
 const path = require("path");
 const readline = require("readline");
 const zlib = require("zlib");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const REPO = { owner: "cexll", name: "myclaude" };
 const API_HEADERS = {
@@ -931,6 +931,63 @@ async function uninstallModule(moduleName, config, repoRoot, installDir, dryRun)
   deleteModuleStatus(installDir, moduleName);
 }
 
+async function installDefaultConfigs(installDir, repoRoot) {
+  try {
+    const claudeMdTarget = path.join(installDir, "CLAUDE.md");
+    const claudeMdSrc = path.join(repoRoot, "memorys", "CLAUDE.md");
+    if (!fs.existsSync(claudeMdTarget) && fs.existsSync(claudeMdSrc)) {
+      await fs.promises.copyFile(claudeMdSrc, claudeMdTarget);
+      process.stdout.write(`Installed CLAUDE.md to ${claudeMdTarget}\n`);
+    }
+  } catch (err) {
+    process.stderr.write(`Warning: could not install default configs: ${err.message}\n`);
+  }
+}
+
+function printPostInstallInfo(installDir) {
+  process.stdout.write("\n");
+
+  // Check codeagent-wrapper version
+  const wrapperBin = path.join(installDir, "bin", "codeagent-wrapper");
+  let wrapperVersion = null;
+  try {
+    const r = spawnSync(wrapperBin, ["--version"], { timeout: 5000 });
+    if (r.status === 0 && r.stdout) {
+      wrapperVersion = r.stdout.toString().trim();
+    }
+  } catch {}
+
+  // Check PATH
+  const binDir = path.join(installDir, "bin");
+  const envPath = process.env.PATH || "";
+  const pathOk = envPath.split(path.delimiter).some((p) => {
+    try { return fs.realpathSync(p) === fs.realpathSync(binDir); } catch { return p === binDir; }
+  });
+
+  // Check backend CLIs
+  const whichCmd = process.platform === "win32" ? "where" : "which";
+  const backends = ["codex", "claude", "gemini", "opencode"];
+  const detected = {};
+  for (const name of backends) {
+    try {
+      const r = spawnSync(whichCmd, [name], { timeout: 3000 });
+      detected[name] = r.status === 0;
+    } catch {
+      detected[name] = false;
+    }
+  }
+
+  process.stdout.write("Setup Complete!\n");
+  process.stdout.write(`  codeagent-wrapper: ${wrapperVersion || "(not found)"} ${wrapperVersion ? "✓" : "✗"}\n`);
+  process.stdout.write(`  PATH: ${binDir} ${pathOk ? "✓" : "✗ (not in PATH)"}\n`);
+  process.stdout.write("\nBackend CLIs detected:\n");
+  process.stdout.write("  " + backends.map((b) => `${b} ${detected[b] ? "✓" : "✗"}`).join("  |  ") + "\n");
+  process.stdout.write("\nNext steps:\n");
+  process.stdout.write("  1. Configure API keys in ~/.codeagent/models.json\n");
+  process.stdout.write('  2. Try: /do "your first task"\n');
+  process.stdout.write("\n");
+}
+
 async function installSelected(picks, tag, config, installDir, force, dryRun) {
   const needRepo = picks.some((p) => p.kind !== "wrapper");
   const needWrapper = picks.some((p) => p.kind === "wrapper");
@@ -985,6 +1042,9 @@ async function installSelected(picks, tag, config, installDir, force, dryRun) {
         );
       }
     }
+
+    await installDefaultConfigs(installDir, repoRoot);
+    printPostInstallInfo(installDir);
   } finally {
     await rmTree(tmp);
   }

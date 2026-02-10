@@ -1,6 +1,6 @@
 {
   "name": "myclaude",
-  "version": "0.0.0",
+  "version": "6.7.0",
   "private": true,
   "description": "Claude Code multi-agent workflows (npx installer)",
   "license": "AGPL-3.0",
@@ -13,6 +13,7 @@
     "agents/",
     "skills/",
     "memorys/",
+    "templates/",
     "codeagent-wrapper/",
     "config.json",
     "install.py",

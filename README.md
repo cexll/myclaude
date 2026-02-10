@@ -19,13 +19,30 @@ npx github:cexll/myclaude
 
 | Module | Description | Documentation |
 |--------|-------------|---------------|
-| [do](skills/do/README.md) | **Recommended** - 7-phase feature development with codeagent orchestration | `/do` command |
+| [do](skills/do/README.md) | **Recommended** - 5-phase feature development with codeagent orchestration | `/do` command |
 | [omo](skills/omo/README.md) | Multi-agent orchestration with intelligent routing | `/omo` command |
 | [bmad](agents/bmad/README.md) | BMAD agile workflow with 6 specialized agents | `/bmad-pilot` command |
 | [requirements](agents/requirements/README.md) | Lightweight requirements-to-code pipeline | `/requirements-pilot` command |
-| [essentials](agents/development-essentials/README.md) | Core development commands and utilities | `/code`, `/debug`, etc. |
+| [essentials](agents/development-essentials/README.md) | 11 core dev commands: ask, bugfix, code, debug, docs, enhance-prompt, optimize, refactor, review, test, think | `/code`, `/debug`, etc. |
 | [sparv](skills/sparv/README.md) | SPARV workflow (Specify→Plan→Act→Review→Vault) | `/sparv` command |
 | course | Course development (combines dev + product-requirements + test-cases) | Composite module |
+| claudekit | ClaudeKit: do skill + global hooks (pre-bash, inject-spec, log-prompt) | Composite module |
+
+### Available Skills
+
+Individual skills can be installed separately via `npx github:cexll/myclaude --list` (skills bundled in modules like do, omo, sparv are listed above):
+
+| Skill | Description |
+|-------|-------------|
+| browser | Browser automation for web testing and data extraction |
+| codeagent | codeagent-wrapper invocation for multi-backend AI code tasks |
+| codex | Direct Codex backend execution |
+| dev | Lightweight end-to-end development workflow |
+| gemini | Direct Gemini backend execution |
+| product-requirements | Interactive PRD generation with quality scoring |
+| prototype-prompt-generator | Structured UI/UX prototype prompt generation |
+| skill-install | Install skills from GitHub with security scanning |
+| test-cases | Comprehensive test case generation from requirements |
 
 ## Installation
 
@@ -87,17 +104,20 @@ Edit `config.json` to enable/disable modules:
 | Codex | `codex e`, `--json`, `-C`, `resume` |
 | Claude | `--output-format stream-json`, `-r` |
 | Gemini | `-o stream-json`, `-y`, `-r` |
+| OpenCode | `opencode`, stdin mode |
 
 ## Directory Structure After Installation
 
 ```
 ~/.claude/
 ├── bin/codeagent-wrapper
-├── CLAUDE.md
-├── commands/
-├── agents/
-├── skills/
-└── config.json
+├── CLAUDE.md              (installed by default)
+├── commands/              (from essentials module)
+├── agents/                (from bmad/requirements modules)
+├── skills/                (from do/omo/sparv/course modules)
+├── hooks/                 (from claudekit module)
+├── settings.json          (auto-generated, hooks config)
+└── installed_modules.json (auto-generated, tracks modules)
 ```
 
 ## Documentation

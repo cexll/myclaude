@@ -16,13 +16,30 @@ npx github:cexll/myclaude
 
 | 模块 | 描述 | 文档 |
 |------|------|------|
-| [do](skills/do/README.md) | **推荐** - 7 阶段功能开发 + codeagent 编排 | `/do` 命令 |
+| [do](skills/do/README.md) | **推荐** - 5 阶段功能开发 + codeagent 编排 | `/do` 命令 |
 | [omo](skills/omo/README.md) | 多智能体编排 + 智能路由 | `/omo` 命令 |
 | [bmad](agents/bmad/README.md) | BMAD 敏捷工作流 + 6 个专业智能体 | `/bmad-pilot` 命令 |
 | [requirements](agents/requirements/README.md) | 轻量级需求到代码流水线 | `/requirements-pilot` 命令 |
-| [essentials](agents/development-essentials/README.md) | 核心开发命令和工具 | `/code`, `/debug` 等 |
+| [essentials](agents/development-essentials/README.md) | 11 个核心开发命令：ask、bugfix、code、debug、docs、enhance-prompt、optimize、refactor、review、test、think | `/code`, `/debug` 等 |
 | [sparv](skills/sparv/README.md) | SPARV 工作流 (Specify→Plan→Act→Review→Vault) | `/sparv` 命令 |
 | course | 课程开发（组合 dev + product-requirements + test-cases） | 组合模块 |
+| claudekit | ClaudeKit：do 技能 + 全局钩子（pre-bash、inject-spec、log-prompt）| 组合模块 |
+
+### 可用技能
+
+可通过 `npx github:cexll/myclaude --list` 单独安装技能（模块内置技能如 do、omo、sparv 见上表）：
+
+| 技能 | 描述 |
+|------|------|
+| browser | 浏览器自动化测试和数据提取 |
+| codeagent | codeagent-wrapper 多后端 AI 代码任务调用 |
+| codex | Codex 后端直接执行 |
+| dev | 轻量级端到端开发工作流 |
+| gemini | Gemini 后端直接执行 |
+| product-requirements | 交互式 PRD 生成（含质量评分）|
+| prototype-prompt-generator | 结构化 UI/UX 原型提示词生成 |
+| skill-install | 从 GitHub 安装技能（含安全扫描）|
+| test-cases | 从需求生成全面测试用例 |
 
 ## 核心架构
 
@@ -35,22 +52,20 @@ npx github:cexll/myclaude
 
 ### do 工作流（推荐）
 
-7 阶段功能开发，通过 codeagent-wrapper 编排多个智能体。**大多数功能开发任务的首选工作流。**
+5 阶段功能开发，通过 codeagent-wrapper 编排多个智能体。**大多数功能开发任务的首选工作流。**
 
 ```bash
 /do "添加用户登录功能"
 ```
 
-**7 阶段：**
+**5 阶段：**
 | 阶段 | 名称 | 目标 |
 |------|------|------|
-| 1 | Discovery | 理解需求 |
-| 2 | Exploration | 映射代码库模式 |
-| 3 | Clarification | 解决歧义（**强制**）|
-| 4 | Architecture | 设计实现方案 |
-| 5 | Implementation | 构建功能（**需审批**）|
-| 6 | Review | 捕获缺陷 |
-| 7 | Summary | 记录结果 |
+| 1 | Understand | 并行探索理解需求和映射代码库 |
+| 2 | Clarify | 解决阻塞性歧义（条件触发）|
+| 3 | Design | 产出最小变更实现方案 |
+| 4 | Implement + Review | 构建功能并审查 |
+| 5 | Complete | 记录构建结果 |
 
 **智能体：**
 - `code-explorer` - 代码追踪、架构映射
@@ -162,6 +177,10 @@ npx github:cexll/myclaude
 | `/optimize` | 性能优化 |
 | `/refactor` | 代码重构 |
 | `/docs` | 编写文档 |
+| `/ask` | 提问和咨询 |
+| `/bugfix` | Bug 修复 |
+| `/enhance-prompt` | 提示词优化 |
+| `/think` | 深度思考分析 |
 
 ---
 
@@ -218,6 +237,7 @@ npx github:cexll/myclaude --install-dir ~/.claude --force
 | Codex | `codex e`, `--json`, `-C`, `resume` |
 | Claude | `--output-format stream-json`, `-r` |
 | Gemini | `-o stream-json`, `-y`, `-r` |
+| OpenCode | `opencode`, stdin 模式 |
 
 ## 故障排查
 

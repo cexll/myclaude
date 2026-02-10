@@ -39,6 +39,36 @@
     "omo": {
       "enabled": false,
       "description": "OmO multi-agent orchestration with Sisyphus coordinator",
+      "agents": {
+        "oracle": {
+          "backend": "claude",
+          "model": "claude-opus-4-5-20251101",
+          "yolo": true
+        },
+        "librarian": {
+          "backend": "claude",
+          "model": "claude-sonnet-4-5-20250929",
+          "yolo": true
+        },
+        "explore": {
+          "backend": "opencode",
+          "model": "opencode/grok-code"
+        },
+        "develop": {
+          "backend": "codex",
+          "model": "gpt-5.2",
+          "reasoning": "xhigh",
+          "yolo": true
+        },
+        "frontend-ui-ux-engineer": {
+          "backend": "gemini",
+          "model": "gemini-3-pro-preview"
+        },
+        "document-writer": {
+          "backend": "gemini",
+          "model": "gemini-3-flash-preview"
+        }
+      },
       "operations": [
         {
           "type": "copy_file",
@@ -98,7 +128,27 @@
     },
     "do": {
       "enabled": true,
-      "description": "7-phase feature development workflow with codeagent orchestration",
+      "description": "5-phase feature development workflow with codeagent orchestration",
+      "agents": {
+        "develop": {
+          "backend": "codex",
+          "model": "gpt-4.1",
+          "reasoning": "high",
+          "yolo": true
+        },
+        "code-explorer": {
+          "backend": "opencode",
+          "model": ""
+        },
+        "code-architect": {
+          "backend": "claude",
+          "model": ""
+        },
+        "code-reviewer": {
+          "backend": "claude",
+          "model": ""
+        }
+      },
       "operations": [
         {
           "type": "copy_dir",
@@ -148,7 +198,7 @@
     },
     "claudekit": {
       "enabled": false,
-      "description": "ClaudeKit workflow: skills/do + global hooks (pre-bash, inject-spec, log-prompt, on-stop)",
+      "description": "ClaudeKit workflow: skills/do + global hooks (pre-bash, inject-spec, log-prompt)",
       "operations": [
         {
           "type": "copy_dir",
@@ -160,7 +210,7 @@
           "type": "copy_dir",
           "source": "hooks",
           "target": "hooks",
-          "description": "Install global hooks (pre-bash, inject-spec, log-prompt, on-stop)"
+          "description": "Install global hooks (pre-bash, inject-spec, log-prompt)"
         }
       ]
     }

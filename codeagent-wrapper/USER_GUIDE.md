@@ -1,11 +1,11 @@
 # Codeagent-Wrapper User Guide
 
-Multi-backend AI code execution wrapper supporting Codex, Claude, and Gemini.
+Multi-backend AI code execution wrapper supporting Codex, Claude, Gemini, and OpenCode.
 
 ## Overview
 
 `codeagent-wrapper` is a Go-based CLI tool that provides a unified interface to multiple AI coding backends. It handles:
-- Multi-backend execution (Codex, Claude, Gemini)
+- Multi-backend execution (Codex, Claude, Gemini, OpenCode)
 - JSON stream parsing and output formatting
 - Session management and resumption
 - Parallel task execution with dependency resolution
@@ -42,6 +42,24 @@ Implement user authentication:
 EOF
 ```
 
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--backend <name>` | Select backend (codex/claude/gemini/opencode) |
+| `--model <name>` | Override model for this invocation |
+| `--agent <name>` | Agent preset name (from ~/.codeagent/models.json) |
+| `--config <path>` | Path to models.json config file |
+| `--cleanup` | Clean up log files on startup |
+| `--worktree` | Execute in a new git worktree (auto-generates task ID) |
+| `--skills <names>` | Comma-separated skill names for spec injection |
+| `--prompt-file <path>` | Read prompt from file |
+| `--reasoning-effort <level>` | Set reasoning effort (low/medium/high) |
+| `--skip-permissions` | Skip permission prompts |
+| `--parallel` | Enable parallel task execution |
+| `--full-output` | Show full output in parallel mode |
+| `--version`, `-v` | Print version and exit |
+
 ### Backend Selection
 
 | Backend | Command | Best For |
@@ -49,6 +67,7 @@ EOF
 | **Codex** | `--backend codex` | General code tasks (default) |
 | **Claude** | `--backend claude` | Complex reasoning, architecture |
 | **Gemini** | `--backend gemini` | Fast iteration, prototyping |
+| **OpenCode** | `--backend opencode` | Open-source alternative |
 
 ## Core Features
 
