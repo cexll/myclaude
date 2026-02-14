@@ -10,30 +10,16 @@ An orchestrator for systematic feature development. Invoke agents via `codeagent
 
 ## Loop Initialization (REQUIRED)
 
-When triggered via `/do <task>`, follow these steps:
-
-### Step 1: Ask about worktree mode
-
-Use AskUserQuestion to ask:
-
-```
-Develop in a separate worktree? (Isolates changes from main branch)
-- Yes (Recommended for larger changes)
-- No (Work directly in current directory)
-```
-
-### Step 2: Initialize task directory
+When triggered via `/do <task>`, initialize the task directory immediately without asking about worktree:
 
 ```bash
-# If worktree mode selected:
-python3 ".claude/skills/do/scripts/setup-do.py" --worktree "<task description>"
-
-# If no worktree:
 python3 ".claude/skills/do/scripts/setup-do.py" "<task description>"
 ```
 
 This creates a task directory under `.claude/do-tasks/` with:
 - `task.md`: Single file containing YAML frontmatter (metadata) + Markdown body (requirements/context)
+
+**Worktree decision is deferred until Phase 4 (Implement).** Phases 1-3 are read-only and do not require worktree isolation.
 
 ## Task Directory Management
 
@@ -52,15 +38,23 @@ python3 ".claude/skills/do/scripts/task.py" list
 
 ## Worktree Mode
 
-When worktree mode is enabled in task.json, ALL `codeagent-wrapper` calls that modify code MUST include `--worktree`:
+The worktree is created **only when needed** (right before Phase 4: Implement). If the user chooses worktree mode:
+
+1. Run setup with `--worktree` flag to create the worktree:
+   ```bash
+   python3 ".claude/skills/do/scripts/setup-do.py" --worktree "<task description>"
+   ```
+
+2. Use the `DO_WORKTREE_DIR` environment variable to direct `codeagent-wrapper` develop agent into the worktree. **Do NOT pass `--worktree` to subsequent calls** — that creates a new worktree each time.
 
 ```bash
-codeagent-wrapper --worktree --agent develop - . <<'EOF'
+# Save the worktree path from setup output, then prefix all develop calls:
+DO_WORKTREE_DIR=<worktree_dir> codeagent-wrapper --agent develop - . <<'EOF'
 ...
 EOF
 ```
 
-Read-only agents (code-explorer, code-architect, code-reviewer) do NOT need `--worktree`.
+Read-only agents (code-explorer, code-architect, code-reviewer) do NOT need `DO_WORKTREE_DIR`.
 
 ## Hard Constraints
 
@@ -69,7 +63,7 @@ Read-only agents (code-explorer, code-architect, code-reviewer) do NOT need `--w
 3. **Update phase after each phase.** Use `task.py update-phase <N>`.
 4. **Expect long-running `codeagent-wrapper` calls.** High-reasoning modes can take a long time.
 5. **Timeouts are not an escape hatch.** If a call times out, retry with narrower scope.
-6. **Respect worktree setting.** If enabled, always pass `--worktree` to develop agent calls.
+6. **Defer worktree decision until Phase 4.** Only ask about worktree mode right before implementation. If enabled, prefix develop agent calls with `DO_WORKTREE_DIR=<path>`. Never pass `--worktree` after initialization.
 
 ## Agents
 
@@ -78,7 +72,7 @@ Read-only agents (code-explorer, code-architect, code-reviewer) do NOT need `--w
 | `code-explorer` | Trace code, map architecture, find patterns | No (read-only) |
 | `code-architect` | Design approaches, file plans, build sequences | No (read-only) |
 | `code-reviewer` | Review for bugs, simplicity, conventions | No (read-only) |
-| `develop` | Implement code, run tests | **Yes** (if worktree enabled) |
+| `develop` | Implement code, run tests | **Yes** — use `DO_WORKTREE_DIR` env prefix |
 
 ## Issue Severity Definitions
 
@@ -175,12 +169,39 @@ EOF
 
 **Goal:** Build feature and review in one phase.
 
-1. Invoke `develop` to implement. For full-stack projects, split into backend/frontend tasks with per-task `skills:` injection. Use `--parallel` when tasks can be split; use single agent when the change is small or single-domain.
+**Step 1: Decide on worktree mode (ONLY NOW)**
 
-**Single-domain example** (add `--worktree` if enabled):
+Use AskUserQuestion to ask:
+
+```
+Develop in a separate worktree? (Isolates changes from main branch)
+- Yes (Recommended for larger changes)
+- No (Work directly in current directory)
+```
+
+If user chooses worktree:
+```bash
+python3 ".claude/skills/do/scripts/setup-do.py" --worktree "<task description>"
+# Save the worktree path from output for DO_WORKTREE_DIR
+```
+
+**Step 2: Invoke develop agent**
+
+For full-stack projects, split into backend/frontend tasks with per-task `skills:` injection. Use `--parallel` when tasks can be split; use single agent when the change is small or single-domain.
+
+**Single-domain example** (prefix with `DO_WORKTREE_DIR` if worktree enabled):
 
 ```bash
-codeagent-wrapper --worktree --agent develop --skills golang-base-practices - . <<'EOF'
+# With worktree:
+DO_WORKTREE_DIR=<worktree_dir> codeagent-wrapper --agent develop --skills golang-base-practices - . <<'EOF'
+Implement with minimal change set following the Phase 3 blueprint.
+- Follow Phase 1 patterns
+- Add/adjust tests per Phase 3 plan
+- Run narrowest relevant tests
+EOF
+
+# Without worktree:
+codeagent-wrapper --agent develop --skills golang-base-practices - . <<'EOF'
 Implement with minimal change set following the Phase 3 blueprint.
 - Follow Phase 1 patterns
 - Add/adjust tests per Phase 3 plan
@@ -191,7 +212,8 @@ EOF
 **Full-stack parallel example** (adapt task IDs, skills, and content based on Phase 3 design):
 
 ```bash
-codeagent-wrapper --worktree --parallel <<'EOF'
+# With worktree:
+DO_WORKTREE_DIR=<worktree_dir> codeagent-wrapper --parallel <<'EOF'
 ---TASK---
 id: p4_backend
 agent: develop
@@ -213,11 +235,17 @@ Implement frontend changes following Phase 3 blueprint.
 - Follow Phase 1 patterns
 - Add/adjust tests per Phase 3 plan
 EOF
+
+# Without worktree: remove DO_WORKTREE_DIR prefix
 ```
 
 Note: Choose which skills to inject based on Phase 3 design output. Only inject skills relevant to each task's domain.
 
-2. Run parallel reviews:
+**Step 3: Review**
+
+**Step 3: Review**
+
+Run parallel reviews:
 
 ```bash
 codeagent-wrapper --parallel <<'EOF'
@@ -239,9 +267,10 @@ Classify each issue as BLOCKING or MINOR.
 EOF
 ```
 
-3. Handle review results:
-   - **MINOR issues only** → Auto-fix via `develop`, no user interaction
-   - **BLOCKING issues** → Use AskUserQuestion: "Fix now / Proceed as-is"
+**Step 4: Handle review results**
+
+- **MINOR issues only** → Auto-fix via `develop`, no user interaction
+- **BLOCKING issues** → Use AskUserQuestion: "Fix now / Proceed as-is"
 
 ### Phase 5: Complete (No Interaction)
 
