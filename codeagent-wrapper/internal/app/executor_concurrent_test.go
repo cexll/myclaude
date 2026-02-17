@@ -169,6 +169,12 @@ func (f *execFakeRunner) Process() executor.ProcessHandle {
 	return &execFakeProcess{pid: 1}
 }
 
+func (f *execFakeRunner) UnsetEnv(keys ...string) {
+	for _, k := range keys {
+		delete(f.env, k)
+	}
+}
+
 func TestExecutorRunCodexTaskWithContext(t *testing.T) {
 	defer resetTestHooks()
 

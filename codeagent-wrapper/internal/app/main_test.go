@@ -274,6 +274,10 @@ func (d *drainBlockingCmd) Process() executor.ProcessHandle {
 	return d.inner.Process()
 }
 
+func (d *drainBlockingCmd) UnsetEnv(keys ...string) {
+	d.inner.UnsetEnv(keys...)
+}
+
 type bufferWriteCloser struct {
 	buf    bytes.Buffer
 	mu     sync.Mutex
@@ -566,6 +570,14 @@ func (f *fakeCmd) Process() executor.ProcessHandle {
 		return nil
 	}
 	return f.process
+}
+
+func (f *fakeCmd) UnsetEnv(keys ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, k := range keys {
+		delete(f.env, k)
+	}
 }
 
 func (f *fakeCmd) runStdoutScript() {
