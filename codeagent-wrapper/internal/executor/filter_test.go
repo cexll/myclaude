@@ -71,3 +71,35 @@ func TestFilteringWriterPartialLines(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "Hello World\n")
 	}
 }
+
+func TestFilteringWriterCodexNoise(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "filter all codex_core errors",
+			input: "ERROR codex_core::rollout::list: state db missing rollout path for thread 123\nERROR codex_core::skills::loader: missing skill\nVisible output\n",
+			want:  "Visible output\n",
+		},
+		{
+			name:  "keep non codex_core errors",
+			input: "ERROR another_module::state: real failure\nERROR codex_core::codex: needs_follow_up: true\nDone\n",
+			want:  "ERROR another_module::state: real failure\nDone\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			fw := newFilteringWriter(&buf, codexNoisePatterns)
+			_, _ = fw.Write([]byte(tt.input))
+			fw.Flush()
+
+			if got := buf.String(); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

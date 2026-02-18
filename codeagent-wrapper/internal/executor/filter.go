@@ -20,8 +20,7 @@ var geminiNoisePatterns = []string{
 
 // codexNoisePatterns contains stderr patterns to filter for codex backend
 var codexNoisePatterns = []string{
-	"ERROR codex_core::codex: needs_follow_up:",
-	"ERROR codex_core::skills::loader:",
+	"ERROR codex_core::",
 }
 
 // filteringWriter wraps an io.Writer and filters out lines matching patterns
