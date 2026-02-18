@@ -41,6 +41,11 @@ func (f *fakeCmd) SetEnv(env map[string]string) {
 	}
 }
 func (f *fakeCmd) Process() processHandle { return nil }
+func (f *fakeCmd) UnsetEnv(keys ...string) {
+	for _, k := range keys {
+		delete(f.env, k)
+	}
+}
 
 func TestEnvInjection_LogsToStderrAndMasksKey(t *testing.T) {
 	// Arrange ~/.codeagent/models.json via HOME override.

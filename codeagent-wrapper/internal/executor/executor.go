@@ -113,6 +113,7 @@ type commandRunner interface {
 	SetStderr(io.Writer)
 	SetDir(string)
 	SetEnv(env map[string]string)
+	UnsetEnv(keys ...string)
 	Process() processHandle
 }
 
@@ -219,6 +220,33 @@ func (r *realCmd) SetEnv(env map[string]string) {
 		out = append(out, k+"="+merged[k])
 	}
 	r.cmd.Env = out
+}
+
+func (r *realCmd) UnsetEnv(keys ...string) {
+	if r == nil || r.cmd == nil || len(keys) == 0 {
+		return
+	}
+	// If cmd.Env is nil, Go inherits all parent env vars.
+	// Populate explicitly so we can selectively remove keys.
+	if r.cmd.Env == nil {
+		r.cmd.Env = os.Environ()
+	}
+	drop := make(map[string]struct{}, len(keys))
+	for _, k := range keys {
+		drop[k] = struct{}{}
+	}
+	filtered := make([]string, 0, len(r.cmd.Env))
+	for _, kv := range r.cmd.Env {
+		idx := strings.IndexByte(kv, '=')
+		name := kv
+		if idx >= 0 {
+			name = kv[:idx]
+		}
+		if _, ok := drop[name]; !ok {
+			filtered = append(filtered, kv)
+		}
+	}
+	r.cmd.Env = filtered
 }
 
 func (r *realCmd) Process() processHandle {
@@ -1125,6 +1153,13 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 	}
 
 	injectTempEnv(cmd)
+
+	// Claude Code sets CLAUDECODE=1 in its child processes. If we don't
+	// remove it, the spawned `claude -p` detects the variable and refuses
+	// to start ("cannot be launched inside another Claude Code session").
+	if commandName == "claude" {
+		cmd.UnsetEnv("CLAUDECODE")
+	}
 
 	// For backends that don't support -C flag (claude, gemini), set working directory via cmd.Dir
 	// Codex passes workdir via -C flag, so we skip setting Dir for it to avoid conflicts
