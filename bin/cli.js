@@ -15,6 +15,8 @@ const API_HEADERS = {
   "User-Agent": "myclaude-npx",
   Accept: "application/vnd.github+json",
 };
+const WRAPPER_REQUIRED_MODULES = new Set(["do", "omo"]);
+const WRAPPER_REQUIRED_SKILLS = new Set(["dev"]);
 
 function parseArgs(argv) {
   const out = {
@@ -499,9 +501,19 @@ async function updateInstalledModules(installDir, tag, config, dryRun) {
     }
 
     await fs.promises.mkdir(installDir, { recursive: true });
+    const installState = { wrapperInstalled: false };
+
+    async function ensureWrapperInstalled() {
+      if (installState.wrapperInstalled) return;
+      process.stdout.write("Installing codeagent-wrapper...\n");
+      await runInstallSh(repoRoot, installDir, tag);
+      installState.wrapperInstalled = true;
+    }
+
     for (const name of toUpdate) {
+      if (WRAPPER_REQUIRED_MODULES.has(name)) await ensureWrapperInstalled();
       process.stdout.write(`Updating module: ${name}\n`);
-      const r = await applyModule(name, config, repoRoot, installDir, true, tag);
+      const r = await applyModule(name, config, repoRoot, installDir, true, tag, installState);
       upsertModuleStatus(installDir, r);
     }
   } finally {
@@ -777,7 +789,57 @@ async function rmTree(p) {
   await fs.promises.rmdir(p, { recursive: true });
 }
 
-async function applyModule(moduleName, config, repoRoot, installDir, force, tag) {
+function defaultModelsConfig() {
+  return {
+    default_backend: "codex",
+    default_model: "gpt-4.1",
+    backends: {},
+    agents: {},
+  };
+}
+
+function mergeModuleAgentsToModels(moduleName, mod, repoRoot) {
+  const moduleAgents = mod && mod.agents;
+  if (!isPlainObject(moduleAgents) || !Object.keys(moduleAgents).length) return false;
+
+  const modelsPath = path.join(os.homedir(), ".codeagent", "models.json");
+  fs.mkdirSync(path.dirname(modelsPath), { recursive: true });
+
+  let models;
+  if (fs.existsSync(modelsPath)) {
+    models = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
+  } else {
+    const templatePath = path.join(repoRoot, "templates", "models.json.example");
+    if (fs.existsSync(templatePath)) {
+      models = JSON.parse(fs.readFileSync(templatePath, "utf8"));
+      if (!isPlainObject(models)) models = defaultModelsConfig();
+      models.agents = {};
+    } else {
+      models = defaultModelsConfig();
+    }
+  }
+
+  if (!isPlainObject(models)) models = defaultModelsConfig();
+  if (!isPlainObject(models.agents)) models.agents = {};
+
+  let modified = false;
+  for (const [agentName, agentCfg] of Object.entries(moduleAgents)) {
+    if (!isPlainObject(agentCfg)) continue;
+    const existing = models.agents[agentName];
+    const canOverwrite = !isPlainObject(existing) || Object.prototype.hasOwnProperty.call(existing, "__module__");
+    if (!canOverwrite) continue;
+    const next = { ...agentCfg, __module__: moduleName };
+    if (!deepEqual(existing, next)) {
+      models.agents[agentName] = next;
+      modified = true;
+    }
+  }
+
+  if (modified) fs.writeFileSync(modelsPath, JSON.stringify(models, null, 2) + "\n", "utf8");
+  return modified;
+}
+
+async function applyModule(moduleName, config, repoRoot, installDir, force, tag, installState) {
   const mod = config && config.modules && config.modules[moduleName];
   if (!mod) throw new Error(`Unknown module: ${moduleName}`);
   const ops = Array.isArray(mod.operations) ? mod.operations : [];
@@ -803,7 +865,12 @@ async function applyModule(moduleName, config, repoRoot, installDir, force, tag)
         if (cmd !== "bash install.sh") {
           throw new Error(`Refusing run_command: ${cmd || "(empty)"}`);
         }
+        if (installState && installState.wrapperInstalled) {
+          result.operations.push({ type, status: "success", skipped: true });
+          continue;
+        }
         await runInstallSh(repoRoot, installDir, tag);
+        if (installState) installState.wrapperInstalled = true;
       } else {
         throw new Error(`Unsupported operation type: ${type}`);
       }
@@ -829,6 +896,19 @@ async function applyModule(moduleName, config, repoRoot, installDir, force, tag)
   } catch (err) {
     result.operations.push({
       type: "merge_hooks",
+      status: "failed",
+      error: err && err.message ? err.message : String(err),
+    });
+  }
+
+  try {
+    if (mergeModuleAgentsToModels(moduleName, mod, repoRoot)) {
+      result.has_agents = true;
+      result.operations.push({ type: "merge_agents", status: "success" });
+    }
+  } catch (err) {
+    result.operations.push({
+      type: "merge_agents",
       status: "failed",
       error: err && err.message ? err.message : String(err),
     });
@@ -1023,20 +1103,37 @@ async function installSelected(picks, tag, config, installDir, force, dryRun) {
     }
 
     await fs.promises.mkdir(installDir, { recursive: true });
+    const installState = { wrapperInstalled: false };
+
+    async function ensureWrapperInstalled() {
+      if (installState.wrapperInstalled) return;
+      process.stdout.write("Installing codeagent-wrapper...\n");
+      await runInstallSh(repoRoot, installDir, tag);
+      installState.wrapperInstalled = true;
+    }
 
     for (const p of picks) {
       if (p.kind === "wrapper") {
-        process.stdout.write("Installing codeagent-wrapper...\n");
-        await runInstallSh(repoRoot, installDir, tag);
+        await ensureWrapperInstalled();
         continue;
       }
       if (p.kind === "module") {
+        if (WRAPPER_REQUIRED_MODULES.has(p.moduleName)) await ensureWrapperInstalled();
         process.stdout.write(`Installing module: ${p.moduleName}\n`);
-        const r = await applyModule(p.moduleName, config, repoRoot, installDir, force, tag);
+        const r = await applyModule(
+          p.moduleName,
+          config,
+          repoRoot,
+          installDir,
+          force,
+          tag,
+          installState
+        );
         upsertModuleStatus(installDir, r);
         continue;
       }
       if (p.kind === "skill") {
+        if (WRAPPER_REQUIRED_SKILLS.has(p.skillName)) await ensureWrapperInstalled();
         process.stdout.write(`Installing skill: ${p.skillName}\n`);
         await copyDirRecursive(
           path.join(repoRoot, "skills", p.skillName),

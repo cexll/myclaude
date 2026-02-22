@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover
 
 DEFAULT_INSTALL_DIR = "~/.claude"
 SETTINGS_FILE = "settings.json"
+WRAPPER_REQUIRED_MODULES = {"do", "omo"}
 
 
 def _ensure_list(ctx: Dict[str, Any], key: str) -> List[Any]:
@@ -898,6 +899,24 @@ def execute_module(name: str, cfg: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[
         "installed_at": datetime.now().isoformat(),
     }
 
+    if name in WRAPPER_REQUIRED_MODULES:
+        try:
+            ensure_wrapper_installed(ctx)
+            result["operations"].append({"type": "ensure_wrapper", "status": "success"})
+        except Exception as exc:  # noqa: BLE001
+            result["status"] = "failed"
+            result["operations"].append(
+                {"type": "ensure_wrapper", "status": "failed", "error": str(exc)}
+            )
+            write_log(
+                {
+                    "level": "ERROR",
+                    "message": f"Module {name} failed on ensure_wrapper: {exc}",
+                },
+                ctx,
+            )
+            raise
+
     for op in cfg.get("operations", []):
         op_type = op.get("type")
         try:
@@ -1081,8 +1100,13 @@ def op_run_command(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
     for key, value in op.get("env", {}).items():
         env[key] = value.replace("${install_dir}", str(ctx["install_dir"]))
 
-    command = op.get("command", "")
-    if sys.platform == "win32" and command.strip() == "bash install.sh":
+    raw_command = str(op.get("command", "")).strip()
+    if raw_command == "bash install.sh" and ctx.get("_wrapper_installed"):
+        write_log({"level": "INFO", "message": "Skip wrapper install; already installed in this run"}, ctx)
+        return
+
+    command = raw_command
+    if sys.platform == "win32" and raw_command == "bash install.sh":
         command = "cmd /c install.bat"
 
     # Stream output in real-time while capturing for logging
@@ -1155,6 +1179,22 @@ def op_run_command(op: Dict[str, Any], ctx: Dict[str, Any]) -> None:
 
     if process.returncode != 0:
         raise RuntimeError(f"Command failed with code {process.returncode}: {command}")
+
+    if raw_command == "bash install.sh":
+        ctx["_wrapper_installed"] = True
+
+
+def ensure_wrapper_installed(ctx: Dict[str, Any]) -> None:
+    if ctx.get("_wrapper_installed"):
+        return
+    op_run_command(
+        {
+            "type": "run_command",
+            "command": "bash install.sh",
+            "env": {"INSTALL_DIR": "${install_dir}"},
+        },
+        ctx,
+    )
 
 
 def write_log(entry: Dict[str, Any], ctx: Dict[str, Any]) -> None:
