@@ -1006,17 +1006,20 @@ async function installSelected(picks, tag, config, installDir, force, dryRun) {
   try {
     let repoRoot = repoRootFromHere();
     if (needRepo || needWrapper) {
-      if (!tag) throw new Error("No tag available to download");
-      const archive = path.join(tmp, "src.tgz");
-      const url = `https://codeload.github.com/${REPO.owner}/${REPO.name}/tar.gz/refs/tags/${encodeURIComponent(
-        tag
-      )}`;
-      process.stdout.write(`Downloading ${REPO.owner}/${REPO.name}@${tag}...\n`);
-      await downloadToFile(url, archive);
-      process.stdout.write("Extracting...\n");
-      const extracted = path.join(tmp, "src");
-      await extractTarGz(archive, extracted);
-      repoRoot = extracted;
+      if (tag) {
+        const archive = path.join(tmp, "src.tgz");
+        const url = `https://codeload.github.com/${REPO.owner}/${REPO.name}/tar.gz/refs/tags/${encodeURIComponent(
+          tag
+        )}`;
+        process.stdout.write(`Downloading ${REPO.owner}/${REPO.name}@${tag}...\n`);
+        await downloadToFile(url, archive);
+        process.stdout.write("Extracting...\n");
+        const extracted = path.join(tmp, "src");
+        await extractTarGz(archive, extracted);
+        repoRoot = extracted;
+      } else {
+        process.stdout.write("Offline mode: installing from local package contents.\n");
+      }
     }
 
     await fs.promises.mkdir(installDir, { recursive: true });
