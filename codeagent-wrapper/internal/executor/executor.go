@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -1154,10 +1155,19 @@ func RunCodexTaskWithContext(parentCtx context.Context, taskSpec TaskSpec, backe
 
 	injectTempEnv(cmd)
 
-	// Claude Code sets CLAUDECODE=1 in its child processes. If we don't
-	// remove it, the spawned `claude -p` detects the variable and refuses
-	// to start ("cannot be launched inside another Claude Code session").
 	if commandName == "claude" {
+		// Claude 2.1.45+ calls Nz7() on startup to clean its tasks directory,
+		// which deletes the parent session's *.output files and causes "(no output)".
+		// Assign each nested claude its own isolated tmpdir so it only cleans its own files.
+		nestedTmpDir := filepath.Join(os.TempDir(), fmt.Sprintf("cc-nested-%d-%d", os.Getpid(), time.Now().UnixNano()))
+		cmd.SetEnv(map[string]string{"CLAUDE_CODE_TMPDIR": nestedTmpDir})
+		defer os.RemoveAll(nestedTmpDir) //nolint:errcheck
+		logInfoFn("CLAUDE_CODE_TMPDIR: " + nestedTmpDir)
+		fmt.Fprintln(os.Stderr, "  CLAUDE_CODE_TMPDIR: "+nestedTmpDir)
+
+		// Claude Code sets CLAUDECODE=1 in its child processes. If we don't
+		// remove it, the spawned `claude -p` detects the variable and refuses
+		// to start ("cannot be launched inside another Claude Code session").
 		cmd.UnsetEnv("CLAUDECODE")
 	}
 
