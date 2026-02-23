@@ -5,7 +5,7 @@ Claude Code plugins for this repo are defined in `.claude-plugin/marketplace.jso
 ## Install
 
 ```bash
-/plugin marketplace add cexll/myclaude
+/plugin marketplace add stellarlinkco/myclaude
 /plugin list
 ```
 

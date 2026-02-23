@@ -4,7 +4,7 @@ set -e
 if [ -z "${SKIP_WARNING:-}" ]; then
   echo "⚠️  WARNING: install.sh is LEGACY and will be removed in future versions."
   echo "Please use the new installation method:"
-  echo "  npx github:cexll/myclaude"
+  echo "  npx github:stellarlinkco/myclaude"
   echo ""
   echo "Set SKIP_WARNING=1 to bypass this message"
   echo "Continuing with legacy installation in 5 seconds..."
@@ -23,7 +23,7 @@ case "$ARCH" in
 esac
 
 # Build download URL
-REPO="cexll/myclaude"
+REPO="stellarlinkco/myclaude"
 VERSION="${CODEAGENT_WRAPPER_VERSION:-latest}"
 BINARY_NAME="codeagent-wrapper-${OS}-${ARCH}"
 if [ "$VERSION" = "latest" ]; then

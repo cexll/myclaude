@@ -28,7 +28,7 @@ Entry point: `cmd/codeagent-wrapper/main.go` (binary: `codeagent-wrapper`).
 ### Recommended (interactive installer)
 
 ```bash
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 ```
 
 Select the `codeagent-wrapper` module to install.

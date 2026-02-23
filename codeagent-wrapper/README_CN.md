@@ -28,7 +28,7 @@
 ### 推荐方式（交互式安装器）
 
 ```bash
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 ```
 
 选择 `codeagent-wrapper` 模块进行安装。

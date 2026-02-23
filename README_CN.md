@@ -2,14 +2,14 @@
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-6.x-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-6.x-green)](https://github.com/stellarlinkco/myclaude)
 
 > AI 驱动的开发自动化 - 多后端执行架构 (Codex/Claude/Gemini/OpenCode)
 
 ## 快速开始
 
 ```bash
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 ```
 
 ## 模块概览
@@ -27,7 +27,7 @@ npx github:cexll/myclaude
 
 ### 可用技能
 
-可通过 `npx github:cexll/myclaude --list` 单独安装技能（模块内置技能如 do、omo、sparv 见上表）：
+可通过 `npx github:stellarlinkco/myclaude --list` 单独安装技能（模块内置技能如 do、omo、sparv 见上表）：
 
 | 技能 | 描述 |
 |------|------|
@@ -188,16 +188,16 @@ npx github:cexll/myclaude
 
 ```bash
 # 交互式安装器（推荐）
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 
 # 列出可安装项（module:* / skill:* / codeagent-wrapper）
-npx github:cexll/myclaude --list
+npx github:stellarlinkco/myclaude --list
 
 # 检测已安装 modules 并从 GitHub 更新
-npx github:cexll/myclaude --update
+npx github:stellarlinkco/myclaude --update
 
 # 指定安装目录 / 强制覆盖
-npx github:cexll/myclaude --install-dir ~/.claude --force
+npx github:stellarlinkco/myclaude --install-dir ~/.claude --force
 ```
 
 `--update` 会在目标安装目录（默认 `~/.claude`，优先读取 `installed_modules.json`）检测已安装 modules，并从 GitHub 拉取最新发布版本覆盖更新。
@@ -244,13 +244,13 @@ npx github:cexll/myclaude --install-dir ~/.claude --force
 **Codex wrapper 未找到：**
 ```bash
 # 选择：codeagent-wrapper
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 ```
 
 **模块未加载：**
 ```bash
 cat ~/.claude/installed_modules.json
-npx github:cexll/myclaude --force
+npx github:stellarlinkco/myclaude --force
 ```
 
 ## FAQ
@@ -261,7 +261,7 @@ npx github:cexll/myclaude --force
 | Gemini 无法读取 .gitignore 文件 | 从 .gitignore 移除或使用其他后端 |
 | Codex 权限拒绝 | 在 ~/.codex/config.yaml 设置 `approval_policy = "never"` |
 
-更多问题请访问 [GitHub Issues](https://github.com/cexll/myclaude/issues)。
+更多问题请访问 [GitHub Issues](https://github.com/stellarlinkco/myclaude/issues)。
 
 ## 许可证
 
@@ -269,8 +269,8 @@ AGPL-3.0 - 查看 [LICENSE](LICENSE)
 
 ### 商业授权
 
-如需商业授权（无需遵守 AGPL 义务），请联系：evanxian9@gmail.com
+如需商业授权（无需遵守 AGPL 义务），请联系：support@stellarlink.co
 
 ## 支持
 
-- [GitHub Issues](https://github.com/cexll/myclaude/issues)
+- [GitHub Issues](https://github.com/stellarlinkco/myclaude/issues)

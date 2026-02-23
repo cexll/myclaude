@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/cexll/myclaude/config.schema.json",
+  "$id": "https://github.com/stellarlinkco/myclaude/config.schema.json",
   "title": "Modular Installation Config",
   "type": "object",
   "additionalProperties": false,

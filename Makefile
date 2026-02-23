@@ -7,12 +7,12 @@
 help:
 	@echo "Claude Code Multi-Agent Workflow - Quick Deployment"
 	@echo ""
-	@echo "Recommended installation: npx github:cexll/myclaude"
+	@echo "Recommended installation: npx github:stellarlinkco/myclaude"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  install              - LEGACY: install all configurations (prefer npx github:cexll/myclaude)"
+	@echo "  install              - LEGACY: install all configurations (prefer npx github:stellarlinkco/myclaude)"
 	@echo "  deploy-bmad          - Deploy BMAD workflow (bmad-pilot)"
 	@echo "  deploy-requirements  - Deploy Requirements workflow (requirements-pilot)"
 	@echo "  deploy-essentials    - Deploy Development Essentials workflow"
@@ -40,7 +40,7 @@ OUTPUT_STYLES_DIR = output-styles
 # Install all configurations
 install: deploy-all
 	@echo "⚠️  LEGACY PATH: make install will be removed in future versions."
-	@echo "    Prefer: npx github:cexll/myclaude"
+	@echo "    Prefer: npx github:stellarlinkco/myclaude"
 	@echo "✅ Installation complete!"
 
 # Deploy BMAD workflow

@@ -2,17 +2,17 @@
 
 # Claude Code Multi-Agent Workflow System
 
-[![Run in Smithery](https://smithery.ai/badge/skills/cexll)](https://smithery.ai/skills?ns=cexll&utm_source=github&utm_medium=badge)
+[![Run in Smithery](https://smithery.ai/badge/skills/stellarlinkco)](https://smithery.ai/skills?ns=stellarlinkco&utm_source=github&utm_medium=badge)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-6.x-green)](https://github.com/cexll/myclaude)
+[![Version](https://img.shields.io/badge/Version-6.x-green)](https://github.com/stellarlinkco/myclaude)
 
 > AI-powered development automation with multi-backend execution (Codex/Claude/Gemini/OpenCode)
 
 ## Quick Start
 
 ```bash
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 ```
 
 ## Modules Overview
@@ -30,7 +30,7 @@ npx github:cexll/myclaude
 
 ### Available Skills
 
-Individual skills can be installed separately via `npx github:cexll/myclaude --list` (skills bundled in modules like do, omo, sparv are listed above):
+Individual skills can be installed separately via `npx github:stellarlinkco/myclaude --list` (skills bundled in modules like do, omo, sparv are listed above):
 
 | Skill | Description |
 |-------|-------------|
@@ -48,16 +48,16 @@ Individual skills can be installed separately via `npx github:cexll/myclaude --l
 
 ```bash
 # Interactive installer (recommended)
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 
 # List installable items (modules / skills / wrapper)
-npx github:cexll/myclaude --list
+npx github:stellarlinkco/myclaude --list
 
 # Detect installed modules and update from GitHub
-npx github:cexll/myclaude --update
+npx github:stellarlinkco/myclaude --update
 
 # Custom install directory / overwrite
-npx github:cexll/myclaude --install-dir ~/.claude --force
+npx github:stellarlinkco/myclaude --install-dir ~/.claude --force
 ```
 
 `--update` detects already installed modules in the target install dir (defaults to `~/.claude`, via `installed_modules.json` when present) and updates them from GitHub (latest release) by overwriting the module files.
@@ -132,13 +132,13 @@ Edit `config.json` to enable/disable modules:
 **Codex wrapper not found:**
 ```bash
 # Select: codeagent-wrapper
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 ```
 
 **Module not loading:**
 ```bash
 cat ~/.claude/installed_modules.json
-npx github:cexll/myclaude --force
+npx github:stellarlinkco/myclaude --force
 ```
 
 **Backend CLI errors:**
@@ -156,7 +156,7 @@ which gemini && gemini --version
 | Gemini can't read .gitignore files | Remove from .gitignore or use different backend |
 | Codex permission denied | Set `approval_policy = "never"` in ~/.codex/config.yaml |
 
-See [GitHub Issues](https://github.com/cexll/myclaude/issues) for more.
+See [GitHub Issues](https://github.com/stellarlinkco/myclaude/issues) for more.
 
 ## License
 
@@ -164,8 +164,8 @@ AGPL-3.0 - see [LICENSE](LICENSE)
 
 ### Commercial Licensing
 
-For commercial use without AGPL obligations, contact: evanxian9@gmail.com
+For commercial use without AGPL obligations, contact: support@stellarlink.co
 
 ## Support
 
-- [GitHub Issues](https://github.com/cexll/myclaude/issues)
+- [GitHub Issues](https://github.com/stellarlinkco/myclaude/issues)

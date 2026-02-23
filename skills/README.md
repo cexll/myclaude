@@ -7,17 +7,17 @@ This directory contains agent skills (each skill lives in its own folder with a 
 List installable items:
 
 ```bash
-npx github:cexll/myclaude --list
+npx github:stellarlinkco/myclaude --list
 ```
 
 Install (interactive; pick `skill:<name>`):
 
 ```bash
-npx github:cexll/myclaude
+npx github:stellarlinkco/myclaude
 ```
 
 Force overwrite / custom install directory:
 
 ```bash
-npx github:cexll/myclaude --install-dir ~/.claude --force
+npx github:stellarlinkco/myclaude --install-dir ~/.claude --force
 ```
