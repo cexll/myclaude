@@ -717,19 +717,23 @@ func runSingleMode(cfg *Config, name string) int {
 
 	result := runTaskFn(taskSpec, false, cfg.Timeout)
 
-	if result.ExitCode != 0 {
-		return result.ExitCode
-	}
-
-	// Validate that we got a meaningful output message
-	if strings.TrimSpace(result.Message) == "" {
-		logError(fmt.Sprintf("no output message: backend=%s returned empty result.Message with exit_code=0", cfg.Backend))
-		return 1
+	exitCode := result.ExitCode
+	if exitCode == 0 && strings.TrimSpace(result.Message) == "" {
+		errMsg := fmt.Sprintf("no output message: backend=%s returned empty result.Message with exit_code=0", cfg.Backend)
+		logError(errMsg)
+		exitCode = 1
+		if strings.TrimSpace(result.Error) == "" {
+			result.Error = errMsg
+		}
 	}
 
 	if err := writeStructuredOutput(cfg.OutputPath, []TaskResult{result}); err != nil {
 		logError(err.Error())
 		return 1
+	}
+
+	if exitCode != 0 {
+		return exitCode
 	}
 
 	fmt.Println(result.Message)
