@@ -13,6 +13,7 @@ type Config struct {
 	Task               string
 	SessionID          string
 	WorkDir            string
+	OutputPath         string
 	Model              string
 	ReasoningEffort    string
 	ExplicitStdin      bool

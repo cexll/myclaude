@@ -1455,6 +1455,60 @@ func TestBackendParseArgs_PromptFileOverridesAgent(t *testing.T) {
 	}
 }
 
+func TestBackendParseArgs_OutputFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "output flag",
+			args: []string{"codeagent-wrapper", "--output", "/tmp/out.json", "task"},
+			want: "/tmp/out.json",
+		},
+		{
+			name: "output equals syntax",
+			args: []string{"codeagent-wrapper", "--output=/tmp/out.json", "task"},
+			want: "/tmp/out.json",
+		},
+		{
+			name: "output trimmed",
+			args: []string{"codeagent-wrapper", "--output", "  /tmp/out.json  ", "task"},
+			want: "/tmp/out.json",
+		},
+		{
+			name:    "output missing value",
+			args:    []string{"codeagent-wrapper", "--output"},
+			wantErr: true,
+		},
+		{
+			name:    "output equals missing value",
+			args:    []string{"codeagent-wrapper", "--output=", "task"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Args = tt.args
+			cfg, err := parseArgs()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.OutputPath != tt.want {
+				t.Fatalf("OutputPath = %q, want %q", cfg.OutputPath, tt.want)
+			}
+		})
+	}
+}
+
 func TestBackendParseArgs_SkipPermissions(t *testing.T) {
 	const envKey = "CODEAGENT_SKIP_PERMISSIONS"
 	t.Setenv(envKey, "true")
@@ -3748,6 +3802,245 @@ noop`)
 	}
 	if strings.Contains(out, "=== Execution Report ===") {
 		t.Fatalf("output should not include summary-only header, got %q", out)
+	}
+}
+
+func TestRunSingleWithOutputFile(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "single-output.json")
+
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{"codeagent-wrapper", "--output", outputPath, "task"}
+
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+
+	origRunTaskFn := runTaskFn
+	runTaskFn = func(taskSpec TaskSpec, silent bool, timeoutSec int) TaskResult {
+		return TaskResult{
+			TaskID:    "single-task",
+			ExitCode:  0,
+			Message:   "single-result",
+			SessionID: "sid-single",
+		}
+	}
+	t.Cleanup(func() { runTaskFn = origRunTaskFn })
+
+	if code := run(); code != 0 {
+		t.Fatalf("run exit = %d, want 0", code)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		t.Fatalf("output file should end with newline, got %q", string(data))
+	}
+
+	var payload struct {
+		Results []TaskResult `json:"results"`
+		Summary struct {
+			Total   int `json:"total"`
+			Success int `json:"success"`
+			Failed  int `json:"failed"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to unmarshal output json: %v", err)
+	}
+
+	if payload.Summary.Total != 1 || payload.Summary.Success != 1 || payload.Summary.Failed != 0 {
+		t.Fatalf("unexpected summary: %+v", payload.Summary)
+	}
+	if len(payload.Results) != 1 {
+		t.Fatalf("results length = %d, want 1", len(payload.Results))
+	}
+	if payload.Results[0].Message != "single-result" {
+		t.Fatalf("result message = %q, want %q", payload.Results[0].Message, "single-result")
+	}
+}
+
+func TestRunSingleWithOutputFileOnFailureExitCode(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "single-output-failed.json")
+
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{"codeagent-wrapper", "--output", outputPath, "task"}
+
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+
+	origRunTaskFn := runTaskFn
+	runTaskFn = func(taskSpec TaskSpec, silent bool, timeoutSec int) TaskResult {
+		return TaskResult{
+			TaskID:   "single-task",
+			ExitCode: 7,
+			Message:  "failed-result",
+			Error:    "backend error",
+		}
+	}
+	t.Cleanup(func() { runTaskFn = origRunTaskFn })
+
+	if code := run(); code != 7 {
+		t.Fatalf("run exit = %d, want 7", code)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		t.Fatalf("output file should end with newline, got %q", string(data))
+	}
+
+	var payload struct {
+		Results []TaskResult `json:"results"`
+		Summary struct {
+			Total   int `json:"total"`
+			Success int `json:"success"`
+			Failed  int `json:"failed"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to unmarshal output json: %v", err)
+	}
+
+	if payload.Summary.Total != 1 || payload.Summary.Success != 0 || payload.Summary.Failed != 1 {
+		t.Fatalf("unexpected summary: %+v", payload.Summary)
+	}
+	if len(payload.Results) != 1 {
+		t.Fatalf("results length = %d, want 1", len(payload.Results))
+	}
+	if payload.Results[0].ExitCode != 7 {
+		t.Fatalf("result exit_code = %d, want 7", payload.Results[0].ExitCode)
+	}
+}
+
+func TestRunSingleWithOutputFileOnEmptyMessage(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "single-output-empty.json")
+
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{"codeagent-wrapper", "--output", outputPath, "task"}
+
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+
+	origRunTaskFn := runTaskFn
+	runTaskFn = func(taskSpec TaskSpec, silent bool, timeoutSec int) TaskResult {
+		return TaskResult{
+			TaskID:   "single-task",
+			ExitCode: 0,
+		}
+	}
+	t.Cleanup(func() { runTaskFn = origRunTaskFn })
+
+	if code := run(); code != 1 {
+		t.Fatalf("run exit = %d, want 1", code)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		t.Fatalf("output file should end with newline, got %q", string(data))
+	}
+
+	var payload struct {
+		Results []TaskResult `json:"results"`
+		Summary struct {
+			Total   int `json:"total"`
+			Success int `json:"success"`
+			Failed  int `json:"failed"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to unmarshal output json: %v", err)
+	}
+
+	if payload.Summary.Total != 1 || payload.Summary.Success != 0 || payload.Summary.Failed != 1 {
+		t.Fatalf("unexpected summary: %+v", payload.Summary)
+	}
+	if len(payload.Results) != 1 {
+		t.Fatalf("results length = %d, want 1", len(payload.Results))
+	}
+	if !strings.Contains(payload.Results[0].Error, "no output message:") {
+		t.Fatalf("result error = %q, want no output message", payload.Results[0].Error)
+	}
+}
+
+func TestRunParallelWithOutputFile(t *testing.T) {
+	defer resetTestHooks()
+	cleanupLogsFn = func() (CleanupStats, error) { return CleanupStats{}, nil }
+
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "parallel-output.json")
+
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{"codeagent-wrapper", "--parallel", "--output", outputPath}
+
+	stdinReader = strings.NewReader(`---TASK---
+id: T1
+---CONTENT---
+noop`)
+	t.Cleanup(func() { stdinReader = os.Stdin })
+
+	origRunCodexTaskFn := runCodexTaskFn
+	runCodexTaskFn = func(task TaskSpec, timeout int) TaskResult {
+		return TaskResult{TaskID: task.ID, ExitCode: 0, Message: "parallel output marker"}
+	}
+	t.Cleanup(func() { runCodexTaskFn = origRunCodexTaskFn })
+
+	out := captureOutput(t, func() {
+		if code := run(); code != 0 {
+			t.Fatalf("run exit = %d, want 0", code)
+		}
+	})
+
+	if !strings.Contains(out, "=== Execution Report ===") {
+		t.Fatalf("stdout should keep summary format, got %q", out)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		t.Fatalf("output file should end with newline, got %q", string(data))
+	}
+
+	var payload struct {
+		Results []TaskResult `json:"results"`
+		Summary struct {
+			Total   int `json:"total"`
+			Success int `json:"success"`
+			Failed  int `json:"failed"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to unmarshal output json: %v", err)
+	}
+
+	if payload.Summary.Total != 1 || payload.Summary.Success != 1 || payload.Summary.Failed != 0 {
+		t.Fatalf("unexpected summary: %+v", payload.Summary)
+	}
+	if len(payload.Results) != 1 {
+		t.Fatalf("results length = %d, want 1", len(payload.Results))
+	}
+	if payload.Results[0].TaskID != "T1" {
+		t.Fatalf("result task_id = %q, want %q", payload.Results[0].TaskID, "T1")
 	}
 }
 

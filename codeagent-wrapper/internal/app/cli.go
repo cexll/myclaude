@@ -29,6 +29,7 @@ type cliOptions struct {
 	ReasoningEffort string
 	Agent           string
 	PromptFile      string
+	Output          string
 	Skills          string
 	SkipPermissions bool
 	Worktree        bool
@@ -135,6 +136,7 @@ func addRootFlags(fs *pflag.FlagSet, opts *cliOptions) {
 	fs.StringVar(&opts.ReasoningEffort, "reasoning-effort", "", "Reasoning effort (backend-specific)")
 	fs.StringVar(&opts.Agent, "agent", "", "Agent preset name (from ~/.codeagent/models.json)")
 	fs.StringVar(&opts.PromptFile, "prompt-file", "", "Prompt file path")
+	fs.StringVar(&opts.Output, "output", "", "Write structured JSON output to file")
 	fs.StringVar(&opts.Skills, "skills", "", "Comma-separated skill names for spec injection")
 
 	fs.BoolVar(&opts.SkipPermissions, "skip-permissions", false, "Skip permissions prompts (also via CODEAGENT_SKIP_PERMISSIONS)")
@@ -237,6 +239,7 @@ func buildSingleConfig(cmd *cobra.Command, args []string, rawArgv []string, opts
 	agentName := ""
 	promptFile := ""
 	promptFileExplicit := false
+	outputPath := ""
 	yolo := false
 
 	if cmd.Flags().Changed("agent") {
@@ -279,6 +282,15 @@ func buildSingleConfig(cmd *cobra.Command, args []string, rawArgv []string, opts
 		promptFileExplicit = true
 	} else {
 		promptFile = resolvedPromptFile
+	}
+
+	if cmd.Flags().Changed("output") {
+		outputPath = strings.TrimSpace(opts.Output)
+		if outputPath == "" {
+			return nil, fmt.Errorf("--output flag requires a value")
+		}
+	} else if val := strings.TrimSpace(v.GetString("output")); val != "" {
+		outputPath = val
 	}
 
 	agentFlagChanged := cmd.Flags().Changed("agent")
@@ -357,6 +369,7 @@ func buildSingleConfig(cmd *cobra.Command, args []string, rawArgv []string, opts
 		Agent:              agentName,
 		PromptFile:         promptFile,
 		PromptFileExplicit: promptFileExplicit,
+		OutputPath:         outputPath,
 		SkipPermissions:    skipPermissions,
 		Yolo:               yolo,
 		Model:              model,
@@ -432,7 +445,7 @@ func runParallelMode(cmd *cobra.Command, args []string, opts *cliOptions, v *vip
 	}
 
 	if cmd.Flags().Changed("agent") || cmd.Flags().Changed("prompt-file") || cmd.Flags().Changed("reasoning-effort") || cmd.Flags().Changed("skills") {
-		fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend, --model, --full-output and --skip-permissions are allowed.")
+		fmt.Fprintln(os.Stderr, "ERROR: --parallel reads its task configuration from stdin; only --backend, --model, --output, --full-output and --skip-permissions are allowed.")
 		return 1
 	}
 
@@ -461,6 +474,17 @@ func runParallelMode(cmd *cobra.Command, args []string, opts *cliOptions, v *vip
 	fullOutput := opts.FullOutput
 	if !cmd.Flags().Changed("full-output") && v.IsSet("full-output") {
 		fullOutput = v.GetBool("full-output")
+	}
+
+	outputPath := ""
+	if cmd.Flags().Changed("output") {
+		outputPath = strings.TrimSpace(opts.Output)
+		if outputPath == "" {
+			fmt.Fprintln(os.Stderr, "ERROR: --output flag requires a value")
+			return 1
+		}
+	} else if val := strings.TrimSpace(v.GetString("output")); val != "" {
+		outputPath = val
 	}
 
 	skipChanged := cmd.Flags().Changed("skip-permissions") || cmd.Flags().Changed("dangerously-skip-permissions")
@@ -523,6 +547,11 @@ func runParallelMode(cmd *cobra.Command, args []string, opts *cliOptions, v *vip
 		results[i].FilesChanged = extractFilesChangedFromLines(lines)
 		results[i].TestsPassed, results[i].TestsFailed = extractTestResultsFromLines(lines)
 		results[i].KeyOutput = extractKeyOutputFromLines(lines, 150)
+	}
+
+	if err := writeStructuredOutput(outputPath, results); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
 	}
 
 	fmt.Println(generateFinalOutputWithMode(results, !fullOutput))
@@ -688,14 +717,23 @@ func runSingleMode(cfg *Config, name string) int {
 
 	result := runTaskFn(taskSpec, false, cfg.Timeout)
 
-	if result.ExitCode != 0 {
-		return result.ExitCode
+	exitCode := result.ExitCode
+	if exitCode == 0 && strings.TrimSpace(result.Message) == "" {
+		errMsg := fmt.Sprintf("no output message: backend=%s returned empty result.Message with exit_code=0", cfg.Backend)
+		logError(errMsg)
+		exitCode = 1
+		if strings.TrimSpace(result.Error) == "" {
+			result.Error = errMsg
+		}
 	}
 
-	// Validate that we got a meaningful output message
-	if strings.TrimSpace(result.Message) == "" {
-		logError(fmt.Sprintf("no output message: backend=%s returned empty result.Message with exit_code=0", cfg.Backend))
+	if err := writeStructuredOutput(cfg.OutputPath, []TaskResult{result}); err != nil {
+		logError(err.Error())
 		return 1
+	}
+
+	if exitCode != 0 {
+		return exitCode
 	}
 
 	fmt.Println(result.Message)
