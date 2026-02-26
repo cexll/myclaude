@@ -200,10 +200,9 @@ func runWithLoggerAndCleanup(fn func() int) (exitCode int) {
 				for _, entry := range entries {
 					fmt.Fprintln(os.Stderr, entry)
 				}
-				fmt.Fprintf(os.Stderr, "Log file: %s (deleted)\n", logger.Path())
+				fmt.Fprintf(os.Stderr, "Log file: %s\n", logger.Path())
 			}
 		}
-		_ = logger.RemoveLogFile()
 	}()
 	defer runCleanupHook()
 
@@ -733,6 +732,13 @@ func runSingleMode(cfg *Config, name string) int {
 	}
 
 	if exitCode != 0 {
+		// Surface any parsed backend output even on non-zero exit to avoid "(no output)" in tool runners.
+		if strings.TrimSpace(result.Message) != "" {
+			fmt.Println(result.Message)
+			if result.SessionID != "" {
+				fmt.Printf("\n---\nSESSION_ID: %s\n", result.SessionID)
+			}
+		}
 		return exitCode
 	}
 

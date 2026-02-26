@@ -1435,6 +1435,15 @@ waitLoop:
 				logErrorFn(fmt.Sprintf("%s exited with status %d", commandName, code))
 				result.ExitCode = code
 				result.Error = attachStderr(fmt.Sprintf("%s exited with status %d", commandName, code))
+				// Preserve parsed output when the backend exits non-zero (e.g. API error with stream-json output).
+				result.Message = parsed.message
+				result.SessionID = parsed.threadID
+				if stdoutLogger != nil {
+					stdoutLogger.Flush()
+				}
+				if stderrLogger != nil {
+					stderrLogger.Flush()
+				}
 				return result
 			}
 			logErrorFn(commandName + " error: " + waitErr.Error())

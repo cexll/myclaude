@@ -4635,9 +4635,9 @@ func TestRun_ExplicitStdinReadError(t *testing.T) {
 	if !strings.Contains(logOutput, "Failed to read stdin: broken stdin") {
 		t.Fatalf("log missing read error entry, got %q", logOutput)
 	}
-	// Log file is always removed after completion (new behavior)
-	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
-		t.Fatalf("log file should be removed after completion")
+	// Log file should remain for inspection; cleanup is handled via `codeagent-wrapper cleanup`.
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("expected log file to exist after completion: %v", err)
 	}
 }
 
@@ -4650,6 +4650,51 @@ func TestRun_CommandFails(t *testing.T) {
 	defer restore()
 	if code := run(); code == 0 {
 		t.Errorf("expected non-zero")
+	}
+}
+
+func TestRun_NonZeroExitPrintsParsedMessage(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := t.TempDir()
+	var scriptPath string
+	if runtime.GOOS == "windows" {
+		scriptPath = filepath.Join(tempDir, "codex.bat")
+		script := "@echo off\r\n" +
+			"echo {\"type\":\"thread.started\",\"thread_id\":\"tid\"}\r\n" +
+			"echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"parsed-error\"}}\r\n" +
+			"exit /b 1\r\n"
+		if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+			t.Fatalf("failed to write script: %v", err)
+		}
+	} else {
+		scriptPath = filepath.Join(tempDir, "codex.sh")
+		script := `#!/bin/sh
+printf '%s\n' '{"type":"thread.started","thread_id":"tid"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"parsed-error"}}'
+sleep 0.05
+exit 1
+`
+		if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+			t.Fatalf("failed to write script: %v", err)
+		}
+	}
+
+	restore := withBackend(scriptPath, func(cfg *Config, targetArg string) []string { return []string{} })
+	defer restore()
+
+	os.Args = []string{"codeagent-wrapper", "task"}
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+
+	var exitCode int
+	output := captureOutput(t, func() { exitCode = run() })
+	if exitCode != 1 {
+		t.Fatalf("exit=%d, want 1", exitCode)
+	}
+
+	if !strings.Contains(output, "parsed-error") {
+		t.Fatalf("stdout=%q, want parsed backend message", output)
 	}
 }
 
@@ -4732,9 +4777,9 @@ func TestRun_PipedTaskReadError(t *testing.T) {
 	if !strings.Contains(logOutput, "Failed to read piped stdin: read stdin: pipe failure") {
 		t.Fatalf("log missing piped read error, got %q", logOutput)
 	}
-	// Log file is always removed after completion (new behavior)
-	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
-		t.Fatalf("log file should be removed after completion")
+	// Log file should remain for inspection; cleanup is handled via `codeagent-wrapper cleanup`.
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("expected log file to exist after completion: %v", err)
 	}
 }
 
@@ -4788,12 +4833,12 @@ func TestRun_LoggerLifecycle(t *testing.T) {
 	if !fileExisted {
 		t.Fatalf("log file was not present during run")
 	}
-	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
-		t.Fatalf("log file should be removed on success, but it exists")
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("expected log file to exist on success: %v", err)
 	}
 }
 
-func TestRun_LoggerRemovedOnSignal(t *testing.T) {
+func TestRun_LoggerKeptOnSignal(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("signal-based test is not supported on Windows")
 	}
@@ -4807,7 +4852,8 @@ func TestRun_LoggerRemovedOnSignal(t *testing.T) {
 	defer signal.Reset(syscall.SIGINT, syscall.SIGTERM)
 
 	// Set shorter delays for faster test
-	_ = executor.SetForceKillDelay(1)
+	restoreForceKillDelay := executor.SetForceKillDelay(1)
+	defer restoreForceKillDelay()
 
 	tempDir := setTempDirEnv(t, t.TempDir())
 	logPath := filepath.Join(tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", os.Getpid()))
@@ -4830,12 +4876,18 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"l
 	exitCh := make(chan int, 1)
 	go func() { exitCh <- run() }()
 
-	deadline := time.Now().Add(1 * time.Second)
+	ready := false
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(logPath); err == nil {
+		data, err := os.ReadFile(logPath)
+		if err == nil && strings.Contains(string(data), "Starting ") {
+			ready = true
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if !ready {
+		t.Fatalf("logger did not become ready before deadline")
 	}
 
 	if proc, err := os.FindProcess(os.Getpid()); err == nil && proc != nil {
@@ -4852,9 +4904,9 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"l
 	if exitCode != 130 {
 		t.Fatalf("exit code = %d, want 130", exitCode)
 	}
-	// Log file is always removed after completion (new behavior)
-	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
-		t.Fatalf("log file should be removed after completion")
+	// Log file should remain for inspection; cleanup is handled via `codeagent-wrapper cleanup`.
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("expected log file to exist after completion: %v", err)
 	}
 }
 
@@ -5112,6 +5164,34 @@ func TestParallelLogPathInSerialMode(t *testing.T) {
 	wantLine := fmt.Sprintf("Log: %s", expectedLog)
 	if !strings.Contains(stderr, wantLine) {
 		t.Fatalf("stderr missing %q, got: %q", wantLine, stderr)
+	}
+}
+
+func TestRun_KeptLogFileOnSuccess(t *testing.T) {
+	defer resetTestHooks()
+
+	tempDir := setTempDirEnv(t, t.TempDir())
+
+	os.Args = []string{"codeagent-wrapper", "do-stuff"}
+	stdinReader = strings.NewReader("")
+	isTerminalFn = func() bool { return true }
+	codexCommand = createFakeCodexScript(t, "cli-session", "ok")
+	buildCodexArgsFn = func(cfg *Config, targetArg string) []string { return []string{} }
+	cleanupLogsFn = nil
+
+	var exitCode int
+	_ = captureStderr(t, func() {
+		_ = captureOutput(t, func() {
+			exitCode = run()
+		})
+	})
+	if exitCode != 0 {
+		t.Fatalf("run() exit = %d, want 0", exitCode)
+	}
+
+	expectedLog := filepath.Join(tempDir, fmt.Sprintf("codeagent-wrapper-%d.log", os.Getpid()))
+	if _, err := os.Stat(expectedLog); err != nil {
+		t.Fatalf("expected log file to exist: %v", err)
 	}
 }
 
