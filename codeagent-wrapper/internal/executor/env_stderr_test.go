@@ -125,11 +125,17 @@ func TestEnvInjection_LogsToStderrAndMasksKey(t *testing.T) {
 	if cmd.env["ANTHROPIC_API_KEY"] != apiKey {
 		t.Fatalf("ANTHROPIC_API_KEY=%q, want %q", cmd.env["ANTHROPIC_API_KEY"], apiKey)
 	}
+	if cmd.env["CLAUDE_CODE_TMPDIR"] == "" {
+		t.Fatalf("expected CLAUDE_CODE_TMPDIR to be set for nested claude, got empty")
+	}
 
 	if !strings.Contains(got, "Env: ANTHROPIC_BASE_URL="+baseURL) {
 		t.Fatalf("stderr missing base URL env log; stderr=%q", got)
 	}
 	if !strings.Contains(got, "Env: ANTHROPIC_API_KEY=eyJh****test") {
 		t.Fatalf("stderr missing masked API key log; stderr=%q", got)
+	}
+	if !strings.Contains(got, "CLAUDE_CODE_TMPDIR: ") {
+		t.Fatalf("stderr missing CLAUDE_CODE_TMPDIR log; stderr=%q", got)
 	}
 }
