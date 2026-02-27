@@ -1,7 +1,7 @@
 ---
 name: do
 description: This skill should be used for structured feature development with codebase understanding. Triggers on /do command. Provides a 5-phase workflow (Understand, Clarify, Design, Implement, Complete) using codeagent-wrapper to orchestrate code-explorer, code-architect, code-reviewer, and develop agents in parallel.
-allowed-tools: ["Bash(*/.claude/skills/do/scripts/setup-do.py*)", "Bash(*/.claude/skills/do/scripts/task.py*)"]
+allowed-tools: ["Bash(python3:*/.claude/skills/do/scripts/setup-do.py*)", "Bash(python3:*/.claude/skills/do/scripts/task.py*)"]
 ---
 
 # do - Feature Development Orchestrator
@@ -13,7 +13,7 @@ An orchestrator for systematic feature development. Invoke agents via `codeagent
 When triggered via `/do <task>`, initialize the task directory immediately without asking about worktree:
 
 ```bash
-python3 "~/.claude/skills/do/scripts/setup-do.py" "<task description>"
+python3 "$HOME/.claude/skills/do/scripts/setup-do.py" "<task description>"
 ```
 
 This creates a task directory under `.claude/do-tasks/` with:
@@ -27,13 +27,13 @@ Use `task.py` to manage task state:
 
 ```bash
 # Update phase
-python3 "~/.claude/skills/do/scripts/task.py" update-phase 2
+python3 "$HOME/.claude/skills/do/scripts/task.py" update-phase 2
 
 # Check status
-python3 "~/.claude/skills/do/scripts/task.py" status
+python3 "$HOME/.claude/skills/do/scripts/task.py" status
 
 # List all tasks
-python3 "~/.claude/skills/do/scripts/task.py" list
+python3 "$HOME/.claude/skills/do/scripts/task.py" list
 ```
 
 ## Worktree Mode
@@ -42,7 +42,7 @@ The worktree is created **only when needed** (right before Phase 4: Implement). 
 
 1. Run setup with `--worktree` flag to create the worktree:
    ```bash
-   python3 "~/.claude/skills/do/scripts/setup-do.py" --worktree "<task description>"
+   python3 "$HOME/.claude/skills/do/scripts/setup-do.py" --worktree "<task description>"
    ```
 
 2. Use the `DO_WORKTREE_DIR` environment variable to direct `codeagent-wrapper` develop agent into the worktree. **Do NOT pass `--worktree` to subsequent calls** — that creates a new worktree each time.
@@ -181,7 +181,7 @@ Develop in a separate worktree? (Isolates changes from main branch)
 
 If user chooses worktree:
 ```bash
-python3 "~/.claude/skills/do/scripts/setup-do.py" --worktree "<task description>"
+python3 "$HOME/.claude/skills/do/scripts/setup-do.py" --worktree "<task description>"
 # Save the worktree path from output for DO_WORKTREE_DIR
 ```
 
