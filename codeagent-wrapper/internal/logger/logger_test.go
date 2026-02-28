@@ -515,7 +515,10 @@ func TestLoggerIsUnsafeFileSecurityChecks(t *testing.T) {
 			return fakeFileInfo{}, nil
 		})
 		outside := filepath.Join(filepath.Dir(absTempDir), "etc", "passwd")
-		stubEvalSymlinks(t, func(string) (string, error) {
+		stubEvalSymlinks(t, func(p string) (string, error) {
+			if p == tempDir {
+				return absTempDir, nil
+			}
 			return outside, nil
 		})
 		unsafe, reason := isUnsafeFile(filepath.Join("..", "..", "etc", "passwd"), tempDir)
@@ -529,14 +532,71 @@ func TestLoggerIsUnsafeFileSecurityChecks(t *testing.T) {
 			return fakeFileInfo{}, nil
 		})
 		otherDir := t.TempDir()
-		stubEvalSymlinks(t, func(string) (string, error) {
-			return filepath.Join(otherDir, "codeagent-wrapper-9.log"), nil
+		outsidePath := filepath.Join(otherDir, "codeagent-wrapper-9.log")
+		stubEvalSymlinks(t, func(p string) (string, error) {
+			if p == tempDir {
+				return absTempDir, nil
+			}
+			return outsidePath, nil
 		})
-		unsafe, reason := isUnsafeFile(filepath.Join(otherDir, "codeagent-wrapper-9.log"), tempDir)
+		unsafe, reason := isUnsafeFile(outsidePath, tempDir)
 		if !unsafe || reason != "file is outside tempDir" {
 			t.Fatalf("expected outside file to be rejected, got unsafe=%v reason=%q", unsafe, reason)
 		}
 	})
+}
+
+func TestLoggerIsUnsafeFileCanonicalizesTempDir(t *testing.T) {
+	stubFileStat(t, func(string) (os.FileInfo, error) {
+		return fakeFileInfo{}, nil
+	})
+
+	tempDir := filepath.FromSlash("/var/folders/abc/T")
+	canonicalTempDir := filepath.FromSlash("/private/var/folders/abc/T")
+	logPath := filepath.Join(tempDir, "codeagent-wrapper-1.log")
+	canonicalLogPath := filepath.Join(canonicalTempDir, "codeagent-wrapper-1.log")
+
+	stubEvalSymlinks(t, func(p string) (string, error) {
+		switch p {
+		case tempDir:
+			return canonicalTempDir, nil
+		case logPath:
+			return canonicalLogPath, nil
+		default:
+			return p, nil
+		}
+	})
+
+	unsafe, reason := isUnsafeFile(logPath, tempDir)
+	if unsafe {
+		t.Fatalf("expected canonicalized tempDir to be accepted, got unsafe=%v reason=%q", unsafe, reason)
+	}
+}
+
+func TestLoggerIsUnsafeFileFallsBackToAbsOnTempDirEvalFailure(t *testing.T) {
+	stubFileStat(t, func(string) (os.FileInfo, error) {
+		return fakeFileInfo{}, nil
+	})
+
+	tempDir := t.TempDir()
+	absTempDir, err := filepath.Abs(tempDir)
+	if err != nil {
+		t.Fatalf("filepath.Abs() error = %v", err)
+	}
+	logPath := filepath.Join(tempDir, "codeagent-wrapper-1.log")
+	absLogPath := filepath.Join(absTempDir, "codeagent-wrapper-1.log")
+
+	stubEvalSymlinks(t, func(p string) (string, error) {
+		if p == tempDir {
+			return "", errors.New("boom")
+		}
+		return absLogPath, nil
+	})
+
+	unsafe, reason := isUnsafeFile(logPath, tempDir)
+	if unsafe {
+		t.Fatalf("expected Abs fallback to allow file, got unsafe=%v reason=%q", unsafe, reason)
+	}
 }
 
 func TestLoggerPathAndRemove(t *testing.T) {
