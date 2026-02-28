@@ -569,10 +569,16 @@ func isUnsafeFile(path string, tempDir string) (bool, string) {
 		return true, fmt.Sprintf("path resolution failed: %v", err)
 	}
 
-	// Get absolute path of tempDir
-	absTempDir, err := filepath.Abs(tempDir)
+	// Get canonical path of tempDir, resolving symlinks to match resolvedPath.
+	// On macOS, os.TempDir() returns /var/folders/... but EvalSymlinks resolves
+	// files to /private/var/folders/..., causing a spurious "outside tempDir" mismatch.
+	absTempDir, err := evalSymlinksFn(tempDir)
 	if err != nil {
-		return true, fmt.Sprintf("tempDir resolution failed: %v", err)
+		// Fallback to Abs if symlink resolution fails
+		absTempDir, err = filepath.Abs(tempDir)
+		if err != nil {
+			return true, fmt.Sprintf("tempDir resolution failed: %v", err)
+		}
 	}
 
 	// Ensure resolved path is within tempDir
