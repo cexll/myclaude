@@ -196,6 +196,18 @@
         }
       ]
     },
+    "harness": {
+      "enabled": false,
+      "description": "Multi-session autonomous agent harness with progress checkpointing, failure recovery, task dependencies, and post-completion self-reflection",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/harness",
+          "target": "skills/harness",
+          "description": "Install harness skill with hooks (Stop, SessionStart, TeammateIdle, SubagentStop, self-reflect)"
+        }
+      ]
+    },
     "claudekit": {
       "enabled": false,
       "description": "ClaudeKit workflow: skills/do + global hooks (pre-bash, inject-spec, log-prompt)",

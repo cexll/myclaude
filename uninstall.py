@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 DEFAULT_INSTALL_DIR = "~/.claude"
+SETTINGS_FILE = "settings.json"
 
 # Files created by installer itself (not by modules)
 INSTALLER_FILES = ["install.log", "installed_modules.json", "installed_modules.json.bak"]
@@ -78,6 +79,42 @@ def load_config(install_dir: Path) -> Dict[str, Any]:
             except (json.JSONDecodeError, OSError):
                 continue
     return {}
+
+
+def unmerge_hooks_from_settings(module_name: str, install_dir: Path) -> bool:
+    """Remove hooks tagged with __module__=module_name from settings.json."""
+    settings_path = install_dir / SETTINGS_FILE
+    if not settings_path.exists():
+        return False
+
+    try:
+        with settings_path.open("r", encoding="utf-8") as f:
+            settings = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return False
+
+    if "hooks" not in settings:
+        return False
+
+    modified = False
+    for hook_type in list(settings["hooks"].keys()):
+        original_len = len(settings["hooks"][hook_type])
+        settings["hooks"][hook_type] = [
+            entry for entry in settings["hooks"][hook_type]
+            if entry.get("__module__") != module_name
+        ]
+        if len(settings["hooks"][hook_type]) < original_len:
+            modified = True
+        # Remove empty hook type arrays
+        if not settings["hooks"][hook_type]:
+            del settings["hooks"][hook_type]
+
+    if modified:
+        with settings_path.open("w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+
+    return modified
 
 
 def get_module_files(module_name: str, config: Dict[str, Any]) -> Set[str]:
@@ -260,6 +297,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     removed.append(item)
             except OSError as e:
                 print(f"  ✗ Failed to remove {item}: {e}", file=sys.stderr)
+
+        # Remove module hooks from settings.json
+        for m in selected:
+            if unmerge_hooks_from_settings(m, install_dir):
+                print(f"  ✓ Removed hooks for module '{m}' from settings.json")
 
         # Update installed_modules.json
         status_file = install_dir / "installed_modules.json"

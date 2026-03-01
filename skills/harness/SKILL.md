@@ -26,6 +26,15 @@ Executable protocol enabling any agent task to run continuously across multiple 
 /harness add "task description"  # Add a task to the list
 ```
 
+## Activation Marker
+
+Hooks only take effect when `.harness-active` marker file exists in the harness root (same directory as `harness-tasks.json`).
+Hook 注册配置在 `hooks/hooks.json`。
+
+- `/harness init` and `/harness run` MUST create this marker: `touch <project-path>/.harness-active`
+- When all tasks complete (no pending/in_progress/retryable left), remove it: `rm <project-path>/.harness-active`
+- Without this marker, all hooks are no-ops — they exit 0 immediately
+
 ## Progress Persistence (Dual-File System)
 
 Maintain two files in the project working directory:
@@ -54,6 +63,7 @@ Free-text log of all agent actions across sessions. Never truncate.
   "version": 2,
   "created": "2025-07-01T10:00:00Z",
   "session_config": {
+    "concurrency_mode": "exclusive",
     "max_tasks_per_session": 20,
     "max_sessions": 50
   },
@@ -126,6 +136,8 @@ Free-text log of all agent actions across sessions. Never truncate.
 
 Task statuses: `pending` → `in_progress` (transient, set only during active execution) → `completed` or `failed`. A task found as `in_progress` at session start means the previous session was interrupted — handle via Context Window Recovery Protocol.
 
+In concurrent mode (see Concurrency Control), tasks may also carry claim metadata: `claimed_by` and `lease_expires_at` (ISO timestamp).
+
 **Session boundary**: A session starts when the agent begins executing the Session Start protocol and ends when a Stopping Condition is met or the context window resets. Each session gets a unique `SESSION-N` identifier (N = `session_count` after increment).
 
 ## Concurrency Control
@@ -134,7 +146,23 @@ Before modifying `harness-tasks.json`, acquire an exclusive lock using portable 
 
 ```bash
 # Acquire lock (fail fast if another agent is running)
-LOCKDIR="/tmp/harness-$(printf '%s' "$(pwd)" | shasum -a 256 2>/dev/null || sha256sum | cut -c1-8).lock"
+# Lock key must be stable even if invoked from a subdirectory.
+ROOT="$PWD"
+SEARCH="$PWD"
+while [ "$SEARCH" != "/" ] && [ ! -f "$SEARCH/harness-tasks.json" ]; do
+  SEARCH="$(dirname "$SEARCH")"
+done
+if [ -f "$SEARCH/harness-tasks.json" ]; then
+  ROOT="$SEARCH"
+fi
+
+PWD_HASH="$(
+  printf '%s' "$ROOT" |
+    (shasum -a 256 2>/dev/null || sha256sum 2>/dev/null) |
+    awk '{print $1}' |
+    cut -c1-16
+)"
+LOCKDIR="/tmp/harness-${PWD_HASH:-unknown}.lock"
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
   # Check if lock holder is still alive
   LOCK_PID=$(cat "$LOCKDIR/pid" 2>/dev/null)
@@ -158,7 +186,16 @@ trap 'rm -rf "$LOCKDIR"' EXIT
 Log lock acquisition: `[timestamp] [SESSION-N] LOCK acquired (pid=<PID>)`
 Log lock release: `[timestamp] [SESSION-N] LOCK released`
 
-The lock is held for the entire session. The `trap EXIT` handler releases it automatically on normal exit, errors, or signals. Never release the lock between tasks within a session.
+Modes:
+
+- **Exclusive (default)**: hold the lock for the entire session (the `trap EXIT` handler releases it automatically). Any second session in the same state root fails fast.
+- **Concurrent (opt-in via `session_config.concurrency_mode: "concurrent"`)**: treat this as a **state transaction lock**. Hold it only while reading/modifying/writing `harness-tasks.json` (including `.bak`/`.tmp`) and appending to `harness-progress.txt`. Release it immediately before doing real work.
+
+Concurrent mode invariants:
+
+- All workers MUST point at the same state root (the directory that contains `harness-tasks.json`). If you are using separate worktrees/clones, pin it explicitly (e.g., `HARNESS_STATE_ROOT=/abs/path/to/state-root`).
+- Task selection is advisory; the real gate is **atomic claim** under the lock: set `status="in_progress"`, set `claimed_by` (stable worker id, e.g., `HARNESS_WORKER_ID`), set `lease_expires_at`. If claim fails (already `in_progress` with a valid lease), pick another eligible task and retry.
+- Never run two workers in the same git working directory. Use separate worktrees/clones. Otherwise rollback (`git reset --hard` / `git clean -fd`) will destroy other workers.
 
 ## Infinite Loop Protocol
 
@@ -166,7 +203,7 @@ The lock is held for the entire session. The `trap EXIT` handler releases it aut
 
 1. **Read state**: Read last 200 lines of `harness-progress.txt` + full `harness-tasks.json`. If JSON is unparseable, see JSON corruption recovery in Error Handling.
 2. **Read git**: Run `git log --oneline -20` and `git diff --stat` to detect uncommitted work
-3. **Acquire lock**: Fail if another session is active
+3. **Acquire lock** (mode-dependent): Exclusive mode fails if another session is active. Concurrent mode uses the lock only for state transactions.
 4. **Recover interrupted tasks** (see Context Window Recovery below)
 5. **Health check**: Run `harness-init.sh` if it exists
 6. **Track session**: Increment `session_count` in JSON. Check `session_count` against `max_sessions` — if reached, log STATS and STOP. Initialize per-session task counter to 0.
@@ -189,13 +226,13 @@ Then pick the next task in this priority order:
 
 For each task, execute this exact sequence:
 
-1. **Claim**: Record `started_at_commit` = current HEAD hash. Set status to `in_progress`, log `Starting [<task-id>] <title> (base=<hash>)`
+1. **Claim** (atomic, under lock): Record `started_at_commit` = current HEAD hash. Set status to `in_progress`, set `claimed_by`, set `lease_expires_at`, log `Starting [<task-id>] <title> (base=<hash>)`. If the task is already claimed (`in_progress` with a valid lease), pick another eligible task and retry.
 2. **Execute with checkpoints**: Perform the work. After each significant step, log:
    ```
    [timestamp] [SESSION-N] CHECKPOINT [task-id] step=M/N "description of what was done"
    ```
-   Also append to the task's `checkpoints` array: `{ "step": M, "total": N, "description": "...", "timestamp": "ISO" }`
-3. **Validate**: Run the task's `validation.command` wrapped with `timeout`: `timeout <timeout_seconds> <command>`. If no validation command, skip. Before running, verify the command exists (e.g., `command -v <binary>`) — if missing, treat as `ENV_SETUP` error.
+   Also append to the task's `checkpoints` array: `{ "step": M, "total": N, "description": "...", "timestamp": "ISO" }`. In concurrent mode, renew the lease at each checkpoint (push `lease_expires_at` forward).
+3. **Validate**: Run the task's `validation.command` with a timeout wrapper (prefer `timeout`; on macOS use `gtimeout` from coreutils). If `validation.command` is empty/null, log `ERROR [<task-id>] [CONFIG] Missing validation.command` and STOP — do not declare completion without an objective check. Before running, verify the command exists (e.g., `command -v <binary>`) — if missing, treat as `ENV_SETUP` error.
    - Command exits 0 → PASS
    - Command exits non-zero → FAIL
    - Command exceeds timeout → TIMEOUT
@@ -216,6 +253,9 @@ For each task, execute this exact sequence:
 ## Context Window Recovery Protocol
 
 When a new session starts and finds a task with `status: "in_progress"`:
+
+- Exclusive mode: treat this as an interrupted previous session and run the Recovery Protocol below.
+- Concurrent mode: only recover a task if either (a) `claimed_by` matches this worker, or (b) `lease_expires_at` is in the past (stale lease). Otherwise, treat it as owned by another worker and do not modify it.
 
 1. **Check git state**:
    ```bash
@@ -243,6 +283,7 @@ Each error category has a default recovery strategy:
 | Category | Default Recovery | Agent Action |
 |----------|-----------------|--------------|
 | `ENV_SETUP` | Re-run init, then STOP if still failing | Run `harness-init.sh` again immediately. If fails twice, log and stop — environment is broken |
+| `CONFIG` | STOP (requires human fix) | Log the config error precisely (file + field), then STOP. Do not guess or auto-mutate task metadata |
 | `TASK_EXEC` | Rollback via `git reset --hard <started_at_commit>`, retry | Verify `started_at_commit` exists (`git cat-file -t <hash>`). If missing, mark failed at max_attempts. Otherwise reset, run `on_failure.cleanup` if defined, retry if attempts < max_attempts |
 | `TEST_FAIL` | Rollback via `git reset --hard <started_at_commit>`, retry | Reset to `started_at_commit`, analyze test output to identify fix, retry with targeted changes |
 | `TIMEOUT` | Kill process, execute cleanup, retry | Wrap validation with `timeout <seconds> <command>`. On timeout, run `on_failure.cleanup`, retry (consider splitting task if repeated) |
@@ -251,7 +292,7 @@ Each error category has a default recovery strategy:
 
 **JSON corruption**: If `harness-tasks.json` cannot be parsed, check for `harness-tasks.json.bak` (written before each modification). If backup exists and is valid, restore from it. If no valid backup, log `ERROR [ENV_SETUP] harness-tasks.json corrupted and unrecoverable` and STOP — task metadata (validation commands, dependencies, cleanup) cannot be reconstructed from logs alone.
 
-**Backup protocol**: Before every write to `harness-tasks.json`, copy the current file to `harness-tasks.json.bak`.
+**Backup protocol**: Before every write to `harness-tasks.json`, copy the current file to `harness-tasks.json.bak`. Write updates atomically: write JSON to `harness-tasks.json.tmp` then `mv` it into place (readers should never see a partial file).
 
 ## Environment Initialization
 
@@ -279,7 +320,7 @@ All log entries use grep-friendly format on a single line:
 
 Types: `INIT`, `Starting`, `Completed`, `ERROR`, `CHECKPOINT`, `ROLLBACK`, `RECOVERY`, `STATS`, `LOCK`, `WARN`
 
-Error categories: `ENV_SETUP`, `TASK_EXEC`, `TEST_FAIL`, `TIMEOUT`, `DEPENDENCY`, `SESSION_TIMEOUT`
+Error categories: `ENV_SETUP`, `CONFIG`, `TASK_EXEC`, `TEST_FAIL`, `TIMEOUT`, `DEPENDENCY`, `SESSION_TIMEOUT`
 
 Filtering:
 ```bash
@@ -293,7 +334,7 @@ grep "RECOVERY" harness-progress.txt                 # All recovery actions
 
 ## Session Statistics
 
-At session end, update `harness-tasks.json`: increment `session_count`, set `last_session` to current timestamp. Then append:
+At session end, update `harness-tasks.json`: set `last_session` to current timestamp. (Do NOT increment `session_count` here — it is incremented at Session Start.) Then append:
 
 ```
 [timestamp] [SESSION-N] STATS tasks_total=10 completed=7 failed=1 pending=2 blocked=0 attempts_total=12 checkpoints=23
@@ -321,9 +362,11 @@ Does NOT acquire the lock (read-only operation).
 
 ## Add Command (`/harness add`)
 
-Append a new task to `harness-tasks.json` with auto-incremented id (`task-NNN`), status `pending`, default `max_attempts: 3`, empty `depends_on`, and no validation command. Prompt user for optional fields: `priority`, `depends_on`, `validation.command`, `timeout_seconds`. Requires lock acquisition (modifies JSON).
+Append a new task to `harness-tasks.json` with auto-incremented id (`task-NNN`), status `pending`, default `max_attempts: 3`, empty `depends_on`, and no validation command (required before the task can be completed). Prompt user for optional fields: `priority`, `depends_on`, `validation.command`, `timeout_seconds`. Requires lock acquisition (modifies JSON).
 
 ## Tool Dependencies
 
 Requires: Bash, file read/write, git. All harness operations must be executed from the project root directory.
 Does NOT require: specific MCP servers, programming languages, or test frameworks.
+
+Concurrent mode requires isolated working directories (`git worktree` or separate clones). Do not run concurrent workers in the same working tree.
