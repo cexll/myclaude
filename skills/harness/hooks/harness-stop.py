@@ -260,6 +260,11 @@ def main() -> int:
     # If nothing left to do, allow stop
     if not pending_eligible and not retryable and not in_progress_blocking:
         _reset_block_counter(root)
+        # Signal self-reflect hook BEFORE removing active marker
+        try:
+            (root / ".harness-reflect").touch()
+        except Exception:
+            pass
         try:
             (root / ".harness-active").unlink(missing_ok=True)
         except Exception:

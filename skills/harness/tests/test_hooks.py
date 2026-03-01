@@ -200,7 +200,7 @@ class TestStopHookTaskLogic(unittest.TestCase):
         return {"cwd": self.tmpdir, **extra}
 
     def test_all_completed_allows_stop(self):
-        """When all tasks are completed, stop is allowed."""
+        """When all tasks are completed, stop is allowed and .harness-reflect created."""
         write_tasks(self.root, [
             {"id": "t1", "status": "completed"},
             {"id": "t2", "status": "completed"},
@@ -209,6 +209,10 @@ class TestStopHookTaskLogic(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(stdout, "")
         self.assertFalse((self.root / ".harness-active").exists())
+        self.assertTrue(
+            (self.root / ".harness-reflect").exists(),
+            ".harness-reflect should be created when all tasks complete",
+        )
 
     def test_pending_with_unmet_deps_allows_stop(self):
         """Pending tasks with unmet dependencies don't block stop."""
@@ -644,7 +648,7 @@ REFLECT_HOOK = HOOKS_DIR / "self-reflect-stop.py"
 
 
 class TestSelfReflectStopHook(unittest.TestCase):
-    """self-reflect-stop.py must only trigger when harness was used and completed."""
+    """self-reflect-stop.py must only trigger when .harness-reflect marker exists."""
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -663,14 +667,18 @@ class TestSelfReflectStopHook(unittest.TestCase):
     def _payload(self, session_id="test-reflect-001", **extra):
         return {"cwd": self.tmpdir, "session_id": session_id, **extra}
 
+    def _set_reflect(self):
+        """Create .harness-reflect marker (simulates harness completion)."""
+        (self.root / ".harness-reflect").touch()
+
     def test_no_harness_root_is_noop(self):
         """When harness-tasks.json doesn't exist, hook is a complete no-op."""
         code, stdout, stderr = run_hook(REFLECT_HOOK, self._payload())
         self.assertEqual(code, 0)
         self.assertEqual(stdout, "", "Should produce no output when harness never used")
 
-    def test_harness_active_defers(self):
-        """When .harness-active exists, hook defers to harness-stop.py."""
+    def test_harness_active_no_reflect_marker(self):
+        """When .harness-active exists but no .harness-reflect, hook is no-op."""
         write_tasks(self.root, [
             {"id": "t1", "status": "pending", "depends_on": []},
         ])
@@ -679,12 +687,24 @@ class TestSelfReflectStopHook(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(stdout, "", "Should not self-reflect while harness is active")
 
-    def test_harness_completed_triggers_reflection(self):
-        """When harness-tasks.json exists but .harness-active removed, triggers self-reflection."""
+    def test_stale_tasks_without_reflect_marker_is_noop(self):
+        """Stale harness-tasks.json without .harness-reflect does NOT trigger (fixes false positive)."""
         write_tasks(self.root, [
             {"id": "t1", "status": "completed"},
         ])
         deactivate(self.root)
+        # No .harness-reflect marker — this is a stale file from a previous run
+        code, stdout, _ = run_hook(REFLECT_HOOK, self._payload(session_id="test-stale"))
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout, "", "Stale harness-tasks.json should NOT trigger self-reflect")
+
+    def test_harness_completed_triggers_reflection(self):
+        """When .harness-reflect marker exists, triggers self-reflection."""
+        write_tasks(self.root, [
+            {"id": "t1", "status": "completed"},
+        ])
+        deactivate(self.root)
+        self._set_reflect()
         sid = "test-reflect-trigger"
         code, stdout, _ = run_hook(REFLECT_HOOK, self._payload(session_id=sid))
         self.assertEqual(code, 0)
@@ -696,6 +716,7 @@ class TestSelfReflectStopHook(unittest.TestCase):
         """Each invocation increments the iteration counter."""
         write_tasks(self.root, [{"id": "t1", "status": "completed"}])
         deactivate(self.root)
+        self._set_reflect()
         sid = "test-reflect-counter"
 
         # First call: iteration 1
@@ -708,10 +729,11 @@ class TestSelfReflectStopHook(unittest.TestCase):
         data = json.loads(stdout)
         self.assertIn("2/5", data["reason"])
 
-    def test_max_iterations_allows_stop(self):
-        """After max iterations, hook allows stop (no output)."""
+    def test_max_iterations_allows_stop_and_cleans_marker(self):
+        """After max iterations, hook allows stop and removes .harness-reflect."""
         write_tasks(self.root, [{"id": "t1", "status": "completed"}])
         deactivate(self.root)
+        self._set_reflect()
         sid = "test-reflect-max"
 
         # Write counter at max
@@ -721,11 +743,16 @@ class TestSelfReflectStopHook(unittest.TestCase):
         code, stdout, _ = run_hook(REFLECT_HOOK, self._payload(session_id=sid))
         self.assertEqual(code, 0)
         self.assertEqual(stdout, "", "Should allow stop after max iterations")
+        self.assertFalse(
+            (self.root / ".harness-reflect").exists(),
+            ".harness-reflect should be cleaned up after max iterations",
+        )
 
     def test_disabled_via_env(self):
         """REFLECT_MAX_ITERATIONS=0 disables self-reflection."""
         write_tasks(self.root, [{"id": "t1", "status": "completed"}])
         deactivate(self.root)
+        self._set_reflect()
         code, stdout, _ = run_hook(
             REFLECT_HOOK,
             self._payload(session_id="test-reflect-disabled"),
@@ -738,6 +765,7 @@ class TestSelfReflectStopHook(unittest.TestCase):
         """Missing session_id makes hook a no-op."""
         write_tasks(self.root, [{"id": "t1", "status": "completed"}])
         deactivate(self.root)
+        self._set_reflect()
         code, stdout, _ = run_hook(REFLECT_HOOK, {"cwd": self.tmpdir})
         self.assertEqual(code, 0)
         self.assertEqual(stdout, "")
@@ -745,7 +773,7 @@ class TestSelfReflectStopHook(unittest.TestCase):
     def test_empty_stdin_no_crash(self):
         """Empty stdin doesn't crash."""
         write_tasks(self.root, [{"id": "t1", "status": "completed"}])
-        activate(self.root)
+        self._set_reflect()
         proc = subprocess.run(
             [sys.executable, str(REFLECT_HOOK)],
             input="",
@@ -760,6 +788,7 @@ class TestSelfReflectStopHook(unittest.TestCase):
         """HARNESS_STATE_ROOT env var is used for root discovery."""
         write_tasks(self.root, [{"id": "t1", "status": "completed"}])
         deactivate(self.root)
+        self._set_reflect()
         sid = "test-reflect-env"
         code, stdout, _ = run_hook(
             REFLECT_HOOK,

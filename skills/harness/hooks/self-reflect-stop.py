@@ -146,13 +146,15 @@ def main() -> int:
     if not session_id:
         return 0  # 无 session_id，放行
 
-    # 守卫 1：harness 从未初始化过 → 完全不触发自检
+    # 守卫：仅当 harness 完成所有任务后（.harness-reflect 存在）才触发自省
+    # 这避免了两个问题：
+    #   1. 历史残留的 harness-tasks.json 导致误触发（false positive）
+    #   2. harness-stop.py 移除 .harness-active 后 Claude Code 跳过后续 hook（false negative）
     root = _find_harness_root(payload)
     if root is None:
-        return 0  # harness 未曾使用，不触发自省
+        return 0
 
-    # 守卫 2：harness 仍活跃 → 由 harness-stop.py 全权管理
-    if (root / ".harness-active").is_file():
+    if not (root / ".harness-reflect").is_file():
         return 0
 
     # 读取最大迭代次数
@@ -168,8 +170,12 @@ def main() -> int:
     # 读取当前计数
     count = _read_counter(session_id)
 
-    # 超过最大次数，放行
+    # 超过最大次数，清理 marker 并放行
     if count >= max_iter:
+        try:
+            (root / ".harness-reflect").unlink(missing_ok=True)
+        except Exception:
+            pass
         return 0
 
     # 递增计数
