@@ -1,11 +1,11 @@
 # Codeagent-Wrapper User Guide
 
-Multi-backend AI code execution wrapper supporting Codex, Claude, Gemini, and OpenCode.
+Multi-backend AI code execution wrapper supporting Codex, Claude, Gemini, OpenCode, and MiniMax.
 
 ## Overview
 
 `codeagent-wrapper` is a Go-based CLI tool that provides a unified interface to multiple AI coding backends. It handles:
-- Multi-backend execution (Codex, Claude, Gemini, OpenCode)
+- Multi-backend execution (Codex, Claude, Gemini, OpenCode, MiniMax)
 - JSON stream parsing and output formatting
 - Session management and resumption
 - Parallel task execution with dependency resolution
@@ -46,7 +46,7 @@ EOF
 
 | Flag | Description |
 |------|-------------|
-| `--backend <name>` | Select backend (codex/claude/gemini/opencode) |
+| `--backend <name>` | Select backend (codex/claude/gemini/opencode/minimax variants) |
 | `--model <name>` | Override model for this invocation |
 | `--agent <name>` | Agent preset name (from ~/.codeagent/models.json) |
 | `--config <path>` | Path to models.json config file |
@@ -68,6 +68,7 @@ EOF
 | **Claude** | `--backend claude` | Complex reasoning, architecture |
 | **Gemini** | `--backend gemini` | Fast iteration, prototyping |
 | **OpenCode** | `--backend opencode` | Open-source alternative |
+| **MiniMax** | `--backend minimax` / `minimax-anthropic-cn` / `minimax-openai-global` / `minimax-openai-cn` | MiniMax-M3 and MiniMax-M2.7 via official global_en or cn_zh endpoints |
 
 ## Core Features
 

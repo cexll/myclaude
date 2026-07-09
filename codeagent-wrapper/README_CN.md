@@ -2,13 +2,13 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`codeagent-wrapper` 是一个用 Go 编写的多后端 AI 代码代理命令行包装器：用统一的 CLI 入口封装不同的 AI 工具后端（Codex / Claude / Gemini / OpenCode），并提供一致的参数、配置、技能注入与会话恢复体验。
+`codeagent-wrapper` 是一个用 Go 编写的多后端 AI 代码代理命令行包装器：用统一的 CLI 入口封装不同的 AI 工具后端（Codex / Claude / Gemini / OpenCode / MiniMax），并提供一致的参数、配置、技能注入与会话恢复体验。
 
 入口：`cmd/codeagent-wrapper/main.go`（生成二进制名：`codeagent-wrapper`）。
 
 ## 功能特性
 
-- **多后端支持**：`codex` / `claude` / `gemini` / `opencode`
+- **多后端支持**：`codex` / `claude` / `gemini` / `opencode` / `minimax`
 - **统一命令行**：`codeagent-wrapper [flags] <task>` / `codeagent-wrapper resume <session_id> <task> [workdir]`
 - **自动 stdin**：遇到换行/特殊字符/超长任务自动走 stdin，避免 shell quoting 问题；也可显式使用 `-`
 - **配置合并**：支持配置文件与 `CODEAGENT_*` 环境变量（viper）
@@ -129,7 +129,7 @@ EOF
 
 | 参数 | 说明 |
 |------|------|
-| `--backend <name>` | 后端选择（codex/claude/gemini/opencode） |
+| `--backend <name>` | 后端选择（codex/claude/gemini/opencode/minimax variants） |
 | `--model <name>` | 覆盖模型 |
 | `--agent <name>` | Agent 预设名（来自 models.json 或 ~/.codeagent/agents/） |
 | `--prompt-file <path>` | 从文件读取 prompt |
@@ -168,7 +168,7 @@ skip-permissions: false
 
 | 变量 | 说明 |
 |------|------|
-| `CODEAGENT_BACKEND` | 后端名（codex/claude/gemini/opencode） |
+| `CODEAGENT_BACKEND` | 后端名（codex/claude/gemini/opencode/minimax variants） |
 | `CODEAGENT_MODEL` | 模型名 |
 | `CODEAGENT_AGENT` | Agent 预设名 |
 | `CODEAGENT_PROMPT_FILE` | Prompt 文件路径 |
@@ -188,7 +188,11 @@ skip-permissions: false
   "default_model": "gpt-4.1",
   "backends": {
     "codex": { "api_key": "..." },
-    "claude": { "base_url": "http://localhost:23001", "api_key": "..." }
+    "claude": { "base_url": "http://localhost:23001", "api_key": "..." },
+    "minimax": { "base_url": "https://api.minimax.io/anthropic/v1", "api_key": "..." },
+    "minimax-anthropic-cn": { "base_url": "https://api.minimaxi.com/anthropic/v1", "api_key": "..." },
+    "minimax-openai-global": { "base_url": "https://api.minimax.io/v1", "api_key": "..." },
+    "minimax-openai-cn": { "base_url": "https://api.minimaxi.com/v1", "api_key": "..." }
   },
   "agents": {
     "develop": {
@@ -205,6 +209,36 @@ skip-permissions: false
 ```
 
 用 `--agent <name>` 选择预设，agent 会继承 `backends` 下对应后端的 `base_url` / `api_key`。
+
+### MiniMax 后端
+
+MiniMax 可以通过 Anthropic-compatible 或 OpenAI-compatible 适配器运行。registry 同时保留官方全球与国内区域，Anthropic-compatible endpoint 使用 `/anthropic/v1` 路径：
+
+| Backend | Adapter | Region | Base URL | Recommended models |
+|---------|---------|--------|----------|--------------------|
+| `minimax`, `minimax-anthropic`, `minimax-anthropic-global` | Claude/Anthropic-compatible | global_en | `https://api.minimax.io/anthropic/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
+| `minimax-anthropic-cn` | Claude/Anthropic-compatible | cn_zh | `https://api.minimaxi.com/anthropic/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
+| `minimax-openai`, `minimax-openai-global` | Codex/OpenAI-compatible | global_en | `https://api.minimax.io/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
+| `minimax-openai-cn` | Codex/OpenAI-compatible | cn_zh | `https://api.minimaxi.com/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
+
+Model notes: `MiniMax-M3` has a 1,000,000-token context window with pricing 0.6 input / 2.4 output / 0.12 cache read USD per million tokens and adaptive or disabled thinking. `MiniMax-M2.7` has a 204,800-token context window with pricing 0.3 input / 1.2 output / 0.06 cache read / 0.375 cache write USD per million tokens and always-on thinking.
+
+示例 agent preset：
+
+```json
+{
+  "agents": {
+    "minimax-develop": {
+      "backend": "minimax",
+      "model": "MiniMax-M3"
+    },
+    "minimax-fast-cn": {
+      "backend": "minimax-openai-cn",
+      "model": "MiniMax-M2.7"
+    }
+  }
+}
+```
 
 ### 动态 Agent
 

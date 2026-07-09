@@ -4,7 +4,12 @@
   "title": "Modular Installation Config",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "install_dir", "log_file", "modules"],
+  "required": [
+    "version",
+    "install_dir",
+    "log_file",
+    "modules"
+  ],
   "properties": {
     "version": {
       "type": "string",
@@ -23,7 +28,9 @@
       "type": "object",
       "description": "可自定义的模块定义,每个模块名称可任意指定",
       "patternProperties": {
-        "^[a-zA-Z0-9_-]+$": { "$ref": "#/$defs/module" }
+        "^[a-zA-Z0-9_-]+$": {
+          "$ref": "#/$defs/module"
+        }
       },
       "additionalProperties": false,
       "minProperties": 1
@@ -33,88 +40,239 @@
     "module": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "description", "operations"],
+      "required": [
+        "enabled",
+        "description",
+        "operations"
+      ],
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "description": { "type": "string", "minLength": 3 },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": {
+          "type": "string",
+          "minLength": 3
+        },
         "operations": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/operation" }
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        },
+        "agents": {
+          "type": "object",
+          "description": "Optional agent presets installed by this module. Each preset can select built-in backends such as codex, claude, gemini, opencode, minimax, minimax-anthropic-cn, minimax-openai-global, or minimax-openai-cn.",
+          "patternProperties": {
+            "^[a-zA-Z0-9_-]+$": {
+              "$ref": "#/$defs/agent"
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
     "operation": {
       "oneOf": [
-        { "$ref": "#/$defs/op_copy_dir" },
-        { "$ref": "#/$defs/op_copy_file" },
-        { "$ref": "#/$defs/op_merge_dir" },
-        { "$ref": "#/$defs/op_merge_json" },
-        { "$ref": "#/$defs/op_run_command" }
+        {
+          "$ref": "#/$defs/op_copy_dir"
+        },
+        {
+          "$ref": "#/$defs/op_copy_file"
+        },
+        {
+          "$ref": "#/$defs/op_merge_dir"
+        },
+        {
+          "$ref": "#/$defs/op_merge_json"
+        },
+        {
+          "$ref": "#/$defs/op_run_command"
+        }
       ]
     },
     "common_operation_fields": {
       "type": "object",
       "properties": {
-        "description": { "type": "string" }
+        "description": {
+          "type": "string"
+        }
       },
       "additionalProperties": true
     },
     "op_copy_dir": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "source", "target"],
+      "required": [
+        "type",
+        "source",
+        "target"
+      ],
       "properties": {
-        "type": { "const": "copy_dir" },
-        "source": { "type": "string", "minLength": 1 },
-        "target": { "type": "string", "minLength": 1 },
-        "description": { "type": "string" }
+        "type": {
+          "const": "copy_dir"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "op_copy_file": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "source", "target"],
+      "required": [
+        "type",
+        "source",
+        "target"
+      ],
       "properties": {
-        "type": { "const": "copy_file" },
-        "source": { "type": "string", "minLength": 1 },
-        "target": { "type": "string", "minLength": 1 },
-        "description": { "type": "string" }
+        "type": {
+          "const": "copy_file"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "op_merge_dir": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "source"],
+      "required": [
+        "type",
+        "source"
+      ],
       "properties": {
-        "type": { "const": "merge_dir" },
-        "source": { "type": "string", "minLength": 1 },
-        "description": { "type": "string" }
+        "type": {
+          "const": "merge_dir"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "op_merge_json": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "source", "target"],
+      "required": [
+        "type",
+        "source",
+        "target"
+      ],
       "properties": {
-        "type": { "const": "merge_json" },
-        "source": { "type": "string", "minLength": 1 },
-        "target": { "type": "string", "minLength": 1 },
-        "merge_key": { "type": "string" },
-        "description": { "type": "string" }
+        "type": {
+          "const": "merge_json"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "merge_key": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "op_run_command": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "command"],
+      "required": [
+        "type",
+        "command"
+      ],
       "properties": {
-        "type": { "const": "run_command" },
-        "command": { "type": "string", "minLength": 1 },
-        "description": { "type": "string" },
+        "type": {
+          "const": "run_command"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
         "env": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "model"
+      ],
+      "properties": {
+        "backend": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Backend name, including built-ins such as codex/claude/gemini/opencode and MiniMax aliases."
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "yolo": {
+          "type": "boolean"
+        },
+        "reasoning": {
+          "type": "string"
+        },
+        "base_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "api_key": {
+          "type": "string"
+        },
+        "allowed_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disallowed_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     }

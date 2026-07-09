@@ -17,7 +17,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 		cfg := &config.Config{Mode: "new", WorkDir: "/repo"}
 		got := backend.BuildArgs(cfg, "todo")
-		want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "todo"}
+		want := []string{"-p", "--output-format", "stream-json", "--verbose", "todo"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -26,7 +26,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	t.Run("new mode includes skip-permissions by default", func(t *testing.T) {
 		cfg := &config.Config{Mode: "new", SkipPermissions: false}
 		got := backend.BuildArgs(cfg, "-")
-		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "-"}
+		want := []string{"-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "-"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -36,7 +36,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 		cfg := &config.Config{Mode: "resume", SessionID: "sid-123", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "resume-task")
-		want := []string{"-p", "--setting-sources", "", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
+		want := []string{"-p", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -46,7 +46,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 		cfg := &config.Config{Mode: "resume", WorkDir: "/ignored"}
 		got := backend.BuildArgs(cfg, "follow-up")
-		want := []string{"-p", "--setting-sources", "", "--output-format", "stream-json", "--verbose", "follow-up"}
+		want := []string{"-p", "--output-format", "stream-json", "--verbose", "follow-up"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -55,7 +55,7 @@ func TestClaudeBuildArgs_ModesAndPermissions(t *testing.T) {
 	t.Run("resume mode can opt-in skip permissions", func(t *testing.T) {
 		cfg := &config.Config{Mode: "resume", SessionID: "sid-123", SkipPermissions: true}
 		got := backend.BuildArgs(cfg, "resume-task")
-		want := []string{"-p", "--dangerously-skip-permissions", "--setting-sources", "", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
+		want := []string{"-p", "--dangerously-skip-permissions", "-r", "sid-123", "--output-format", "stream-json", "--verbose", "resume-task"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -74,7 +74,7 @@ func TestBackendBuildArgs_Model(t *testing.T) {
 		backend := ClaudeBackend{}
 		cfg := &config.Config{Mode: "new", Model: "opus"}
 		got := backend.BuildArgs(cfg, "todo")
-		want := []string{"-p", "--setting-sources", "", "--model", "opus", "--output-format", "stream-json", "--verbose", "todo"}
+		want := []string{"-p", "--model", "opus", "--output-format", "stream-json", "--verbose", "todo"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -188,6 +188,10 @@ func TestClaudeBuildArgs_BackendMetadata(t *testing.T) {
 		{backend: CodexBackend{}, name: "codex", command: "codex"},
 		{backend: ClaudeBackend{}, name: "claude", command: "claude"},
 		{backend: GeminiBackend{}, name: "gemini", command: "gemini"},
+		{backend: MiniMaxAnthropicGlobalBackend{}, name: "minimax-anthropic-global", command: "claude"},
+		{backend: MiniMaxAnthropicCNBackend{}, name: "minimax-anthropic-cn", command: "claude"},
+		{backend: MiniMaxOpenAIGlobalBackend{}, name: "minimax-openai-global", command: "codex"},
+		{backend: MiniMaxOpenAICNBackend{}, name: "minimax-openai-cn", command: "codex"},
 	}
 
 	for _, tt := range tests {
@@ -196,6 +200,74 @@ func TestClaudeBuildArgs_BackendMetadata(t *testing.T) {
 		}
 		if got := tt.backend.Command(); got != tt.command {
 			t.Fatalf("Command() = %s, want %s", got, tt.command)
+		}
+	}
+}
+
+func TestMiniMaxBackend_EnvDefaults(t *testing.T) {
+	tests := []struct {
+		name      string
+		backend   Backend
+		wantKey   string
+		wantBase  string
+		wantToken string
+	}{
+		{
+			name:      "anthropic global",
+			backend:   MiniMaxAnthropicGlobalBackend{},
+			wantKey:   "ANTHROPIC_BASE_URL",
+			wantBase:  "https://api.minimax.io/anthropic/v1",
+			wantToken: "ANTHROPIC_API_KEY",
+		},
+		{
+			name:      "anthropic cn",
+			backend:   MiniMaxAnthropicCNBackend{},
+			wantKey:   "ANTHROPIC_BASE_URL",
+			wantBase:  "https://api.minimaxi.com/anthropic/v1",
+			wantToken: "ANTHROPIC_API_KEY",
+		},
+		{
+			name:      "openai global",
+			backend:   MiniMaxOpenAIGlobalBackend{},
+			wantKey:   "OPENAI_BASE_URL",
+			wantBase:  "https://api.minimax.io/v1",
+			wantToken: "OPENAI_API_KEY",
+		},
+		{
+			name:      "openai cn",
+			backend:   MiniMaxOpenAICNBackend{},
+			wantKey:   "OPENAI_BASE_URL",
+			wantBase:  "https://api.minimaxi.com/v1",
+			wantToken: "OPENAI_API_KEY",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := tt.backend.Env("", "test-key")
+			if env[tt.wantKey] != tt.wantBase {
+				t.Fatalf("%s = %q, want %q", tt.wantKey, env[tt.wantKey], tt.wantBase)
+			}
+			if env[tt.wantToken] != "test-key" {
+				t.Fatalf("%s = %q, want test-key", tt.wantToken, env[tt.wantToken])
+			}
+		})
+	}
+}
+
+func TestMiniMaxBackend_RegistryAliases(t *testing.T) {
+	aliases := []string{
+		"minimax",
+		"minimax-anthropic",
+		"minimax-anthropic-global",
+		"minimax-anthropic-cn",
+		"minimax-openai",
+		"minimax-openai-global",
+		"minimax-openai-cn",
+	}
+	for _, alias := range aliases {
+		if _, err := Select(alias); err != nil {
+			t.Fatalf("Select(%q): %v", alias, err)
 		}
 	}
 }
