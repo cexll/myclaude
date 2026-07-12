@@ -189,8 +189,8 @@ skip-permissions: false
   "backends": {
     "codex": { "api_key": "..." },
     "claude": { "base_url": "http://localhost:23001", "api_key": "..." },
-    "minimax": { "base_url": "https://api.minimax.io/anthropic/v1", "api_key": "..." },
-    "minimax-anthropic-cn": { "base_url": "https://api.minimaxi.com/anthropic/v1", "api_key": "..." },
+    "minimax": { "base_url": "https://api.minimax.io/anthropic", "api_key": "..." },
+    "minimax-anthropic-cn": { "base_url": "https://api.minimaxi.com/anthropic", "api_key": "..." },
     "minimax-openai-global": { "base_url": "https://api.minimax.io/v1", "api_key": "..." },
     "minimax-openai-cn": { "base_url": "https://api.minimaxi.com/v1", "api_key": "..." }
   },
@@ -212,12 +212,12 @@ skip-permissions: false
 
 ### MiniMax 后端
 
-MiniMax 可以通过 Anthropic-compatible 或 OpenAI-compatible 适配器运行。registry 同时保留官方全球与国内区域，Anthropic-compatible endpoint 使用 `/anthropic/v1` 路径：
+MiniMax 可以通过 Anthropic-compatible 或 OpenAI-compatible 适配器运行。registry 同时保留官方全球与国内区域，Anthropic-compatible Base URL 使用 `/anthropic`：
 
 | Backend | Adapter | Region | Base URL | Recommended models |
 |---------|---------|--------|----------|--------------------|
-| `minimax`, `minimax-anthropic`, `minimax-anthropic-global` | Claude/Anthropic-compatible | global_en | `https://api.minimax.io/anthropic/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
-| `minimax-anthropic-cn` | Claude/Anthropic-compatible | cn_zh | `https://api.minimaxi.com/anthropic/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
+| `minimax`, `minimax-anthropic`, `minimax-anthropic-global` | Claude/Anthropic-compatible | global_en | `https://api.minimax.io/anthropic` | `MiniMax-M3`, `MiniMax-M2.7` |
+| `minimax-anthropic-cn` | Claude/Anthropic-compatible | cn_zh | `https://api.minimaxi.com/anthropic` | `MiniMax-M3`, `MiniMax-M2.7` |
 | `minimax-openai`, `minimax-openai-global` | Codex/OpenAI-compatible | global_en | `https://api.minimax.io/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
 | `minimax-openai-cn` | Codex/OpenAI-compatible | cn_zh | `https://api.minimaxi.com/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
 

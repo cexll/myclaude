@@ -216,14 +216,14 @@ func TestMiniMaxBackend_EnvDefaults(t *testing.T) {
 			name:      "anthropic global",
 			backend:   MiniMaxAnthropicGlobalBackend{},
 			wantKey:   "ANTHROPIC_BASE_URL",
-			wantBase:  "https://api.minimax.io/anthropic/v1",
+			wantBase:  "https://api.minimax.io/anthropic",
 			wantToken: "ANTHROPIC_API_KEY",
 		},
 		{
 			name:      "anthropic cn",
 			backend:   MiniMaxAnthropicCNBackend{},
 			wantKey:   "ANTHROPIC_BASE_URL",
-			wantBase:  "https://api.minimaxi.com/anthropic/v1",
+			wantBase:  "https://api.minimaxi.com/anthropic",
 			wantToken: "ANTHROPIC_API_KEY",
 		},
 		{

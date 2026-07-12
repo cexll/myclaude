@@ -5,8 +5,8 @@ import config "codeagent-wrapper/internal/config"
 const (
 	MiniMaxGlobalOpenAIBaseURL      = "https://api.minimax.io/v1"
 	MiniMaxCNOpenAIBaseURL          = "https://api.minimaxi.com/v1"
-	MiniMaxGlobalAnthropicBaseURL   = "https://api.minimax.io/anthropic/v1"
-	MiniMaxCNAnthropicBaseURL       = "https://api.minimaxi.com/anthropic/v1"
+	MiniMaxGlobalAnthropicBaseURL   = "https://api.minimax.io/anthropic"
+	MiniMaxCNAnthropicBaseURL       = "https://api.minimaxi.com/anthropic"
 	MiniMaxM3ModelID                = "MiniMax-M3"
 	MiniMaxM27ModelID               = "MiniMax-M2.7"
 	MiniMaxM3ContextWindow          = 1000000

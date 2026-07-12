@@ -189,8 +189,8 @@ Read via viper with automatic `-` to `_` mapping:
   "backends": {
     "codex": { "api_key": "..." },
     "claude": { "base_url": "http://localhost:23001", "api_key": "..." },
-    "minimax": { "base_url": "https://api.minimax.io/anthropic/v1", "api_key": "..." },
-    "minimax-anthropic-cn": { "base_url": "https://api.minimaxi.com/anthropic/v1", "api_key": "..." },
+    "minimax": { "base_url": "https://api.minimax.io/anthropic", "api_key": "..." },
+    "minimax-anthropic-cn": { "base_url": "https://api.minimaxi.com/anthropic", "api_key": "..." },
     "minimax-openai-global": { "base_url": "https://api.minimax.io/v1", "api_key": "..." },
     "minimax-openai-cn": { "base_url": "https://api.minimaxi.com/v1", "api_key": "..." }
   },
@@ -212,12 +212,12 @@ Use `--agent <name>` to select a preset. Agents inherit `base_url` / `api_key` f
 
 ### MiniMax Backends
 
-MiniMax can run through either Anthropic-compatible or OpenAI-compatible adapters. The registry includes both official regions and keeps the `/anthropic/v1` path for Anthropic-compatible endpoints:
+MiniMax can run through either Anthropic-compatible or OpenAI-compatible adapters. The registry includes both official regions and uses `/anthropic` as the Anthropic-compatible Base URL:
 
 | Backend | Adapter | Region | Base URL | Recommended models |
 |---------|---------|--------|----------|--------------------|
-| `minimax`, `minimax-anthropic`, `minimax-anthropic-global` | Claude/Anthropic-compatible | global_en | `https://api.minimax.io/anthropic/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
-| `minimax-anthropic-cn` | Claude/Anthropic-compatible | cn_zh | `https://api.minimaxi.com/anthropic/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
+| `minimax`, `minimax-anthropic`, `minimax-anthropic-global` | Claude/Anthropic-compatible | global_en | `https://api.minimax.io/anthropic` | `MiniMax-M3`, `MiniMax-M2.7` |
+| `minimax-anthropic-cn` | Claude/Anthropic-compatible | cn_zh | `https://api.minimaxi.com/anthropic` | `MiniMax-M3`, `MiniMax-M2.7` |
 | `minimax-openai`, `minimax-openai-global` | Codex/OpenAI-compatible | global_en | `https://api.minimax.io/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
 | `minimax-openai-cn` | Codex/OpenAI-compatible | cn_zh | `https://api.minimaxi.com/v1` | `MiniMax-M3`, `MiniMax-M2.7` |
 
