@@ -30,3 +30,18 @@ func TestBuildCodexArgsAlias(t *testing.T) {
 		t.Fatalf("BuildCodexArgs() returned no args")
 	}
 }
+
+func TestMiniMaxRegistryDelegation(t *testing.T) {
+	aliases := []string{
+		"minimax",
+		"minimax-anthropic-global",
+		"minimax-anthropic-cn",
+		"minimax-openai-global",
+		"minimax-openai-cn",
+	}
+	for _, alias := range aliases {
+		if _, err := Select(alias); err != nil {
+			t.Fatalf("Select(%q): %v", alias, err)
+		}
+	}
+}
