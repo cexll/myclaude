@@ -8,7 +8,7 @@
 
 ## 功能特性
 
-- **多后端支持**：`codex` / `claude` / `gemini` / `opencode`
+- **多后端支持**：`codex` / `claude` / `gemini` / `opencode` / `minimax` 系列
 - **统一命令行**：`codeagent-wrapper [flags] <task>` / `codeagent-wrapper resume <session_id> <task> [workdir]`
 - **自动 stdin**：遇到换行/特殊字符/超长任务自动走 stdin，避免 shell quoting 问题；也可显式使用 `-`
 - **配置合并**：支持配置文件与 `CODEAGENT_*` 环境变量（viper）
@@ -22,6 +22,19 @@
 - **Stderr 降噪**：自动过滤 Gemini 和 Codex 后端的噪声 stderr 输出
 - **日志清理**：`codeagent-wrapper cleanup` 清理旧日志（日志写入系统临时目录）
 - **跨平台**：支持 macOS / Linux / Windows
+
+## MiniMax 后端
+
+MiniMax 提供 Anthropic 兼容和 OpenAI 兼容两种后端，并支持全球与中国区域。选择后端别名即可使用对应的官方地址：
+
+| 后端别名 | CLI | 协议 | 区域 | Base URL |
+|---|---|---|---|---|
+| `minimax` / `minimax-anthropic-global` | `claude` | Anthropic | global_en | `https://api.minimax.io/anthropic` |
+| `minimax-anthropic-cn` | `claude` | Anthropic | cn_zh | `https://api.minimaxi.com/anthropic` |
+| `minimax-openai-global` | `codex` | OpenAI | global_en | `https://api.minimax.io/v1` |
+| `minimax-openai-cn` | `codex` | OpenAI | cn_zh | `https://api.minimaxi.com/v1` |
+
+当前模型为 `MiniMax-M3`（100 万上下文，支持文本、图片、视频输入，adaptive 或 disabled thinking）和 `MiniMax-M2.7`（204,800 上下文，仅文本输入，always-on thinking）。M3 标准档输入/输出为 $0.30/$1.20（超过 512K 输入时为 $0.60/$2.40），M2.7 为 $0.30/$1.20，并分别支持官方 cache read/cache write 价格。
 
 ## 安装
 

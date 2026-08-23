@@ -91,7 +91,7 @@ func TestEnvInjectionLogic(t *testing.T) {
 		"agents": {
 			"explore": {
 				"backend": "claude",
-				"model": "MiniMax-M2.1",
+				"model": "MiniMax-M3",
 				"base_url": "https://api.minimaxi.com/anthropic",
 				"api_key": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
 			}
@@ -144,7 +144,7 @@ func TestEnvInjectionLogic(t *testing.T) {
 		t.Fatal("Expected env vars to be injected, got none")
 	}
 
-	expectedURL := "https://api.minimaxi.com/anthropic"
+	expectedURL := "https://api.minimax.io/anthropic"
 	if injected["ANTHROPIC_BASE_URL"] != expectedURL {
 		t.Errorf("ANTHROPIC_BASE_URL: expected %q, got %q", expectedURL, injected["ANTHROPIC_BASE_URL"])
 	}

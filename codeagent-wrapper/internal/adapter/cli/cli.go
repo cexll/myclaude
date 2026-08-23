@@ -96,7 +96,7 @@ func AddRootFlags(fs *pflag.FlagSet, opts *Options) {
 	fs.BoolVar(&opts.Parallel, "parallel", false, "Run tasks in parallel (config from stdin)")
 	fs.BoolVar(&opts.FullOutput, "full-output", false, "Parallel mode: include full task output (legacy)")
 
-	fs.StringVar(&opts.Backend, "backend", "codex", "Backend to use (codex, claude, gemini, opencode)")
+	fs.StringVar(&opts.Backend, "backend", "codex", "Backend to use (codex, claude, gemini, opencode, minimax, minimax-anthropic-cn, minimax-openai-global, minimax-openai-cn)")
 	fs.StringVar(&opts.Model, "model", "", "Model override")
 	fs.StringVar(&opts.ReasoningEffort, "reasoning-effort", "", "Reasoning effort (backend-specific)")
 	fs.StringVar(&opts.Agent, "agent", "", "Agent preset name (from ~/.codeagent/models.json)")

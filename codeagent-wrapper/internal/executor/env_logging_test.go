@@ -248,7 +248,7 @@ func TestClaudeBackendEnv(t *testing.T) {
 // TestEnvLoggingIntegration tests that env vars are properly masked in logs
 func TestEnvLoggingIntegration(t *testing.T) {
 	b := backend.ClaudeBackend{}
-	baseURL := "https://api.minimaxi.com/anthropic"
+	baseURL := "https://api.minimax.io/anthropic"
 	apiKey := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.longjwttoken"
 
 	env := b.Env(baseURL, apiKey)
