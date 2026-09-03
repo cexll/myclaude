@@ -54,13 +54,13 @@ func TestEnvInjection_LogsToStderrAndMasksKey(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	const baseURL = "https://api.minimax.io/anthropic"
+	const baseURL = "https://api.minimaxi.com/anthropic"
 	const apiKey = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
 	models := `{
   "agents": {
     "explore": {
       "backend": "claude",
-      "model": "MiniMax-M3",
+      "model": "MiniMax-M2.7",
       "base_url": "` + baseURL + `",
       "api_key": "` + apiKey + `"
     }

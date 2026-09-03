@@ -92,7 +92,7 @@ func TestEnvInjectionLogic(t *testing.T) {
 			"explore": {
 				"backend": "claude",
 				"model": "MiniMax-M3",
-				"base_url": "https://api.minimaxi.com/anthropic",
+				"base_url": "https://api.minimax.io/anthropic",
 				"api_key": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
 			}
 		}
