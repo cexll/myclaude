@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stellarlinkco/myclaude/config.schema.json",
+  "title": "Modular Installation Config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "install_dir", "log_file", "modules"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    },
+    "install_dir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target installation directory, supports ~/ expansion"
+    },
+    "log_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "modules": {
+      "type": "object",
+      "description": "可自定义的模块定义,每个模块名称可任意指定",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": { "$ref": "#/$defs/module" }
+      },
+      "additionalProperties": false,
+      "minProperties": 1
+    }
+  },
+  "$defs": {
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "description", "operations"],
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "description": { "type": "string", "minLength": 3 },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/operation" }
+        }
+      }
+    },
+    "operation": {
+      "oneOf": [
+        { "$ref": "#/$defs/op_copy_dir" },
+        { "$ref": "#/$defs/op_copy_file" },
+        { "$ref": "#/$defs/op_merge_dir" },
+        { "$ref": "#/$defs/op_merge_json" },
+        { "$ref": "#/$defs/op_run_command" }
+      ]
+    },
+    "common_operation_fields": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "op_copy_dir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "source", "target"],
+      "properties": {
+        "type": { "const": "copy_dir" },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "op_copy_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "source", "target"],
+      "properties": {
+        "type": { "const": "copy_file" },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "op_merge_dir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "source"],
+      "properties": {
+        "type": { "const": "merge_dir" },
+        "source": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "op_merge_json": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "source", "target"],
+      "properties": {
+        "type": { "const": "merge_json" },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "merge_key": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "op_run_command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "command"],
+      "properties": {
+        "type": { "const": "run_command" },
+        "command": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "version": "1.0",
+  "install_dir": "~/.claude",
+  "log_file": "install.log",
+  "modules": {
+    "bmad": {
+      "enabled": false,
+      "description": "BMAD agile workflow with multi-agent orchestration",
+      "operations": [
+        {
+          "type": "merge_dir",
+          "source": "agents/bmad",
+          "description": "Merge BMAD commands and agents"
+        }
+      ]
+    },
+    "requirements": {
+      "enabled": false,
+      "description": "Requirements-driven development workflow",
+      "operations": [
+        {
+          "type": "merge_dir",
+          "source": "agents/requirements",
+          "description": "Merge requirements workflow commands and agents"
+        }
+      ]
+    },
+    "essentials": {
+      "enabled": false,
+      "description": "Core development commands and utilities",
+      "operations": [
+        {
+          "type": "merge_dir",
+          "source": "agents/development-essentials",
+          "description": "Merge essential development commands"
+        }
+      ]
+    },
+    "omo": {
+      "enabled": false,
+      "description": "OmO multi-agent orchestration with Sisyphus coordinator",
+      "agents": {
+        "oracle": {
+          "backend": "claude",
+          "model": "claude-opus-4-5-20251101",
+          "yolo": true
+        },
+        "librarian": {
+          "backend": "claude",
+          "model": "claude-sonnet-4-5-20250929",
+          "yolo": true
+        },
+        "explore": {
+          "backend": "opencode",
+          "model": "opencode/grok-code"
+        },
+        "develop": {
+          "backend": "codex",
+          "model": "gpt-5.2",
+          "reasoning": "xhigh",
+          "yolo": true
+        },
+        "frontend-ui-ux-engineer": {
+          "backend": "gemini",
+          "model": "gemini-3-pro-preview"
+        },
+        "document-writer": {
+          "backend": "gemini",
+          "model": "gemini-3-flash-preview"
+        }
+      },
+      "operations": [
+        {
+          "type": "copy_file",
+          "source": "skills/omo/SKILL.md",
+          "target": "skills/omo/SKILL.md",
+          "description": "Install omo skill"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/oracle.md",
+          "target": "skills/omo/references/oracle.md",
+          "description": "Install oracle agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/librarian.md",
+          "target": "skills/omo/references/librarian.md",
+          "description": "Install librarian agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/explore.md",
+          "target": "skills/omo/references/explore.md",
+          "description": "Install explore agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/frontend-ui-ux-engineer.md",
+          "target": "skills/omo/references/frontend-ui-ux-engineer.md",
+          "description": "Install frontend-ui-ux-engineer agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/document-writer.md",
+          "target": "skills/omo/references/document-writer.md",
+          "description": "Install document-writer agent prompt"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/omo/references/develop.md",
+          "target": "skills/omo/references/develop.md",
+          "description": "Install develop agent prompt"
+        }
+      ]
+    },
+    "sparv": {
+      "enabled": false,
+      "description": "SPARV workflow (Specify→Plan→Act→Review→Vault) with 10-point gate",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/sparv",
+          "target": "skills/sparv",
+          "description": "Install sparv skill with all scripts and hooks"
+        }
+      ]
+    },
+    "do": {
+      "enabled": true,
+      "description": "5-phase feature development workflow with codeagent orchestration",
+      "agents": {
+        "develop": {
+          "backend": "codex",
+          "model": "gpt-4.1",
+          "reasoning": "high",
+          "yolo": true
+        },
+        "code-explorer": {
+          "backend": "opencode",
+          "model": ""
+        },
+        "code-architect": {
+          "backend": "claude",
+          "model": ""
+        },
+        "code-reviewer": {
+          "backend": "claude",
+          "model": ""
+        }
+      },
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/do",
+          "target": "skills/do",
+          "description": "Install do skill with hooks"
+        }
+      ]
+    },
+    "course": {
+      "enabled": false,
+      "description": "课程开发工作流，包含 dev、产品需求和测试用例技能",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/dev",
+          "target": "skills/dev",
+          "description": "Install dev skill with agents"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/product-requirements/SKILL.md",
+          "target": "skills/product-requirements/SKILL.md",
+          "description": "Install product-requirements skill"
+        },
+        {
+          "type": "copy_dir",
+          "source": "skills/test-cases",
+          "target": "skills/test-cases",
+          "description": "Install test-cases skill with references"
+        },
+        {
+          "type": "copy_file",
+          "source": "skills/codeagent/SKILL.md",
+          "target": "skills/codeagent/SKILL.md",
+          "description": "Install codeagent skill"
+        },
+        {
+          "type": "run_command",
+          "command": "bash install.sh",
+          "description": "Install codeagent-wrapper binary",
+          "env": {
+            "INSTALL_DIR": "${install_dir}"
+          }
+        }
+      ]
+    },
+    "harness": {
+      "enabled": false,
+      "description": "Multi-session autonomous agent harness with progress checkpointing, failure recovery, task dependencies, and post-completion self-reflection",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/harness",
+          "target": "skills/harness",
+          "description": "Install harness skill with hooks (Stop, SessionStart, TeammateIdle, SubagentStop, self-reflect)"
+        }
+      ]
+    },
+    "claudekit": {
+      "enabled": false,
+      "description": "ClaudeKit workflow: skills/do + global hooks (pre-bash, inject-spec, log-prompt)",
+      "operations": [
+        {
+          "type": "copy_dir",
+          "source": "skills/do",
+          "target": "skills/do",
+          "description": "Install do skill with 5-phase workflow"
+        },
+        {
+          "type": "copy_dir",
+          "source": "hooks",
+          "target": "hooks",
+          "description": "Install global hooks (pre-bash, inject-spec, log-prompt)"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,140 @@
+name: Release codeagent-wrapper
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run tests
+        working-directory: codeagent-wrapper
+        run: go test -v -coverprofile=cover.out ./...
+
+      - name: Check coverage
+        working-directory: codeagent-wrapper
+        run: |
+          go tool cover -func=cover.out | grep total
+          COVERAGE=$(go tool cover -func=cover.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Coverage: ${COVERAGE}%"
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build binary
+        id: build
+        working-directory: codeagent-wrapper
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          OUTPUT_NAME=codeagent-wrapper-${{ matrix.goos }}-${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+          go build -ldflags="-s -w -X codeagent-wrapper/internal/app.version=${VERSION}" -o ${OUTPUT_NAME} ./cmd/codeagent-wrapper
+          chmod +x ${OUTPUT_NAME}
+          echo "artifact_path=codeagent-wrapper/${OUTPUT_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeagent-wrapper-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ steps.build.outputs.artifact_path }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          # Get previous tag
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -n 1)
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found, using all commits"
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            echo "Generating notes from $PREVIOUS_TAG to ${{ github.ref_name }}"
+            COMMITS=$(git log ${PREVIOUS_TAG}..${{ github.ref_name }} --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Create release notes
+          cat > release_notes.md <<EOF
+          ## What's Changed
+
+          ${COMMITS}
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${{ github.ref_name }}
+          EOF
+
+          cat release_notes.md
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f -name "codeagent-wrapper-*" -exec mv {} release/ \;
+          cp install.sh install.bat release/
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body_path: release_notes.md
+          draft: false
+          prerelease: false

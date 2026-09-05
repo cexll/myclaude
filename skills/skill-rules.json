@@ -1,0 +1,116 @@
+{
+  "skills": {
+    "codex": {
+      "type": "execution",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "refactor",
+          "implement",
+          "code change",
+          "bug fix",
+          "生成代码",
+          "重构",
+          "修复"
+        ],
+        "intentPatterns": [
+          "(refactor|rewrite|optimi[sz]e)\\b",
+          "(implement|build|write).*(feature|function|module|code)",
+          "(fix|debug).*(bug|error|issue)"
+        ]
+      }
+    },
+    "codeagent": {
+      "type": "execution",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "codeagent",
+          "multi-backend",
+          "backend selection",
+          "parallel task",
+          "多后端",
+          "并行任务",
+          "gemini",
+          "claude backend"
+        ],
+        "intentPatterns": [
+          "\\bcodeagent\\b",
+          "backend\\s+(codex|claude|gemini)",
+          "parallel.*task",
+          "multi.*backend"
+        ]
+      }
+    },
+    "gh-workflow": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "issue",
+          "pr",
+          "pull request",
+          "github",
+          "gh workflow",
+          "merge"
+        ],
+        "intentPatterns": [
+          "(create|open|update|close|review).*(pr|pull request|issue)",
+          "\\bgithub\\b|\\bgh\\b"
+        ]
+      }
+    },
+    "product-requirements": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "requirements",
+          "prd",
+          "product requirements",
+          "feature specification",
+          "product owner",
+          "需求",
+          "产品需求",
+          "需求文档",
+          "功能规格"
+        ],
+        "intentPatterns": [
+          "(product|feature).*requirement",
+          "\\bPRD\\b",
+          "requirements?.*document",
+          "(gather|collect|define|write).*requirement"
+        ]
+      }
+    },
+    "prototype-prompt-generator": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "medium",
+      "promptTriggers": {
+        "keywords": [
+          "prototype",
+          "ui design",
+          "ux design",
+          "mobile app design",
+          "web app design",
+          "原型",
+          "界面设计",
+          "UI设计",
+          "UX设计",
+          "移动应用设计"
+        ],
+        "intentPatterns": [
+          "(create|generate|design).*(prototype|UI|UX|interface)",
+          "(mobile|web).*app.*(design|prototype)",
+          "prototype.*prompt",
+          "design.*system"
+        ]
+      }
+    }
+  }
+}

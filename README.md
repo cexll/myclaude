@@ -1,114 +1,171 @@
+[中文](README_CN.md) [English](README.md)
+
 # Claude Code Multi-Agent Workflow System
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Run in Smithery](https://smithery.ai/badge/skills/stellarlinkco)](https://smithery.ai/skills?ns=stellarlinkco&utm_source=github&utm_medium=badge)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-3.2-green)](https://github.com/cexll/myclaude)
-[![Plugin Ready](https://img.shields.io/badge/Plugin-Ready-purple)](https://docs.claude.com/en/docs/claude-code/plugins)
+[![Version](https://img.shields.io/badge/Version-6.x-green)](https://github.com/stellarlinkco/myclaude)
 
-> Enterprise-grade agile development automation with AI-powered multi-agent orchestration
+> AI-powered development automation with multi-backend execution (Codex/Claude/Gemini/OpenCode)
 
-[中文文档](README_CN.md) | [Documentation](docs/)
-
-## 🚀 Quick Start
-
-### Installation
-
-**Plugin System (Recommended)**
-```bash
-/plugin github.com/cexll/myclaude
-```
-
-**Traditional Installation**
-```bash
-git clone https://github.com/cexll/myclaude.git
-cd myclaude
-make install
-```
-
-### Basic Usage
+## Quick Start
 
 ```bash
-# Full agile workflow
-/bmad-pilot "Build user authentication with OAuth2 and MFA"
-
-# Lightweight development
-/requirements-pilot "Implement JWT token refresh"
-
-# Direct development commands
-/code "Add API rate limiting"
+npx github:stellarlinkco/myclaude
 ```
 
-## 📦 Plugin Modules
+## Modules Overview
 
-| Plugin | Description | Key Commands |
-|--------|-------------|--------------|
-| **[bmad-agile-workflow](docs/BMAD-WORKFLOW.md)** | Complete BMAD methodology with 6 specialized agents | `/bmad-pilot` |
-| **[requirements-driven-workflow](docs/REQUIREMENTS-WORKFLOW.md)** | Streamlined requirements-to-code workflow | `/requirements-pilot` |
-| **[development-essentials](docs/DEVELOPMENT-COMMANDS.md)** | Core development slash commands | `/code` `/debug` `/test` `/optimize` |
-| **[advanced-ai-agents](docs/ADVANCED-AGENTS.md)** | GPT-5 deep reasoning integration | Agent: `gpt5` |
+| Module | Description | Documentation |
+|--------|-------------|---------------|
+| [do](skills/do/README.md) | **Recommended** - 5-phase feature development with codeagent orchestration | `/do` command |
+| [omo](skills/omo/README.md) | Multi-agent orchestration with intelligent routing | `/omo` command |
+| [bmad](agents/bmad/README.md) | BMAD agile workflow with 6 specialized agents | `/bmad-pilot` command |
+| [requirements](agents/requirements/README.md) | Lightweight requirements-to-code pipeline | `/requirements-pilot` command |
+| [essentials](agents/development-essentials/README.md) | 11 core dev commands: ask, bugfix, code, debug, docs, enhance-prompt, optimize, refactor, review, test, think | `/code`, `/debug`, etc. |
+| [sparv](skills/sparv/README.md) | SPARV workflow (Specify→Plan→Act→Review→Vault) | `/sparv` command |
+| course | Course development (combines dev + product-requirements + test-cases) | Composite module |
+| claudekit | ClaudeKit: do skill + global hooks (pre-bash, inject-spec, log-prompt) | Composite module |
 
-## 💡 Use Cases
+### Available Skills
 
-**BMAD Workflow** - Full agile process automation
-- Product requirements → Architecture design → Sprint planning → Development → Code review → QA testing
-- Quality gates with 90% thresholds
-- Automated document generation
+Individual skills can be installed separately via `npx github:stellarlinkco/myclaude --list` (skills bundled in modules like do, omo, sparv are listed above):
 
-**Requirements Workflow** - Fast prototyping
-- Requirements generation → Implementation → Review → Testing
-- Lightweight and practical
+| Skill | Description |
+|-------|-------------|
+| browser | Browser automation for web testing and data extraction |
+| codeagent | codeagent-wrapper invocation for multi-backend AI code tasks |
+| codex | Direct Codex backend execution |
+| dev | Lightweight end-to-end development workflow |
+| gemini | Direct Gemini backend execution |
+| product-requirements | Interactive PRD generation with quality scoring |
+| prototype-prompt-generator | Structured UI/UX prototype prompt generation |
+| skill-install | Install skills from GitHub with security scanning |
+| test-cases | Comprehensive test case generation from requirements |
 
-**Development Commands** - Daily coding
-- Direct implementation, debugging, testing, optimization
-- No workflow overhead
+## Installation
 
-## 🎯 Key Features
-
-- **🤖 Role-Based Agents**: Specialized AI agents for each development phase
-- **📊 Quality Gates**: Automatic quality scoring with iterative refinement
-- **✅ Approval Points**: User confirmation at critical workflow stages
-- **📁 Persistent Artifacts**: All specs saved to `.claude/specs/`
-- **🔌 Plugin System**: Native Claude Code plugin support
-- **🔄 Flexible Workflows**: Choose full agile or lightweight development
-
-## 📚 Documentation
-
-- **[BMAD Workflow Guide](docs/BMAD-WORKFLOW.md)** - Complete methodology and agent roles
-- **[Requirements Workflow](docs/REQUIREMENTS-WORKFLOW.md)** - Lightweight development process
-- **[Development Commands](docs/DEVELOPMENT-COMMANDS.md)** - Slash command reference
-- **[Plugin System](docs/PLUGIN-SYSTEM.md)** - Installation and configuration
-- **[Quick Start Guide](docs/QUICK-START.md)** - Get started in 5 minutes
-
-## 🛠️ Installation Methods
-
-**Method 1: Plugin Install** (One command)
 ```bash
-/plugin install bmad-agile-workflow
+# Interactive installer (recommended)
+npx github:stellarlinkco/myclaude
+
+# List installable items (modules / skills / wrapper)
+npx github:stellarlinkco/myclaude --list
+
+# Detect installed modules and update from GitHub
+npx github:stellarlinkco/myclaude --update
+
+# Custom install directory / overwrite
+npx github:stellarlinkco/myclaude --install-dir ~/.claude --force
 ```
 
-**Method 2: Make Commands** (Selective installation)
+`--update` detects already installed modules in the target install dir (defaults to `~/.claude`, via `installed_modules.json` when present) and updates them from GitHub (latest release) by overwriting the module files.
+
+### Module Configuration
+
+Edit `config.json` to enable/disable modules:
+
+```json
+{
+  "modules": {
+    "bmad": { "enabled": false },
+    "requirements": { "enabled": false },
+    "essentials": { "enabled": false },
+    "omo": { "enabled": false },
+    "sparv": { "enabled": false },
+    "do": { "enabled": true },
+    "course": { "enabled": false }
+  }
+}
+```
+
+## Workflow Selection Guide
+
+| Scenario | Recommended |
+|----------|-------------|
+| Feature development (default) | `/do` |
+| Bug investigation + fix | `/omo` |
+| Large enterprise project | `/bmad-pilot` |
+| Quick prototype | `/requirements-pilot` |
+| Simple task | `/code`, `/debug` |
+
+## Core Architecture
+
+| Role | Agent | Responsibility |
+|------|-------|----------------|
+| **Orchestrator** | Claude Code | Planning, context gathering, verification |
+| **Executor** | codeagent-wrapper | Code editing, test execution (Codex/Claude/Gemini/OpenCode) |
+
+## Backend CLI Requirements
+
+| Backend | Required Features |
+|---------|-------------------|
+| Codex | `codex e`, `--json`, `-C`, `resume` |
+| Claude | `--output-format stream-json`, `-r` |
+| Gemini | `-o stream-json`, `-y`, `-r` |
+| OpenCode | `opencode`, stdin mode |
+
+## Directory Structure After Installation
+
+```
+~/.claude/
+├── bin/codeagent-wrapper
+├── CLAUDE.md              (installed by default)
+├── commands/              (from essentials module)
+├── agents/                (from bmad/requirements modules)
+├── skills/                (from do/omo/sparv/course modules)
+├── hooks/                 (from claudekit module)
+├── settings.json          (auto-generated, hooks config)
+└── installed_modules.json (auto-generated, tracks modules)
+```
+
+## Documentation
+
+- [codeagent-wrapper](codeagent-wrapper/README.md)
+- [Plugin System](PLUGIN_README.md)
+
+## Troubleshooting
+
+### Common Issues
+
+**Codex wrapper not found:**
 ```bash
-make deploy-bmad          # BMAD workflow only
-make deploy-requirements  # Requirements workflow only
-make deploy-all          # Everything
+# Select: codeagent-wrapper
+npx github:stellarlinkco/myclaude
 ```
 
-**Method 3: Manual Setup**
-- Copy `/commands/*.md` to `~/.config/claude/commands/`
-- Copy `/agents/*.md` to `~/.config/claude/agents/`
+**Module not loading:**
+```bash
+cat ~/.claude/installed_modules.json
+npx github:stellarlinkco/myclaude --force
+```
 
-Run `make help` for all options.
+**Backend CLI errors:**
+```bash
+which codex && codex --version
+which claude && claude --version
+which gemini && gemini --version
+```
 
-## 📄 License
+## FAQ
 
-MIT License - see [LICENSE](LICENSE)
+| Issue | Solution |
+|-------|----------|
+| "Unknown event format" | Logging display issue, can be ignored |
+| Gemini can't read .gitignore files | Remove from .gitignore or use different backend |
+| Codex permission denied | Set `approval_policy = "never"` in ~/.codex/config.yaml |
 
-## 🙋 Support
+See [GitHub Issues](https://github.com/stellarlinkco/myclaude/issues) for more.
 
-- **Issues**: [GitHub Issues](https://github.com/cexll/myclaude/issues)
-- **Documentation**: [docs/](docs/)
-- **Plugin Guide**: [PLUGIN_README.md](PLUGIN_README.md)
+## License
 
----
+AGPL-3.0 - see [LICENSE](LICENSE)
 
-**Transform your development with AI-powered automation** - One command, complete workflow, quality assured.
+### Commercial Licensing
+
+For commercial use without AGPL obligations, contact: support@stellarlink.co
+
+## Support
+
+- [GitHub Issues](https://github.com/stellarlinkco/myclaude/issues)

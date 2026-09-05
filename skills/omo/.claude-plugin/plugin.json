@@ -1,0 +1,9 @@
+{
+  "name": "omo",
+  "description": "Multi-agent orchestration for code analysis, bug investigation, fix planning, and implementation with intelligent routing to specialized agents",
+  "version": "5.6.1",
+  "author": {
+    "name": "cexll",
+    "email": "cexll@cexll.com"
+  }
+}

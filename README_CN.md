@@ -1,114 +1,276 @@
 # Claude Code 多智能体工作流系统
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-3.2-green)](https://github.com/cexll/myclaude)
-[![Plugin Ready](https://img.shields.io/badge/Plugin-Ready-purple)](https://docs.claude.com/en/docs/claude-code/plugins)
+[![Version](https://img.shields.io/badge/Version-6.x-green)](https://github.com/stellarlinkco/myclaude)
 
-> 企业级敏捷开发自动化与 AI 驱动的多智能体编排
+> AI 驱动的开发自动化 - 多后端执行架构 (Codex/Claude/Gemini/OpenCode)
 
-[English](README.md) | [文档](docs/)
-
-## 🚀 快速开始
-
-### 安装
-
-**插件系统（推荐）**
-```bash
-/plugin github.com/cexll/myclaude
-```
-
-**传统安装**
-```bash
-git clone https://github.com/cexll/myclaude.git
-cd myclaude
-make install
-```
-
-### 基本使用
+## 快速开始
 
 ```bash
-# 完整敏捷工作流
-/bmad-pilot "构建用户认证系统，支持 OAuth2 和多因素认证"
-
-# 轻量级开发
-/requirements-pilot "实现 JWT 令牌刷新"
-
-# 直接开发命令
-/code "添加 API 限流功能"
+npx github:stellarlinkco/myclaude
 ```
 
-## 📦 插件模块
+## 模块概览
 
-| 插件 | 描述 | 主要命令 |
-|------|------|---------|
-| **[bmad-agile-workflow](docs/BMAD-WORKFLOW.md)** | 完整 BMAD 方法论，包含6个专业智能体 | `/bmad-pilot` |
-| **[requirements-driven-workflow](docs/REQUIREMENTS-WORKFLOW.md)** | 精简的需求到代码工作流 | `/requirements-pilot` |
-| **[development-essentials](docs/DEVELOPMENT-COMMANDS.md)** | 核心开发斜杠命令 | `/code` `/debug` `/test` `/optimize` |
-| **[advanced-ai-agents](docs/ADVANCED-AGENTS.md)** | GPT-5 深度推理集成 | 智能体: `gpt5` |
+| 模块 | 描述 | 文档 |
+|------|------|------|
+| [do](skills/do/README.md) | **推荐** - 5 阶段功能开发 + codeagent 编排 | `/do` 命令 |
+| [omo](skills/omo/README.md) | 多智能体编排 + 智能路由 | `/omo` 命令 |
+| [bmad](agents/bmad/README.md) | BMAD 敏捷工作流 + 6 个专业智能体 | `/bmad-pilot` 命令 |
+| [requirements](agents/requirements/README.md) | 轻量级需求到代码流水线 | `/requirements-pilot` 命令 |
+| [essentials](agents/development-essentials/README.md) | 11 个核心开发命令：ask、bugfix、code、debug、docs、enhance-prompt、optimize、refactor、review、test、think | `/code`, `/debug` 等 |
+| [sparv](skills/sparv/README.md) | SPARV 工作流 (Specify→Plan→Act→Review→Vault) | `/sparv` 命令 |
+| course | 课程开发（组合 dev + product-requirements + test-cases） | 组合模块 |
+| claudekit | ClaudeKit：do 技能 + 全局钩子（pre-bash、inject-spec、log-prompt）| 组合模块 |
 
-## 💡 使用场景
+### 可用技能
 
-**BMAD 工作流** - 完整敏捷流程自动化
-- 产品需求 → 架构设计 → 冲刺规划 → 开发实现 → 代码审查 → 质量测试
-- 90% 阈值质量门控
-- 自动生成文档
+可通过 `npx github:stellarlinkco/myclaude --list` 单独安装技能（模块内置技能如 do、omo、sparv 见上表）：
 
-**Requirements 工作流** - 快速原型开发
-- 需求生成 → 实现 → 审查 → 测试
-- 轻量级实用主义
+| 技能 | 描述 |
+|------|------|
+| browser | 浏览器自动化测试和数据提取 |
+| codeagent | codeagent-wrapper 多后端 AI 代码任务调用 |
+| codex | Codex 后端直接执行 |
+| dev | 轻量级端到端开发工作流 |
+| gemini | Gemini 后端直接执行 |
+| product-requirements | 交互式 PRD 生成（含质量评分）|
+| prototype-prompt-generator | 结构化 UI/UX 原型提示词生成 |
+| skill-install | 从 GitHub 安装技能（含安全扫描）|
+| test-cases | 从需求生成全面测试用例 |
 
-**开发命令** - 日常编码
-- 直接实现、调试、测试、优化
-- 无工作流开销
+## 核心架构
 
-## 🎯 核心特性
+| 角色 | 智能体 | 职责 |
+|------|-------|------|
+| **编排者** | Claude Code | 规划、上下文收集、验证 |
+| **执行者** | codeagent-wrapper | 代码编辑、测试执行（Codex/Claude/Gemini/OpenCode 后端）|
 
-- **🤖 角色化智能体**: 每个开发阶段的专业 AI 智能体
-- **📊 质量门控**: 自动质量评分，迭代优化
-- **✅ 确认节点**: 关键工作流阶段的用户确认
-- **📁 持久化产物**: 所有规格保存至 `.claude/specs/`
-- **🔌 插件系统**: 原生 Claude Code 插件支持
-- **🔄 灵活工作流**: 选择完整敏捷或轻量开发
+## 工作流详解
 
-## 📚 文档
+### do 工作流（推荐）
 
-- **[BMAD 工作流指南](docs/BMAD-WORKFLOW.md)** - 完整方法论和智能体角色
-- **[Requirements 工作流](docs/REQUIREMENTS-WORKFLOW.md)** - 轻量级开发流程
-- **[开发命令参考](docs/DEVELOPMENT-COMMANDS.md)** - 斜杠命令说明
-- **[插件系统](docs/PLUGIN-SYSTEM.md)** - 安装与配置
-- **[快速上手](docs/QUICK-START.md)** - 5分钟入门
+5 阶段功能开发，通过 codeagent-wrapper 编排多个智能体。**大多数功能开发任务的首选工作流。**
 
-## 🛠️ 安装方式
-
-**方式1: 插件安装**（一条命令）
 ```bash
-/plugin install bmad-agile-workflow
+/do "添加用户登录功能"
 ```
 
-**方式2: Make 命令**（选择性安装）
-```bash
-make deploy-bmad          # 仅 BMAD 工作流
-make deploy-requirements  # 仅 Requirements 工作流
-make deploy-all          # 全部安装
-```
+**5 阶段：**
+| 阶段 | 名称 | 目标 |
+|------|------|------|
+| 1 | Understand | 并行探索理解需求和映射代码库 |
+| 2 | Clarify | 解决阻塞性歧义（条件触发）|
+| 3 | Design | 产出最小变更实现方案 |
+| 4 | Implement + Review | 构建功能并审查 |
+| 5 | Complete | 记录构建结果 |
 
-**方式3: 手动安装**
-- 复制 `/commands/*.md` 到 `~/.config/claude/commands/`
-- 复制 `/agents/*.md` 到 `~/.config/claude/agents/`
-
-运行 `make help` 查看所有选项。
-
-## 📄 许可证
-
-MIT 许可证 - 查看 [LICENSE](LICENSE)
-
-## 🙋 支持
-
-- **问题反馈**: [GitHub Issues](https://github.com/cexll/myclaude/issues)
-- **文档**: [docs/](docs/)
-- **插件指南**: [PLUGIN_README.md](PLUGIN_README.md)
+**智能体：**
+- `code-explorer` - 代码追踪、架构映射
+- `code-architect` - 设计方案、文件规划
+- `code-reviewer` - 代码审查、简化建议
+- `develop` - 实现代码、运行测试
 
 ---
 
-**使用 AI 驱动的自动化转型您的开发流程** - 一条命令，完整工作流，质量保证。
+### OmO 多智能体编排器
+
+基于风险信号智能路由任务到专业智能体。
+
+```bash
+/omo "分析并修复这个认证 bug"
+```
+
+**智能体层级：**
+| 智能体 | 角色 | 后端 |
+|-------|------|------|
+| `oracle` | 技术顾问 | Claude |
+| `librarian` | 外部研究 | Claude |
+| `explore` | 代码库搜索 | OpenCode |
+| `develop` | 代码实现 | Codex |
+| `frontend-ui-ux-engineer` | UI/UX 专家 | Gemini |
+| `document-writer` | 文档撰写 | Gemini |
+
+**常用配方：**
+- 解释代码：`explore`
+- 位置已知的小修复：直接 `develop`
+- Bug 修复（位置未知）：`explore → develop`
+- 跨模块重构：`explore → oracle → develop`
+
+---
+
+### SPARV 工作流
+
+极简 5 阶段工作流：Specify → Plan → Act → Review → Vault。
+
+```bash
+/sparv "实现订单导出功能"
+```
+
+**核心规则：**
+- **10 分规格门**：得分 0-10，必须 >=9 才能进入 Plan
+- **2 动作保存**：每 2 次工具调用写入 journal.md
+- **3 失败协议**：连续 3 次失败后停止并上报
+- **EHRB**：高风险操作需明确确认
+
+**评分维度（各 0-2 分）：**
+1. Value - 为什么做，可验证的收益
+2. Scope - MVP + 不在范围内的内容
+3. Acceptance - 可测试的验收标准
+4. Boundaries - 错误/性能/兼容/安全边界
+5. Risk - EHRB/依赖/未知 + 处理方式
+
+---
+
+### BMAD 敏捷工作流
+
+完整企业敏捷方法论 + 6 个专业智能体。
+
+```bash
+/bmad-pilot "构建电商结账系统"
+```
+
+**智能体角色：**
+| 智能体 | 职责 |
+|-------|------|
+| Product Owner | 需求与用户故事 |
+| Architect | 系统设计与技术决策 |
+| Scrum Master | Sprint 规划与任务分解 |
+| Developer | 实现 |
+| Code Reviewer | 质量保证 |
+| QA Engineer | 测试与验证 |
+
+**审批门：**
+- PRD 完成后（90+ 分）需用户审批
+- 架构完成后（90+ 分）需用户审批
+
+---
+
+### 需求驱动工作流
+
+轻量级需求到代码流水线。
+
+```bash
+/requirements-pilot "实现 API 限流"
+```
+
+**100 分质量评分：**
+- 功能清晰度：30 分
+- 技术具体性：25 分
+- 实现完整性：25 分
+- 业务上下文：20 分
+
+---
+
+### 开发基础命令
+
+日常编码任务的直接命令。
+
+| 命令 | 用途 |
+|------|------|
+| `/code` | 实现功能 |
+| `/debug` | 调试问题 |
+| `/test` | 编写测试 |
+| `/review` | 代码审查 |
+| `/optimize` | 性能优化 |
+| `/refactor` | 代码重构 |
+| `/docs` | 编写文档 |
+| `/ask` | 提问和咨询 |
+| `/bugfix` | Bug 修复 |
+| `/enhance-prompt` | 提示词优化 |
+| `/think` | 深度思考分析 |
+
+---
+
+## 安装
+
+```bash
+# 交互式安装器（推荐）
+npx github:stellarlinkco/myclaude
+
+# 列出可安装项（module:* / skill:* / codeagent-wrapper）
+npx github:stellarlinkco/myclaude --list
+
+# 检测已安装 modules 并从 GitHub 更新
+npx github:stellarlinkco/myclaude --update
+
+# 指定安装目录 / 强制覆盖
+npx github:stellarlinkco/myclaude --install-dir ~/.claude --force
+```
+
+`--update` 会在目标安装目录（默认 `~/.claude`，优先读取 `installed_modules.json`）检测已安装 modules，并从 GitHub 拉取最新发布版本覆盖更新。
+
+### 模块配置
+
+编辑 `config.json` 启用/禁用模块：
+
+```json
+{
+  "modules": {
+    "bmad": { "enabled": false },
+    "requirements": { "enabled": false },
+    "essentials": { "enabled": false },
+    "omo": { "enabled": false },
+    "sparv": { "enabled": false },
+    "do": { "enabled": true },
+    "course": { "enabled": false }
+  }
+}
+```
+
+## 工作流选择指南
+
+| 场景 | 推荐 |
+|------|------|
+| 功能开发（默认） | `/do` |
+| Bug 调查 + 修复 | `/omo` |
+| 大型企业项目 | `/bmad-pilot` |
+| 快速原型 | `/requirements-pilot` |
+| 简单任务 | `/code`, `/debug` |
+
+## 后端 CLI 要求
+
+| 后端 | 必需功能 |
+|------|----------|
+| Codex | `codex e`, `--json`, `-C`, `resume` |
+| Claude | `--output-format stream-json`, `-r` |
+| Gemini | `-o stream-json`, `-y`, `-r` |
+| OpenCode | `opencode`, stdin 模式 |
+
+## 故障排查
+
+**Codex wrapper 未找到：**
+```bash
+# 选择：codeagent-wrapper
+npx github:stellarlinkco/myclaude
+```
+
+**模块未加载：**
+```bash
+cat ~/.claude/installed_modules.json
+npx github:stellarlinkco/myclaude --force
+```
+
+## FAQ
+
+| 问题 | 解决方案 |
+|------|----------|
+| "Unknown event format" | 日志显示问题，可忽略 |
+| Gemini 无法读取 .gitignore 文件 | 从 .gitignore 移除或使用其他后端 |
+| Codex 权限拒绝 | 在 ~/.codex/config.yaml 设置 `approval_policy = "never"` |
+
+更多问题请访问 [GitHub Issues](https://github.com/stellarlinkco/myclaude/issues)。
+
+## 许可证
+
+AGPL-3.0 - 查看 [LICENSE](LICENSE)
+
+### 商业授权
+
+如需商业授权（无需遵守 AGPL 义务），请联系：support@stellarlink.co
+
+## 支持
+
+- [GitHub Issues](https://github.com/stellarlinkco/myclaude/issues)
