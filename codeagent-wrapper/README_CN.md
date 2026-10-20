@@ -51,6 +51,18 @@ make install
 codeagent-wrapper --version
 ```
 
+## Codex 网页研究
+
+在 Linux 上，未配置的 Codex CLI 0.163.0+ 默认通过 [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) 搜索网页和提取页面，无需 Parallel 账号或 API key。匿名搜索使用 Fast 模式。包装器只为当前进程传入 HTTP MCP 配置并关闭该次运行的原生网页搜索，不写入 Codex 配置文件。新任务和恢复会话使用相同的选择规则。
+
+已有 Codex 配置或已保存登录信息时保留 Codex 自身行为，包括 `CODEX_HOME` 下的用户配置、工作目录及祖先目录的 `.codex/config.toml`，以及系统或托管配置。其他后端、平台、旧版本和配置路径不明确的情况也保留原有行为。新安装用户可通过以下方式保留原生行为：
+
+```bash
+CODEAGENT_PARALLEL_SEARCH=false codeagent-wrapper "研究最新 Go 版本"
+```
+
+如需禁用搜索，在 Codex 配置中设置 `web_search = "disabled"`；包装器会保留该设置且不添加 Parallel。已配置的用户可以自行运行 `codex mcp add parallel-search --url https://search.parallel.ai/mcp`。MCP 工具权限、超时、取消和可选会话上下文均由 Codex 管理。Parallel 出错不会重新启用原生搜索。免费匿名服务有使用限制。
+
 ## 使用示例
 
 最简单用法（默认后端：`codex`）：
