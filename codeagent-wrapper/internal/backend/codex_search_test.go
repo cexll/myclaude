@@ -38,7 +38,7 @@ func freshCodexSearch(t *testing.T) (string, string) {
 }
 
 func TestCodexParallelSearchPreservesConfiguration(t *testing.T) {
-	for _, name := range []string{"config.toml", "config.yaml", "config.yml", "config.json", "managed_config.toml", "requirements.toml", "auth.json"} {
+	for _, name := range []string{"config.toml", "config.yaml", "config.yml", "config.json", "managed_config.toml", "requirements.toml", "auth.json", ".credentials.json", "cloud-config-bundle-cache.json"} {
 		t.Run(name, func(t *testing.T) {
 			home, workdir := freshCodexSearch(t)
 			path := filepath.Join(home, ".codex", name)
@@ -160,7 +160,7 @@ func TestCodexParallelSearchLaunchAndOptOut(t *testing.T) {
 	if err := os.Mkdir(bin, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte("#!/bin/sh\nprintf 'codex-cli 0.163.0\\n'\n"), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(fakeSearchCodex), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -183,5 +183,84 @@ func TestCodexParallelSearchLaunchAndOptOut(t *testing.T) {
 			t.Fatalf("integration changed other flags: parallel=%v native=%v", got, native)
 		}
 		t.Setenv("CODEAGENT_PARALLEL_SEARCH", "true")
+	}
+}
+
+func TestCodexParallelSearchResumeChecksLauncherDirectory(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("automatic default is limited to Linux")
+	}
+	home, workdir := freshCodexSearch(t)
+	bin := filepath.Join(home, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(fakeSearchCodex), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	launcherDir := t.TempDir()
+	configDir := filepath.Join(launcherDir, ".codex")
+	if err := os.Mkdir(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("web_search = \"disabled\""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(launcherDir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Error(err)
+		}
+	})
+	cfg := &config.Config{Mode: "resume", SessionID: "existing-conversation", WorkDir: workdir}
+	if !pathAbsent("/etc/codex") {
+		t.Skip("machine has managed Codex settings")
+	}
+	if !codexSearchUnconfigured(workdir, "/etc/codex") || !codexSupportsHTTPMCP() {
+		t.Fatal("regression setup must qualify the ignored positional directory")
+	}
+	if got := codexParallelSearchArgs(cfg); len(got) != 0 {
+		t.Fatalf("resume must preserve settings in the actual launcher directory: %v", got)
+	}
+}
+
+const fakeSearchCodex = `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf 'codex-cli 0.163.0\n'
+else
+  if [ "${FAKE_CODEX_AUTH_STATUS:-unsupported}" = "probe-error" ]; then exit 1; fi
+  printf '[{"name":"codeagent_parallel","enabled":true,"auth_status":"%s","transport":{"type":"streamable_http","url":"https://search.parallel.ai/mcp"}}]\n' "${FAKE_CODEX_AUTH_STATUS:-unsupported}"
+fi
+`
+
+func TestCodexParallelSearchPreservesHostCredentialStatus(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("automatic default is limited to Linux")
+	}
+	home, workdir := freshCodexSearch(t)
+	bin := filepath.Join(home, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(fakeSearchCodex), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, status := range []string{"o_auth", "bearer_token", "not_logged_in", "unknown", "probe-error"} {
+		t.Setenv("FAKE_CODEX_AUTH_STATUS", status)
+		if codexParallelAnonymous(workdir) {
+			t.Fatalf("credential status %q must suppress anonymous default", status)
+		}
+	}
+	t.Setenv("FAKE_CODEX_AUTH_STATUS", "unsupported")
+	if !codexParallelAnonymous(workdir) {
+		t.Fatal("host confirmed anonymous endpoint should qualify")
 	}
 }

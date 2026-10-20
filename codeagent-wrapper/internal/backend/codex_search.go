@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,7 +24,17 @@ func codexParallelSearchArgs(cfg *config.Config) []string {
 	if runtime.GOOS != "linux" || !config.EnvFlagDefaultTrue("CODEAGENT_PARALLEL_SEARCH") {
 		return nil
 	}
-	if !codexSearchUnconfigured(cfg.WorkDir, "/etc/codex") || !codexSupportsHTTPMCP() {
+	workdir := cfg.WorkDir
+	if cfg.Mode == "resume" {
+		// BuildCodexArgs deliberately omits -C for resume, and the executor
+		// does not set cmd.Dir. Check the directory the host actually loads.
+		var err error
+		workdir, err = os.Getwd()
+		if err != nil {
+			return nil
+		}
+	}
+	if !codexSearchUnconfigured(workdir, "/etc/codex") || !codexSupportsHTTPMCP() || !codexParallelAnonymous(workdir) {
 		return nil
 	}
 	return []string{
@@ -63,7 +74,7 @@ func codexSearchUnconfigured(workdir, systemDir string) bool {
 		if info, err := os.Lstat(dir); err == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) || err != nil && !os.IsNotExist(err) {
 			return false
 		}
-		for _, name := range []string{"config.toml", "config.yaml", "config.yml", "config.json", "managed_config.toml", "requirements.toml", "auth.json"} {
+		for _, name := range []string{"config.toml", "config.yaml", "config.yml", "config.json", "managed_config.toml", "requirements.toml", "auth.json", ".credentials.json", "cloud-config-bundle-cache.json"} {
 			if !pathAbsent(filepath.Join(dir, name)) {
 				return false
 			}
@@ -91,6 +102,39 @@ func codexSearchUnconfigured(workdir, systemDir string) bool {
 		}
 		workdir = parent
 	}
+}
+
+// MCP credentials can survive removal of config.toml, including in a shared OS
+// keyring. Ask the same host for status rather than reading credential values or
+// changing its credential store. The anonymous endpoint reports "unsupported";
+// every authenticated, failed or unfamiliar result keeps the native behavior.
+func codexParallelAnonymous(workdir string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "codex",
+		"-c", `mcp_servers.codeagent_parallel.url="`+parallelSearchURL+`"`,
+		"-c", `mcp_servers.codeagent_parallel.http_headers={"User-Agent"="myclaude-codeagent-wrapper"}`,
+		"mcp", "list", "--json")
+	cmd.Dir = workdir
+	out, err := cmd.Output()
+	if err != nil || len(out) > 64*1024 {
+		return false
+	}
+	var servers []struct {
+		Name       string `json:"name"`
+		Enabled    bool   `json:"enabled"`
+		AuthStatus string `json:"auth_status"`
+		Transport  struct {
+			Type string `json:"type"`
+			URL  string `json:"url"`
+		} `json:"transport"`
+	}
+	if json.Unmarshal(out, &servers) != nil || len(servers) != 1 {
+		return false
+	}
+	server := servers[0]
+	return server.Name == "codeagent_parallel" && server.Enabled && server.AuthStatus == "unsupported" &&
+		server.Transport.Type == "streamable_http" && server.Transport.URL == parallelSearchURL
 }
 
 func pathAbsent(path string) bool {
