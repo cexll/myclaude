@@ -45,6 +45,7 @@ func BuildCodexArgs(cfg *config.Config, targetArg string) []string {
 	}
 
 	args := []string{"e"}
+	args = append(args, codexParallelSearchArgs(cfg)...)
 
 	// Default to bypass sandbox unless CODEX_BYPASS_SANDBOX=false
 	if cfg.Yolo || config.EnvFlagDefaultTrue("CODEX_BYPASS_SANDBOX") {

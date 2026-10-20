@@ -51,6 +51,18 @@ Verify installation:
 codeagent-wrapper --version
 ```
 
+## Web research with Codex
+
+On Linux, fresh Codex CLI 0.163.0+ installations get web search and page fetching through [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp), without a Parallel account or API key. Anonymous search uses Fast mode. The wrapper supplies HTTP MCP configuration for the current process and turns off native web search for that launch; it does not write Codex settings. New tasks and resumed conversations use the same selection rules.
+
+Existing Codex configuration or saved login keeps Codex's own behavior. The wrapper also checks Codex's MCP credential status, including its OS keyring, and leaves authenticated or uncertain status unchanged. This includes user settings (also under `CODEX_HOME`), ancestor project `.codex/config.toml` files, and system or managed configuration. Other backends, platforms, older versions and uncertain configuration paths keep their existing behavior. To keep native behavior on a fresh installation too:
+
+```bash
+CODEAGENT_PARALLEL_SEARCH=false codeagent-wrapper "research the latest Go release"
+```
+
+To disable search, set `web_search = "disabled"` in your Codex configuration; the wrapper preserves that setting and does not add Parallel. Configured users can add Parallel themselves with `codex mcp add parallel-search --url https://search.parallel.ai/mcp`. Codex owns MCP tool permissions, timeouts, cancellation and optional conversation context. Parallel errors do not re-enable native web search. Free anonymous access has service limits.
+
 ## Usage
 
 Basic usage (default backend: `codex`):
