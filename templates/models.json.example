@@ -5,9 +5,22 @@
     "codex": { "api_key": "" },
     "claude": { "api_key": "" },
     "gemini": { "api_key": "" },
+    "minimax-anthropic-global": { "base_url": "https://api.minimax.io/anthropic", "api_key": "" },
+    "minimax-anthropic-cn": { "base_url": "https://api.minimaxi.com/anthropic", "api_key": "" },
+    "minimax-openai-global": { "api_key": "" },
+    "minimax-openai-cn": { "api_key": "" },
     "opencode": { "api_key": "" }
   },
   "agents": {
+    "minimax-develop": {
+      "backend": "minimax-anthropic-global",
+      "model": "MiniMax-M3.1-Flash",
+      "yolo": true
+    },
+    "minimax-fast": {
+      "backend": "minimax-openai-global",
+      "model": "MiniMax-M3"
+    },
     "develop": {
       "backend": "codex",
       "model": "gpt-5.2",

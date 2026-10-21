@@ -206,6 +206,38 @@ Read via viper with automatic `-` to `_` mapping:
 
 Use `--agent <name>` to select a preset. Agents inherit `base_url` / `api_key` from the corresponding `backends` entry.
 
+### MiniMax Backends
+
+MiniMax is available through Anthropic-compatible and OpenAI-compatible CLIs in both official regions. Each alias selects its official endpoint; Anthropic aliases also accept a `base_url` override.
+
+Use the canonical regional names in `backends` entries and agent presets so credentials resolve against the selected backend. The shorter names are CLI selection aliases.
+
+| Backend | Command | Protocol | Region | Base URL |
+|---------|---------|----------|--------|----------|
+| `minimax`, `minimax-anthropic`, `minimax-anthropic-global` | `claude` | Anthropic | global_en | `https://api.minimax.io/anthropic` |
+| `minimax-anthropic-cn` | `claude` | Anthropic | cn_zh | `https://api.minimaxi.com/anthropic` |
+| `minimax-openai`, `minimax-openai-global` | `codex` | OpenAI | global_en | `https://api.minimax.io/v1` |
+| `minimax-openai-cn` | `codex` | OpenAI | cn_zh | `https://api.minimaxi.com/v1` |
+
+Keep the Anthropic Base URLs at `/anthropic`; the client appends `/v1/messages`. OpenAI-compatible aliases configure Codex to use the Responses API at `/v1/responses`. The ordinary MiniMax text catalog contains these models, in this order:
+
+| Model | Context window / max output | Input modalities | Thinking |
+|-------|-----------------------------|------------------|----------|
+| `MiniMax-M3.1-Flash` | 1,000,000 / 524,288 tokens | Text, image, video | Adaptive only; effort low/medium/high/xhigh/max (default max); disabled is rejected |
+| `MiniMax-M3` | 1,000,000 tokens | Text, image, video | Adaptive or disabled; effort is ignored |
+
+Explicit saved or custom model IDs continue to pass through to the selected CLI. The catalog facts above are sourced from the [MiniMax model guide](https://platform.minimax.io/docs/guides/models-intro.md) and the [Responses API reference](https://platform.minimax.io/docs/api-reference/responses-create.md). Gateway-specific aliases are not inferred from direct-provider metadata.
+
+Pay-as-you-go prices are in USD per million tokens. MiniMax-M3 pricing depends on service tier and input length; the Flash cache-write price is not published in the sources used here.
+
+| Model and tier | Input length | Input | Output | Cache read | Cache write |
+|----------------|--------------|-------|--------|------------|-------------|
+| `MiniMax-M3.1-Flash` | Any supported length | $0.15 | $0.60 | $0.015 | Unknown |
+| `MiniMax-M3` standard | Up to 512,000 tokens | $0.30 | $1.20 | $0.06 | N/A |
+| `MiniMax-M3` standard | Over 512,000 tokens | $0.60 | $2.40 | $0.12 | N/A |
+| `MiniMax-M3` priority | Up to 512,000 tokens | $0.45 | $1.80 | $0.09 | N/A |
+| `MiniMax-M3` priority | Over 512,000 tokens | $0.90 | $3.60 | $0.18 | N/A |
+
 ### Dynamic Agents
 
 Place a `{name}.md` file in `~/.codeagent/agents/` to use it via `--agent {name}`. The Markdown file is read as the prompt, using `default_backend` and `default_model`.
@@ -234,6 +266,7 @@ This project does not embed model capabilities. It requires the corresponding CL
 | `claude` | `claude -p ... --output-format stream-json` | Skips permissions and disables setting-sources to prevent recursion; set `CODEAGENT_SKIP_PERMISSIONS=false` to enable prompts; auto-reads env and model from `~/.claude/settings.json` |
 | `gemini` | `gemini -o stream-json -y ...` | Auto-loads env vars from `~/.gemini/.env` (GEMINI_API_KEY, GEMINI_MODEL, etc.) |
 | `opencode` | `opencode run --format json` | — |
+| `minimax` variants | `claude` or `codex` | Uses the official Anthropic-compatible or OpenAI-compatible endpoint selected by the backend alias |
 
 ## Project Structure
 

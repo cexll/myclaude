@@ -68,6 +68,7 @@ EOF
 | **Claude** | `--backend claude` | Complex reasoning, architecture |
 | **Gemini** | `--backend gemini` | Fast iteration, prototyping |
 | **OpenCode** | `--backend opencode` | Open-source alternative |
+| **MiniMax** | `--backend minimax` / `minimax-anthropic-cn` / `minimax-openai-global` / `minimax-openai-cn` | MiniMax-M3.1-Flash first, then MiniMax-M3, through official global_en or cn_zh endpoints |
 
 ## Core Features
 

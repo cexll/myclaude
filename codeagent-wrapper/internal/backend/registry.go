@@ -10,6 +10,14 @@ var registry = map[string]Backend{
 	"claude":   ClaudeBackend{},
 	"gemini":   GeminiBackend{},
 	"opencode": OpencodeBackend{},
+
+	"minimax":                  MiniMaxAnthropicGlobalBackend{},
+	"minimax-anthropic":        MiniMaxAnthropicGlobalBackend{},
+	"minimax-anthropic-global": MiniMaxAnthropicGlobalBackend{},
+	"minimax-anthropic-cn":     MiniMaxAnthropicCNBackend{},
+	"minimax-openai":           MiniMaxOpenAIGlobalBackend{},
+	"minimax-openai-global":    MiniMaxOpenAIGlobalBackend{},
+	"minimax-openai-cn":        MiniMaxOpenAICNBackend{},
 }
 
 // Registry exposes the available backends. Intended for internal inspection/tests.
