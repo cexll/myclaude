@@ -95,9 +95,9 @@ func TestMiniMaxBackendBuildArgs(t *testing.T) {
 		t.Setenv("CODEAGENT_SKIP_PERMISSIONS", "false")
 		got := MiniMaxAnthropicGlobalBackend{}.BuildArgs(&config.Config{
 			Mode:  "new",
-			Model: "MiniMax-M3",
+			Model: "MiniMax-M3.1-Flash",
 		}, "task")
-		want := []string{"-p", "--model", "MiniMax-M3", "--output-format", "stream-json", "--verbose", "task"}
+		want := []string{"-p", "--model", "MiniMax-M3.1-Flash", "--output-format", "stream-json", "--verbose", "task"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("BuildArgs() = %v, want %v", got, want)
 		}
@@ -108,18 +108,21 @@ func TestMiniMaxBackendBuildArgs(t *testing.T) {
 		backend    Backend
 		providerID string
 		baseURL    string
+		model      string
 	}{
 		{
-			name:       "openai global forwards model and provider",
+			name:       "openai global forwards Flash model and provider",
 			backend:    MiniMaxOpenAIGlobalBackend{},
 			providerID: "minimax_openai_global",
 			baseURL:    miniMaxGlobalOpenAIBaseURL,
+			model:      "MiniMax-M3.1-Flash",
 		},
 		{
-			name:       "openai cn forwards model and provider",
+			name:       "openai cn forwards M3 model and provider",
 			backend:    MiniMaxOpenAICNBackend{},
 			providerID: "minimax_openai_cn",
 			baseURL:    miniMaxCNOpenAIBaseURL,
+			model:      "MiniMax-M3",
 		},
 	}
 	for _, tt := range openAITests {
@@ -127,7 +130,7 @@ func TestMiniMaxBackendBuildArgs(t *testing.T) {
 			t.Setenv("CODEX_BYPASS_SANDBOX", "false")
 			got := tt.backend.BuildArgs(&config.Config{
 				Mode:    "new",
-				Model:   "MiniMax-M2.7",
+				Model:   tt.model,
 				WorkDir: "/workspace",
 			}, "task")
 			want := []string{
@@ -138,12 +141,46 @@ func TestMiniMaxBackendBuildArgs(t *testing.T) {
 				"-c", "model_providers." + tt.providerID + ".env_key=\"OPENAI_API_KEY\"",
 				"-c", "model_providers." + tt.providerID + ".wire_api=\"responses\"",
 				"-c", "model_providers." + tt.providerID + ".supports_websockets=false",
-				"--model", "MiniMax-M2.7", "--skip-git-repo-check", "-C", "/workspace", "--json", "task",
+				"--model", tt.model, "--skip-git-repo-check", "-C", "/workspace", "--json", "task",
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("BuildArgs() = %v, want %v", got, want)
 			}
 		})
+	}
+}
+
+func TestMiniMaxDefaultPreservesExplicitAndResumedModels(t *testing.T) {
+	for alias := range Registry() {
+		if len(alias) < len("minimax") || alias[:len("minimax")] != "minimax" {
+			continue
+		}
+		for _, tc := range []struct{ name, mode, model, want string }{
+			{"new default", "new", "", "MiniMax-M3.1-Flash"},
+			{"M3", "new", "MiniMax-M3", "MiniMax-M3"},
+			{"saved legacy", "new", "MiniMax-M2.7", "MiniMax-M2.7"},
+			{"custom", "new", "custom-model", "custom-model"},
+			{"resume saved selection", "resume", "", ""},
+			{"resume explicit", "resume", "MiniMax-M2.1", "MiniMax-M2.1"},
+		} {
+			t.Run(alias+"/"+tc.name, func(t *testing.T) {
+				b, err := Select(alias)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cfg := &config.Config{Mode: tc.mode, Model: tc.model, SessionID: "saved-session", WorkDir: "."}
+				args := b.BuildArgs(cfg, "task")
+				got := ""
+				for i := 0; i+1 < len(args); i++ {
+					if args[i] == "--model" {
+						got = args[i+1]
+					}
+				}
+				if got != tc.want || cfg.Model != tc.model {
+					t.Fatalf("model=%q, want %q; caller model=%q, want unchanged %q", got, tc.want, cfg.Model, tc.model)
+				}
+			})
+		}
 	}
 }
 

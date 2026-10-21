@@ -28,7 +28,7 @@ func (MiniMaxAnthropicGlobalBackend) Env(baseURL, apiKey string) map[string]stri
 	return ClaudeBackend{}.Env(defaultBaseURL(baseURL, miniMaxGlobalAnthropicBaseURL), apiKey)
 }
 func (MiniMaxAnthropicGlobalBackend) BuildArgs(cfg *config.Config, targetArg string) []string {
-	return ClaudeBackend{}.BuildArgs(cfg, targetArg)
+	return ClaudeBackend{}.BuildArgs(miniMaxDefaultConfig(cfg), targetArg)
 }
 
 func (MiniMaxAnthropicCNBackend) Name() string    { return "minimax-anthropic-cn" }
@@ -37,7 +37,7 @@ func (MiniMaxAnthropicCNBackend) Env(baseURL, apiKey string) map[string]string {
 	return ClaudeBackend{}.Env(defaultBaseURL(baseURL, miniMaxCNAnthropicBaseURL), apiKey)
 }
 func (MiniMaxAnthropicCNBackend) BuildArgs(cfg *config.Config, targetArg string) []string {
-	return ClaudeBackend{}.BuildArgs(cfg, targetArg)
+	return ClaudeBackend{}.BuildArgs(miniMaxDefaultConfig(cfg), targetArg)
 }
 
 func (MiniMaxOpenAIGlobalBackend) Name() string    { return "minimax-openai-global" }
@@ -65,8 +65,19 @@ func defaultBaseURL(value, fallback string) string {
 	return value
 }
 
+// Default only new, unconfigured MiniMax sessions. Explicit models (including
+// legacy/custom IDs) and resumed sessions retain the caller's selection.
+func miniMaxDefaultConfig(cfg *config.Config) *config.Config {
+	if cfg == nil || cfg.Mode == "resume" || strings.TrimSpace(cfg.Model) != "" {
+		return cfg
+	}
+	resolved := *cfg
+	resolved.Model = "MiniMax-M3.1-Flash"
+	return &resolved
+}
+
 func buildMiniMaxOpenAIArgs(cfg *config.Config, targetArg, providerID, baseURL string) []string {
-	args := CodexBackend{}.BuildArgs(cfg, targetArg)
+	args := CodexBackend{}.BuildArgs(miniMaxDefaultConfig(cfg), targetArg)
 	providerArgs := []string{
 		"-c", fmt.Sprintf("model_provider=%q", providerID),
 		"-c", fmt.Sprintf("model_providers.%s.name=%q", providerID, "MiniMax"),

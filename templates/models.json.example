@@ -14,12 +14,12 @@
   "agents": {
     "minimax-develop": {
       "backend": "minimax-anthropic-global",
-      "model": "MiniMax-M3",
+      "model": "MiniMax-M3.1-Flash",
       "yolo": true
     },
     "minimax-fast": {
       "backend": "minimax-openai-global",
-      "model": "MiniMax-M2.7"
+      "model": "MiniMax-M3"
     },
     "develop": {
       "backend": "codex",

@@ -219,22 +219,24 @@ Use the canonical regional names in `backends` entries and agent presets so cred
 | `minimax-openai`, `minimax-openai-global` | `codex` | OpenAI | global_en | `https://api.minimax.io/v1` |
 | `minimax-openai-cn` | `codex` | OpenAI | cn_zh | `https://api.minimaxi.com/v1` |
 
-Keep the Anthropic Base URLs at `/anthropic`; the client appends `/v1/messages`. OpenAI-compatible aliases configure Codex to use the Responses API at `/v1/responses`. Both protocols support these models:
+Keep the Anthropic Base URLs at `/anthropic`; the client appends `/v1/messages`. OpenAI-compatible aliases configure Codex to use the Responses API at `/v1/responses`. The ordinary MiniMax text catalog contains these models, in this order:
 
-| Model | Context window (input + output) | Input modalities | Thinking |
-|-------|---------------------------------|------------------|----------|
-| `MiniMax-M3` | 1,000,000 tokens | Text, image, video | Adaptive or disabled |
-| `MiniMax-M2.7` | 204,800 tokens | Text | Always on |
+| Model | Context window / max output | Input modalities | Thinking |
+|-------|-----------------------------|------------------|----------|
+| `MiniMax-M3.1-Flash` | 1,000,000 / 524,288 tokens | Text, image, video | Adaptive only; effort low/medium/high/xhigh/max (default max); disabled is rejected |
+| `MiniMax-M3` | 1,000,000 tokens | Text, image, video | Adaptive or disabled; effort is ignored |
 
-Pay-as-you-go prices are in USD per million tokens. MiniMax-M3 pricing depends on service tier and input length.
+Explicit saved or custom model IDs continue to pass through to the selected CLI. The catalog facts above are sourced from the [MiniMax model guide](https://platform.minimax.io/docs/guides/models-intro.md) and the [Responses API reference](https://platform.minimax.io/docs/api-reference/responses-create.md). Gateway-specific aliases are not inferred from direct-provider metadata.
+
+Pay-as-you-go prices are in USD per million tokens. MiniMax-M3 pricing depends on service tier and input length; the Flash cache-write price is not published in the sources used here.
 
 | Model and tier | Input length | Input | Output | Cache read | Cache write |
 |----------------|--------------|-------|--------|------------|-------------|
+| `MiniMax-M3.1-Flash` | Any supported length | $0.15 | $0.60 | $0.015 | Unknown |
 | `MiniMax-M3` standard | Up to 512,000 tokens | $0.30 | $1.20 | $0.06 | N/A |
 | `MiniMax-M3` standard | Over 512,000 tokens | $0.60 | $2.40 | $0.12 | N/A |
 | `MiniMax-M3` priority | Up to 512,000 tokens | $0.45 | $1.80 | $0.09 | N/A |
 | `MiniMax-M3` priority | Over 512,000 tokens | $0.90 | $3.60 | $0.18 | N/A |
-| `MiniMax-M2.7` | Any supported length | $0.30 | $1.20 | $0.06 | $0.375 |
 
 ### Dynamic Agents
 

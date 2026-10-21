@@ -13,7 +13,9 @@ import (
 )
 
 type fakeCmd struct {
-	env map[string]string
+	env  map[string]string
+	name string
+	args []string
 }
 
 func (f *fakeCmd) Start() error { return nil }
@@ -94,7 +96,7 @@ func TestEnvInjection_LogsToStderrAndMasksKey(t *testing.T) {
 
 	var cmd *fakeCmd
 	restoreRunner := SetNewCommandRunner(func(ctx context.Context, name string, args ...string) CommandRunner {
-		cmd = &fakeCmd{}
+		cmd = &fakeCmd{name: name, args: append([]string(nil), args...)}
 		return cmd
 	})
 	defer restoreRunner()
@@ -143,4 +145,82 @@ func TestEnvInjection_LogsToStderrAndMasksKey(t *testing.T) {
 	if !strings.Contains(got, "CLAUDE_CODE_TMPDIR: ") {
 		t.Fatalf("stderr missing CLAUDE_CODE_TMPDIR log; stderr=%q", got)
 	}
+}
+
+func TestMiniMaxFlashRuntimeBoundaryUsesSelectedAlias(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, ".codeagent")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const baseURL = "https://api.minimax.io/anthropic"
+	const apiKey = "test-minimax-key"
+	models := `{
+  "backends": {
+    "minimax-anthropic-global": {
+      "base_url": "` + baseURL + `",
+      "api_key": "` + apiKey + `"
+    }
+  },
+  "agents": {
+    "minimax-flash": {
+      "backend": "minimax-anthropic-global",
+      "model": "MiniMax-M3.1-Flash"
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(configDir, "models.json"), []byte(models), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir)
+	config.ResetModelsConfigCacheForTest()
+	defer config.ResetModelsConfigCacheForTest()
+
+	var cmd *fakeCmd
+	restoreRunner := SetNewCommandRunner(func(ctx context.Context, name string, args ...string) CommandRunner {
+		cmd = &fakeCmd{name: name, args: append([]string(nil), args...)}
+		return cmd
+	})
+	defer restoreRunner()
+
+	restoreSelect := SetSelectBackendFn(nil)
+	defer restoreSelect()
+	agentBackend, model, _, _, _, _, _, _, _, err := config.ResolveAgentConfig("minimax-flash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = DefaultRunCodexTaskFn(TaskSpec{
+		Task:    "hello",
+		WorkDir: tmpDir,
+		Backend: agentBackend,
+		Model:   model,
+		Agent:   "minimax-flash",
+	}, 1)
+
+	if cmd == nil {
+		t.Fatal("expected selected MiniMax backend command")
+	}
+	if cmd.name != "claude" {
+		t.Fatalf("command=%q, want claude", cmd.name)
+	}
+	if !containsArgPair(cmd.args, "--model", "MiniMax-M3.1-Flash") {
+		t.Fatalf("args=%v, want Flash model", cmd.args)
+	}
+	if cmd.env["ANTHROPIC_BASE_URL"] != baseURL {
+		t.Fatalf("ANTHROPIC_BASE_URL=%q, want %q", cmd.env["ANTHROPIC_BASE_URL"], baseURL)
+	}
+	if cmd.env["ANTHROPIC_API_KEY"] != apiKey {
+		t.Fatalf("ANTHROPIC_API_KEY=%q, want test fixture key", cmd.env["ANTHROPIC_API_KEY"])
+	}
+}
+
+func containsArgPair(args []string, key, value string) bool {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == key && args[i+1] == value {
+			return true
+		}
+	}
+	return false
 }
